@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DeskAgent Manager</title>
+<style>
+:root { --bg:#0f1420; --panel:#171e2e; --line:#26304a; --text:#dbe2f0; --dim:#8a94ab; --accent:#4f8cff; }
+* { box-sizing: border-box; }
+body { margin:0; font:14px/1.5 "Segoe UI", system-ui, sans-serif; background:var(--bg); color:var(--text); }
+header { display:flex; align-items:center; gap:18px; padding:10px 20px; border-bottom:1px solid var(--line); background:var(--panel); }
+header h1 { font-size:16px; margin:0; }
+nav button { background:none; border:1px solid var(--line); color:var(--dim); padding:6px 14px; border-radius:6px; cursor:pointer; margin-right:6px; }
+nav button.active { color:var(--text); border-color:var(--accent); background:rgba(79,140,255,.12); }
+main { padding:16px 20px; max-width:1400px; margin:0 auto; }
+.hidden { display:none !important; }
+.cols { display:flex; gap:16px; align-items:flex-start; }
+.col { flex:1; min-width:0; }
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; margin-bottom:16px; }
+.panel h2 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--dim); margin:0 0 10px; overflow:hidden; }
+table { width:100%; border-collapse:collapse; }
+th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); font-size:13px; word-break:break-all; vertical-align:top; }
+th { color:var(--dim); font-weight:600; }
+#client-rows tr { cursor:pointer; }
+#client-rows tr:hover { background:rgba(79,140,255,.08); }
+#client-rows tr.selected { background:rgba(79,140,255,.16); }
+pre { background:#0b0f1a; border:1px solid var(--line); border-radius:6px; padding:10px; overflow:auto; max-height:320px; font-size:12px; margin:0; }
+.badge { display:inline-block; padding:1px 8px; border-radius:10px; font-size:11px; font-weight:600; }
+.badge.bot { background:rgba(79,140,255,.2); color:#7fabff; }
+.badge.admin { background:rgba(55,178,108,.2); color:#5fd392; }
+.badge.user { background:rgba(217,165,58,.2); color:#e5b95c; }
+.badge.status { background:rgba(138,148,171,.18); color:var(--dim); }
+.msg { margin:6px 0; max-width:80%; }
+.msg .who { font-size:11px; color:var(--dim); margin-bottom:2px; }
+.msg .bubble { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:6px 10px; white-space:pre-wrap; word-break:break-word; display:inline-block; }
+.msg.me { margin-left:auto; text-align:right; }
+.thread { height:380px; overflow-y:auto; border:1px solid var(--line); border-radius:8px; padding:10px; background:#0b0f1a; margin-bottom:10px; }
+label { display:block; color:var(--dim); font-size:12px; margin:8px 0 3px; }
+input, textarea, select { width:100%; background:#0b0f1a; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:7px 9px; font:inherit; }
+textarea { min-height:60px; resize:vertical; }
+button.primary { background:var(--accent); border:none; color:#fff; padding:7px 16px; border-radius:6px; cursor:pointer; }
+button.ghost { background:none; border:1px solid var(--line); color:var(--text); padding:4px 12px; border-radius:6px; cursor:pointer; font-size:12px; }
+button.ghost:hover { border-color:var(--accent); }
+.err { color:#ff9a9a; font-size:12px; margin-left:8px; white-space:pre-wrap; }
+.muted { color:var(--dim); }
+code { color:#9fc1ff; }
+.conv-item { border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin-bottom:8px; cursor:pointer; background:#101728; }
+.conv-item:hover { border-color:var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>DeskAgent Manager</h1>
+  <nav>
+    <button id="tab-btn-clients" class="active" onclick="showTab('clients')">Clients</button>
+    <button id="tab-btn-conversations" onclick="showTab('conversations')">Conversations</button>
+    <button id="tab-btn-jobs" onclick="showTab('jobs')">Jobs</button>
+  </nav>
+</header>
+<main>
+  <!-- Clients tab -->
+  <section id="tab-clients">
+    <div class="cols">
+      <div class="col">
+        <div class="panel">
+          <h2>Clients <button class="ghost" style="float:right" onclick="loadClients()">Refresh</button></h2>
+          <table>
+            <thead><tr><th>ID</th><th>Hostname</th><th>OS</th><th>Arch</th><th>Last seen</th></tr></thead>
+            <tbody id="client-rows"></tbody>
+          </table>
+          <div id="clients-empty" class="muted hidden">No clients registered yet.</div>
+        </div>
+      </div>
+      <div class="col hidden" id="client-detail">
+        <div class="panel">
+          <h2>Inventory — <span id="detail-host" class="muted"></span></h2>
+          <pre id="inv-pre"></pre>
+        </div>
+        <div class="panel">
+          <h2>Events</h2>
+          <table>
+            <thead><tr><th>Time</th><th>Source</th><th>Text</th></tr></thead>
+            <tbody id="event-rows"></tbody>
+          </table>
+          <div id="events-empty" class="muted hidden">No events.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Conversations tab -->
+  <section id="tab-conversations" class="hidden">
+    <div class="cols">
+      <div class="col" style="max-width:340px">
+        <div class="panel">
+          <h2>Conversations <button class="ghost" style="float:right" onclick="loadConversations()">Refresh</button></h2>
+          <div id="conv-list"></div>
+          <div id="convs-empty" class="muted hidden">No conversations.</div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="panel">
+          <h2>Thread — <span id="thread-title" class="muted">select a conversation</span></h2>
+          <div id="thread-box" class="thread"><div class="muted">No conversation selected.</div></div>
+          <div>
+            <button class="ghost" onclick="claimConv()">Claim</button>
+            <button class="ghost" onclick="closeConv()">Close</button>
+            <span id="conv-meta" class="muted" style="margin-left:8px"></span>
+            <span id="conv-err" class="err"></span>
+          </div>
+          <label for="reply-text">Reply as admin (also claims the conversation)</label>
+          <textarea id="reply-text" placeholder="Type a reply..."></textarea>
+          <div style="margin-top:8px">
+            <button class="primary" onclick="sendReply()">Send reply</button>
+            <span id="reply-err" class="err"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Jobs tab -->
+  <section id="tab-jobs" class="hidden">
+    <div class="panel">
+      <h2>Create job</h2>
+      <div class="cols">
+        <div class="col">
+          <label for="job-client">Client</label>
+          <select id="job-client"><option value="">—</option></select>
+          <label for="job-url">Package URL (optional)</label>
+          <input id="job-url" placeholder="https://example.com/pkg.msi" />
+        </div>
+        <div class="col">
+          <label for="job-path">Package path (optional)</label>
+          <input id="job-path" placeholder="C:\path\to\pkg.msi" />
+          <label for="job-cmd">Silent install command</label>
+          <input id="job-cmd" placeholder="msiexec /i pkg.msi /qn" />
+        </div>
+      </div>
+      <div style="margin-top:10px">
+        <button class="primary" onclick="createJob()">Create job</button>
+        <span id="job-form-err" class="err"></span>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Jobs <button class="ghost" style="float:right" onclick="loadJobs()">Refresh</button></h2>
+      <table>
+        <thead><tr><th>ID</th><th>Client</th><th>Status</th><th>Command</th><th>Package</th><th>Result</th><th>Created</th></tr></thead>
+        <tbody id="job-rows"></tbody>
+      </table>
+      <div id="jobs-empty" class="muted hidden">No jobs.</div>
+      <div id="jobs-err" class="err"></div>
+    </div>
+  </section>
+</main>
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+const state = { clients: [], selected: null, activeConv: null, tab: 'clients' };
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, opts);
+  const text = await res.text();
+  if (!res.ok) throw new Error(res.status + ' ' + text);
+  try { return text ? JSON.parse(text) : null; } catch (e) { return text; }
+}
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function fmtTime(ts) { return ts ? new Date(ts * 1000).toLocaleString() : '-'; }
+function show(id, msg) { const el = $(id); el.textContent = msg; el.classList.remove('hidden'); }
+
+// ---- tabs ----
+function showTab(name) {
+  state.tab = name;
+  for (const t of ['clients', 'conversations', 'jobs']) {
+    $('tab-' + t).classList.toggle('hidden', t !== name);
+    $('tab-btn-' + t).classList.toggle('active', t === name);
+  }
+  if (name === 'clients') loadClients();
+  if (name === 'conversations') loadConversations();
+  if (name === 'jobs') { fillClientSelect(); loadJobs(); }
+}
+
+// ---- clients ----
+async function loadClients() {
+  $('clients-empty').classList.add('hidden');
+  try {
+    state.clients = (await api('/api/admin/clients')) || [];
+    $('client-rows').innerHTML = state.clients.map((c) =>
+      '<tr data-id="' + esc(c.id) + '" class="' + (state.selected === c.id ? 'selected' : '') +
+      '" onclick="selectClient(\'' + esc(c.id) + '\')">' +
+      '<td>' + esc(c.id) + '</td><td>' + esc(c.hostname) + '</td>' +
+      '<td>' + esc(c.os) + ' ' + esc(c.os_version) + '</td>' +
+      '<td>' + esc(c.arch) + '</td><td>' + fmtTime(c.last_seen) + '</td></tr>').join('');
+    if (state.clients.length === 0) show('clients-empty', 'No clients registered yet.');
+  } catch (e) {
+    show('clients-empty', 'Load failed: ' + e.message);
+  }
+  fillClientSelect();
+}
+
+async function selectClient(id) {
+  state.selected = id;
+  $('client-detail').classList.remove('hidden');
+  loadClients();
+  try {
+    const inv = await api('/api/admin/clients/' + encodeURIComponent(id) + '/inventory');
+    $('detail-host').textContent = inv.client_id;
+    $('inv-pre').textContent = JSON.stringify(inv.json, null, 2);
+  } catch (e) {
+    $('detail-host').textContent = id;
+    $('inv-pre').textContent = 'Inventory unavailable: ' + e.message;
+  }
+  try {
+    const events = (await api('/api/admin/clients/' + encodeURIComponent(id) + '/events')) || [];
+    $('event-rows').innerHTML = events.map((ev) =>
+      '<tr><td>' + fmtTime(ev.created_at) + '</td><td>' + esc(ev.source) +
+      '</td><td>' + esc(ev.text) + '</td></tr>').join('');
+    $('events-empty').classList.toggle('hidden', events.length > 0);
+    if (events.length === 0) show('events-empty', 'No events.');
+  } catch (e) {
+    show('events-empty', 'Load failed: ' + e.message);
+  }
+}
+
+// ---- conversations ----
+async function loadConversations() {
+  $('convs-empty').classList.add('hidden');
+  try {
+    const convs = (await api('/api/admin/conversations')) || [];
+    $('conv-list').innerHTML = convs.map((c) => {
+      const owner = c.claimed
+        ? '<span class="badge admin">claimed</span>'
+        : '<span class="badge bot">bot</span>';
+      return '<div class="conv-item" onclick="openConv(\'' + esc(c.id) + '\')">' +
+        '<div><code>' + esc(c.id) + '</code> ' + owner +
+        ' <span class="badge status">' + esc(c.status) + '</span></div>' +
+        '<div class="muted" style="font-size:12px">client: ' + esc(c.client_id || '-') +
+        ' &middot; ' + fmtTime(c.created_at) + '</div></div>';
+    }).join('');
+    if (convs.length === 0) show('convs-empty', 'No conversations.');
+    const active = convs.find((c) => c.id === state.activeConv);
+    $('conv-meta').textContent = active
+      ? (active.claimed ? 'claimed — bot paused' : 'bot is answering')
+      : '';
+  } catch (e) {
+    show('convs-empty', 'Load failed: ' + e.message);
+  }
+}
+
+function badgeFor(sender) {
+  const label = sender === 'bot' ? 'Bot' : sender === 'admin' ? 'Admin' : 'User';
+  return '<span class="badge ' + esc(sender) + '">' + label + '</span>';
+}
+
+function openConv(id) {
+  state.activeConv = id;
+  $('thread-title').textContent = id;
+  $('thread-box').innerHTML = '';
+  refreshThread();
+  loadConversations();
+}
+
+async function refreshThread() {
+  if (!state.activeConv) return;
+  try {
+    const msgs = (await api('/api/admin/conversations/' + encodeURIComponent(state.activeConv) + '/messages')) || [];
+    const box = $('thread-box');
+    const stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 30;
+    box.innerHTML = msgs.length === 0
+      ? '<div class="muted">No messages yet.</div>'
+      : msgs.map((m) =>
+          '<div class="msg' + (m.sender === 'admin' ? ' me' : '') + '">' +
+          '<div class="who">' + badgeFor(m.sender) + ' <span>' + fmtTime(m.created_at) + '</span></div>' +
+          '<div class="bubble">' + esc(m.text) + '</div></div>').join('');
+    if (stick) box.scrollTop = box.scrollHeight;
+  } catch (e) { /* keep the last view on transient errors */ }
+}
+
+// Thread poll every 3 seconds while a conversation is open.
+setInterval(() => {
+  if (state.tab === 'conversations' && state.activeConv) refreshThread();
+}, 3000);
+
+async function claimConv() {
+  if (!state.activeConv) return;
+  $('conv-err').textContent = '';
+  try {
+    await api('/api/admin/conversations/' + encodeURIComponent(state.activeConv) + '/claim', { method: 'POST' });
+    loadConversations();
+  } catch (e) { $('conv-err').textContent = e.message; }
+}
+
+async function closeConv() {
+  if (!state.activeConv) return;
+  $('conv-err').textContent = '';
+  try {
+    await api('/api/admin/conversations/' + encodeURIComponent(state.activeConv) + '/close', { method: 'POST' });
+    loadConversations();
+  } catch (e) { $('conv-err').textContent = e.message; }
+}
+
+async function sendReply() {
+  if (!state.activeConv) return;
+  $('reply-err').textContent = '';
+  const text = $('reply-text').value.trim();
+  if (!text) { $('reply-err').textContent = 'Reply is empty.'; return; }
+  try {
+    await api('/api/admin/conversations/' + encodeURIComponent(state.activeConv) + '/reply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text }),
+    });
+    $('reply-text').value = '';
+    refreshThread();
+    loadConversations();
+  } catch (e) { $('reply-err').textContent = e.message; }
+}
+
+// ---- jobs ----
+function fillClientSelect() {
+  const sel = $('job-client');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">—</option>' + state.clients.map((c) =>
+    '<option value="' + esc(c.id) + '">' + esc(c.hostname || c.id) + '</option>').join('');
+  if (cur) sel.value = cur;
+}
+
+async function loadJobs() {
+  $('jobs-err').textContent = '';
+  $('jobs-empty').classList.add('hidden');
+  try {
+    const jobs = (await api('/api/admin/jobs')) || [];
+    $('job-rows').innerHTML = jobs.map((j) =>
+      '<tr><td><code>' + esc(j.id) + '</code></td>' +
+      '<td>' + esc(j.client_id) + '</td>' +
+      '<td><span class="badge status">' + esc(j.status) + '</span></td>' +
+      '<td><code>' + esc(j.silent_cmd) + '</code></td>' +
+      '<td class="muted">' + esc(j.package_url || j.package_path || '-') + '</td>' +
+      '<td>' + (j.result
+        ? '<span class="badge status">' + esc(j.result.status) + '</span>' +
+          '<div style="white-space:pre-wrap;font-size:12px;max-width:280px;word-break:break-word">' + esc(j.result.output) + '</div>'
+        : '<span class="muted">-</span>') + '</td>' +
+      '<td>' + fmtTime(j.created_at) + '</td></tr>').join('');
+    if (jobs.length === 0) show('jobs-empty', 'No jobs.');
+  } catch (e) {
+    $('jobs-err').textContent = 'Load failed: ' + e.message;
+  }
+}
+
+async function createJob() {
+  $('job-form-err').textContent = '';
+  const body = {
+    client_id: $('job-client').value,
+    package_url: $('job-url').value.trim() || null,
+    package_path: $('job-path').value.trim() || null,
+    silent_cmd: $('job-cmd').value,
+  };
+  if (!body.client_id) { $('job-form-err').textContent = 'Select a client first.'; return; }
+  if (!body.silent_cmd.trim()) { $('job-form-err').textContent = 'Silent command is required.'; return; }
+  try {
+    await api('/api/admin/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    $('job-url').value = '';
+    $('job-path').value = '';
+    $('job-cmd').value = '';
+    loadJobs();
+  } catch (e) { $('job-form-err').textContent = e.message; }
+}
+
+showTab('clients');
+</script>
+</body>
+</html>
