@@ -16,12 +16,14 @@ import 'package:flutter_hbb/desktop/screen/desktop_port_forward_screen.dart';
 import 'package:flutter_hbb/desktop/screen/desktop_remote_screen.dart';
 import 'package:flutter_hbb/desktop/screen/desktop_terminal_screen.dart';
 import 'package:flutter_hbb/desktop/widgets/refresh_wrapper.dart';
+import 'package:flutter_hbb/features/deskagent/deskagent_config.dart';
 import 'package:flutter_hbb/models/state_model.dart';
 import 'package:flutter_hbb/utils/multi_window_manager.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:window_size/window_size.dart' as window_size;
 
 import 'common.dart';
 import 'consts.dart';
@@ -144,9 +146,13 @@ void runMainApp(bool startService) async {
   runApp(App());
 
   bool? alwaysOnTop;
+  bool widgetMode = false;
   if (isDesktop) {
     alwaysOnTop =
         bind.mainGetBuildinOption(key: "main-window-always-on-top") == 'Y';
+    // DeskAgent widget mode (default ON): only 'N' keeps the normal window.
+    widgetMode =
+        bind.mainGetLocalOption(key: kOptionDeskAgentWidgetMode) != 'N';
   }
 
   // Set window option.
@@ -155,6 +161,11 @@ void runMainApp(bool startService) async {
   windowManager.waitUntilReadyToShow(windowOptions, () async {
     // Restore the location of the main window before window hide or show.
     await restoreWindowPosition(WindowType.Main);
+    // DeskAgent widget mode: pin a small always-on-top window to the
+    // bottom-right corner. Single gated block, easy to revert.
+    if (widgetMode) {
+      await _applyMainWindowWidgetMode();
+    }
     // Check the startup argument, if we successfully handle the argument, we keep the main window hidden.
     final handledByUniLinks = await initUniLinks();
     debugPrint("handled by uni links: $handledByUniLinks");
@@ -171,6 +182,44 @@ void runMainApp(bool startService) async {
     // Do not use `windowManager.setResizable()` here.
     setResizable(!bind.isIncomingOnly());
   });
+}
+
+/// DeskAgent widget mode: turn the main window into a small always-on-top
+/// widget at the bottom-right corner of the primary screen. The normal
+/// window frame is kept (no frameless window) so it stays draggable.
+Future<void> _applyMainWindowWidgetMode() async {
+  const widgetSize = Size(380, 560);
+  const rightMargin = 12.0;
+  const bottomMargin = 48.0; // keep clear of the taskbar
+  if (await windowManager.isMaximized()) {
+    await windowManager.unmaximize();
+  }
+  try {
+    final screens = await window_size.getScreenList();
+    if (screens.isNotEmpty) {
+      // On Windows the primary monitor is the one with origin (0, 0).
+      final screen = screens.firstWhere(
+        (s) => s.frame.left == 0 && s.frame.top == 0,
+        orElse: () => screens.first,
+      );
+      final work = screen.visibleFrame; // physical px, excludes the taskbar
+      // Repo convention (see _adjustRestoreMainWindowOffset in common.dart):
+      // work in physical pixels and ignore the device pixel ratio.
+      final scale = screen.scaleFactor <= 0 ? 1.0 : screen.scaleFactor;
+      final size = Size(widgetSize.width * scale, widgetSize.height * scale);
+      await windowManager.setSize(size, ignoreDevicePixelRatio: true);
+      await windowManager.setPosition(
+        Offset(
+          work.right - size.width - rightMargin,
+          work.bottom - size.height - bottomMargin,
+        ),
+        ignoreDevicePixelRatio: true,
+      );
+    }
+  } catch (e) {
+    debugPrint('widget mode: failed to place the window: $e');
+  }
+  await windowManager.setAlwaysOnTop(true);
 }
 
 void runMobileApp() async {

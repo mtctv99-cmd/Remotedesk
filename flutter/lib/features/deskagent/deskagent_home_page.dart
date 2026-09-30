@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common.dart';
+import 'package:flutter_hbb/models/platform_model.dart';
+import 'package:flutter_hbb/utils/multi_window_manager.dart';
 
 import 'about_info_page.dart';
 import 'ai_chat_page.dart';
+import 'deskagent_config.dart';
 import 'event_viewer_page.dart';
 
 const Color _kAccentColor = MyTheme.accent;
@@ -42,6 +45,7 @@ class DeskAgentHomePage extends StatelessWidget {
           subtitle: 'Chat with the AI bot or admin via the Manager',
           onTap: () => _open(context, (_) => const AiChatPage()),
         ),
+        const _WidgetModeCard(),
       ],
     );
   }
@@ -210,6 +214,103 @@ class _FeatureCardState extends State<_FeatureCard> {
                 ),
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// DeskAgent widget mode switch: when ON the main window opens as a small
+// always-on-top widget pinned to the bottom-right corner; when OFF it opens
+// as the normal window. The change takes effect on the next app launch.
+class _WidgetModeCard extends StatefulWidget {
+  const _WidgetModeCard({Key? key}) : super(key: key);
+
+  @override
+  State<StatefulWidget> createState() => _WidgetModeCardState();
+}
+
+class _WidgetModeCardState extends State<_WidgetModeCard> {
+  // Default is ON: only an explicit 'N' disables the widget mode.
+  bool _enabled =
+      bind.mainGetLocalOption(key: kOptionDeskAgentWidgetMode) != 'N';
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Container(
+        decoration: BoxDecoration(
+          color: theme.cardColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: theme.dividerColor),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: _kAccentColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  Icons.picture_in_picture_alt,
+                  color: _kAccentColor,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      translate('Widget góc dưới phải'),
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      translate('Áp dụng khi mở lại ứng dụng'),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: theme.hintColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: _enabled,
+                onChanged: (v) async {
+                  setState(() => _enabled = v);
+                  // Persist as Y/N; 'N' restores the normal window.
+                  await bind.mainSetLocalOption(
+                    key: kOptionDeskAgentWidgetMode,
+                    value: v ? 'Y' : 'N',
+                  );
+                  if (!v) {
+                    // Clear the saved main window frame so the next normal
+                    // (non-widget) launch centers the window again.
+                    try {
+                      await bind.setLocalFlutterOption(
+                        k: '$windowFramePrefix${WindowType.Main.name}',
+                        v: '',
+                      );
+                    } catch (e) {
+                      debugPrint('failed to clear window frame: $e');
+                    }
+                  }
+                },
+              ),
+            ],
           ),
         ),
       ),
