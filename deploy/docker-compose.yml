@@ -1,0 +1,54 @@
+# ================================================================
+# DeskAgent - docker-compose cho server đầy đủ (hbbs + hbbr + Manager)
+#
+# Bản này dùng port mapping — chạy được trên CẢ Windows (Docker Desktop)
+# lẫn Linux VPS. Trên Linux VPS có thể thay các block ports: bằng
+# network_mode: host cho gọn (xem README-DESKAGENT.md).
+#
+# Chạy:      docker compose up -d
+# Xem log:   docker compose logs -f hbbs
+# Key client: hbbs-data/id_ed25519.pub (sinh lần chạy đầu)
+# ================================================================
+services:
+  hbbs:
+    image: rustdesk/rustdesk-server:latest
+    container_name: deskagent-hbbs
+    command: hbbs
+    ports:
+      - "21115:21115/tcp"   # NAT type test
+      - "21116:21116/tcp"   # TCP hole punching + ID server
+      - "21116:21116/udp"   # ID server / heartbeat (BẮT BUỘC UDP)
+      - "21118:21118/tcp"   # websocket (web client)
+    volumes:
+      - ./hbbs-data:/root
+    restart: unless-stopped
+
+  hbbr:
+    image: rustdesk/rustdesk-server:latest
+    container_name: deskagent-hbbr
+    command: hbbr
+    ports:
+      - "21117:21117/tcp"   # relay
+      - "21119:21119/tcp"   # websocket relay
+    volumes:
+      - ./hbbr-data:/root
+    restart: unless-stopped
+
+  deskagent-manager:
+    build: ../manager
+    image: deskagent-manager:latest
+    container_name: deskagent-manager
+    ports:
+      - "8080:8080"         # console + API (CHƯA có auth — chỉ LAN/VPN!)
+    environment:
+      # Bot AI: để trống 2 biến DESKAGENT_AI_* thì bot trả lời "chưa cấu hình AI"
+      - DESKAGENT_AI_URL=https://api.openai.com/v1
+      - DESKAGENT_AI_KEY=
+      - DESKAGENT_AI_MODEL=gpt-4o-mini
+      # Khuyến nghị chặn cứng host AI được phép gọi (phòng SSRF)
+      - DESKAGENT_AI_HOSTS=api.openai.com
+      # SQLite db nằm trong volume /data
+    working_dir: /data
+    volumes:
+      - ./manager-data:/data
+    restart: unless-stopped
