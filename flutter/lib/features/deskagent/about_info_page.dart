@@ -26,6 +26,47 @@ $info = [ordered]@{
 ConvertTo-Json -InputObject $info -Compress
 ''';
 
+// Presentation-only metadata: which JSON keys belong to which info card.
+// The collected JSON shape is fixed by _kSystemInfoScript; the Memory &
+// Drives group stays hidden until such keys ever appear, and the specs light
+// up automatically if the shape grows.
+class _InfoGroupSpec {
+  final String title;
+  final IconData icon;
+  final Color color;
+  final List<String> keys;
+  const _InfoGroupSpec(this.title, this.icon, this.color, this.keys);
+}
+
+const List<_InfoGroupSpec> _kGroupSpecs = [
+  _InfoGroupSpec('Operating System', Icons.desktop_windows_outlined,
+      Colors.blue, ['hostname', 'os', 'os_version']),
+  _InfoGroupSpec(
+      'Hardware', Icons.memory_outlined, Colors.teal, ['arch', 'cpu', 'processor']),
+  _InfoGroupSpec('Memory & Drives', Icons.storage_outlined, Colors.orange, [
+    'memory',
+    'total_memory',
+    'ram',
+    'disk',
+    'disks',
+    'drives',
+    'storage',
+  ]),
+];
+
+// Catch-all card for keys the specs above do not cover.
+const _InfoGroupSpec _kOtherGroupSpec =
+    _InfoGroupSpec('Other', Icons.info_outline, Colors.grey, []);
+
+// Friendly labels for the well-known keys; unknown keys fall back to a
+// prettified version of the raw key.
+const Map<String, String> _kKeyLabels = {
+  'hostname': 'Hostname',
+  'os': 'OS',
+  'os_version': 'OS version',
+  'arch': 'Architecture',
+};
+
 // About-info page for DeskAgent: collects host info like the Rust client by
 // running a PowerShell script with the same JSON shape as system_info.rs.
 class AboutInfoPage extends StatefulWidget {
@@ -137,7 +178,19 @@ class _AboutInfoPageState extends State<AboutInfoPage> {
         Center(
           child: Text(
             'DeskAgent',
-            style: TextStyle(fontSize: _kTitleFontSize),
+            style: TextStyle(
+              fontSize: _kTitleFontSize,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        Center(
+          child: Text(
+            translate('Host information collected on this machine'),
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).hintColor,
+            ),
           ),
         ),
         const SizedBox(height: 16),
@@ -162,44 +215,141 @@ class _AboutInfoPageState extends State<AboutInfoPage> {
         style: TextStyle(fontSize: _kContentFontSize),
       );
     }
-    // Prefer key/value rows when the output parses as JSON, otherwise fall
-    // back to showing the raw JSON as selectable text.
+    // Prefer grouped info cards when the output parses as JSON, otherwise
+    // fall back to showing the raw JSON as selectable text.
     try {
       final decoded = jsonDecode(_info!);
       if (decoded is Map) {
-        return Column(
-          children: [
-            for (final entry in decoded.entries)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${entry.key}:',
-                      style: TextStyle(
-                        fontSize: _kContentFontSize,
-                        fontWeight: FontWeight.bold,
-                        color: _kAccentColor,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: SelectableText(
-                        '${entry.value}',
-                        style: TextStyle(fontSize: _kContentFontSize),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        );
+        return _groupedInfo(decoded);
       }
     } catch (_) {}
     return SelectableText(
       _info!,
       style: TextStyle(fontSize: _kContentFontSize, fontFamily: 'monospace'),
     );
+  }
+
+  // Groups the decoded JSON entries into cards by _kGroupSpecs. Keys the
+  // specs do not mention are still shown, in an "Other" card.
+  Widget _groupedInfo(Map decoded) {
+    final used = <String>{};
+    final cards = <Widget>[];
+    for (final spec in _kGroupSpecs) {
+      final rows = <MapEntry<String, String>>[];
+      for (final key in spec.keys) {
+        if (decoded.containsKey(key)) {
+          rows.add(MapEntry(key, '${decoded[key]}'));
+          used.add(key);
+        }
+      }
+      if (rows.isNotEmpty) {
+        cards.add(_groupCard(spec, rows));
+      }
+    }
+    final other = <MapEntry<String, String>>[];
+    for (final key in decoded.keys) {
+      final keyText = '$key';
+      if (!used.contains(keyText)) {
+        other.add(MapEntry(keyText, '${decoded[key]}'));
+      }
+    }
+    if (other.isNotEmpty) {
+      cards.add(_groupCard(_kOtherGroupSpec, other));
+    }
+    if (cards.isEmpty) {
+      return Text(
+        translate('No data'),
+        style: TextStyle(fontSize: _kContentFontSize),
+      );
+    }
+    return Column(children: cards);
+  }
+
+  Widget _groupCard(
+      _InfoGroupSpec spec, List<MapEntry<String, String>> rows) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Theme.of(context).dividerColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: spec.color.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(spec.icon, size: 19, color: spec.color),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  translate(spec.title),
+                  style: const TextStyle(
+                    fontSize: _kContentFontSize,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Divider(height: 1, color: Theme.of(context).dividerColor),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              children: [
+                for (var i = 0; i < rows.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 10),
+                  _infoRow(rows[i]),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoRow(MapEntry<String, String> row) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${_keyLabel(row.key)}:',
+          style: TextStyle(
+            fontSize: _kContentFontSize,
+            fontWeight: FontWeight.bold,
+            color: _kAccentColor,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: SelectableText(
+            row.value,
+            style: TextStyle(fontSize: _kContentFontSize),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _keyLabel(String key) {
+    final known = _kKeyLabels[key];
+    if (known != null) {
+      return known;
+    }
+    if (key.isEmpty) {
+      return key;
+    }
+    final spaced = key.replaceAll('_', ' ');
+    return spaced[0].toUpperCase() + spaced.substring(1);
   }
 }

@@ -114,7 +114,7 @@ Router chính: `routes.rs:56-63`. Đầy đủ các route theo `manager/src/rout
 
 **Luồng chat/claim (đối chiếu code):** khi user POST tin nhắn, nếu conversation đã được admin **claim** thì bot im lặng (`BotAction::Skip`, trả `"reply": null` — `routes.rs:266-267`, `275-276`); ngược lại bot gọi AI với tối đa 20 tin nhắn gần nhất làm context (`AI_HISTORY_CAP`, `routes.rs:23`, `271`) rồi lưu reply vào DB. Khi admin POST `/reply`, tin nhắn role `admin` được lưu và conversation **tự động bị claim** để bot im lặng (`routes.rs:367-369`) — tức là từ thời điểm admin claim/reply, bot dừng trả lời và admin là người trả lời thay bot.
 
-**Lưu ý đồng bộ client ↔ manager:** hai endpoint placeholder trong skeleton client (`api/deskagent/ai/chat` — `ai_chat.rs:33`, `api/deskagent/deploy/poll` — `deploy.rs:118`) **chưa khớp** với route thật của manager ở bảng trên; đây là TODO khi wire client (đã ghi chú TODO ngay trong code).
+**Lưu ý đồng bộ client ↔ manager:** daemon deploy (`src/deskagent/deploy.rs`) đã khớp route thật của manager ở bảng trên (`api/client/register`, `/inventory`, `/events`, `/jobs`, `/jobs/:job_id/result`) — đã đối chiếu với `routes.rs:71-76` + nest prefix `routes.rs:60-63`. Chat phía client đi thẳng từ Flutter UI tới manager (`/api/conversations`), module `src/deskagent/ai_chat.rs` hiện là skeleton chưa dùng, giữ làm nền cho giai đoạn AI mở rộng.
 
 ## Attribution
 

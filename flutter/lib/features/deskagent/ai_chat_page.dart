@@ -15,10 +15,13 @@ const Duration _kRequestTimeout = Duration(seconds: 10);
 
 // One chat entry shown as a bubble. Sender is 'user', 'bot' or 'admin'
 // (local messages use 'user', polled Manager messages use the server value).
+// The timestamp is captured locally when the message shows up; it is a
+// display-only hint (the polled API result does not carry one).
 class _ChatMessage {
   final String sender;
   final String text;
-  _ChatMessage(this.sender, this.text);
+  final DateTime time;
+  _ChatMessage(this.sender, this.text) : time = DateTime.now();
 }
 
 // AI chat page for DeskAgent: talks to the local Manager REST API with the
@@ -44,6 +47,9 @@ class _AiChatPageState extends State<AiChatPage> {
   String? _conversationId;
   String _lastMessageId = '';
   bool _sending = false;
+  // True between a successfully posted user message and the first reply
+  // picked up by the poll; drives the "typing" indicator bubble.
+  bool _waitingReply = false;
   bool _polling = false;
   String? _error;
 
@@ -116,6 +122,9 @@ class _AiChatPageState extends State<AiChatPage> {
         }
         setState(() {
           _messages.addAll(incoming);
+          if (incoming.isNotEmpty) {
+            _waitingReply = false;
+          }
           _error = null;
         });
       }
@@ -176,11 +185,15 @@ class _AiChatPageState extends State<AiChatPage> {
     try {
       final conversationId = await _ensureConversation();
       await _postMessage(conversationId, text);
+      // Wait for the reply from now on; the poll below clears the flag as
+      // soon as the first Bot/Admin message arrives.
+      _waitingReply = true;
       // Poll right away so replies do not wait for the next 3s tick.
       await _poll();
     } catch (e) {
       if (mounted) {
         setState(() {
+          _waitingReply = false;
           _error = _friendlyError(e);
         });
       }
@@ -210,9 +223,10 @@ class _AiChatPageState extends State<AiChatPage> {
     );
   }
 
-  // Reversed list so the newest message stays at the bottom.
+  // Reversed list so the newest message (and the typing indicator) stays at
+  // the bottom.
   Widget _messageList() {
-    if (_messages.isEmpty) {
+    if (_messages.isEmpty && !_waitingReply) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -227,17 +241,30 @@ class _AiChatPageState extends State<AiChatPage> {
               translate('No messages yet'),
               style: TextStyle(fontSize: _kTitleFontSize),
             ),
+            const SizedBox(height: 4),
+            Text(
+              translate('Chat with the AI bot or admin via the Manager'),
+              style: TextStyle(
+                fontSize: _kContentFontSize - 2,
+                color: Theme.of(context).hintColor,
+              ),
+            ),
           ],
         ),
       );
     }
+    final itemCount = _messages.length + (_waitingReply ? 1 : 0);
     return ListView.builder(
       reverse: true,
       padding: const EdgeInsets.all(15),
-      itemCount: _messages.length,
+      itemCount: itemCount,
       itemBuilder: (context, index) {
-        final message = _messages[_messages.length - 1 - index];
-        return _bubble(message);
+        if (_waitingReply && index == 0) {
+          return _typingBubble();
+        }
+        final messageIndex =
+            _messages.length - 1 - (index - (_waitingReply ? 1 : 0));
+        return _bubble(_messages[messageIndex]);
       },
     );
   }
@@ -245,50 +272,176 @@ class _AiChatPageState extends State<AiChatPage> {
   Widget _bubble(_ChatMessage message) {
     final isUser = message.sender.toLowerCase() == 'user';
     final isBot = message.sender.toLowerCase() == 'bot';
-    final bubbleColor =
-        isUser ? _kAccentColor : Theme.of(context).colorScheme.surfaceVariant;
-    final textColor =
-        isUser ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant;
+    return isUser ? _userBubble(message) : _botBubble(message, isBot);
+  }
+
+  Widget _userBubble(_ChatMessage message) {
     return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      alignment: Alignment.centerRight,
       child: ConstrainedBox(
         constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width * 0.7,
         ),
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 4),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          decoration: BoxDecoration(
-            color: bubbleColor,
-            borderRadius: BorderRadius.circular(10),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+          decoration: const BoxDecoration(
+            color: _kAccentColor,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(14),
+              topRight: Radius.circular(14),
+              bottomLeft: Radius.circular(14),
+              bottomRight: Radius.circular(4),
+            ),
           ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Sender badge; the Bot badge uses the accent color.
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: isBot
-                      ? _kAccentColor
-                      : (isUser ? Colors.white24 : Colors.grey),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  _senderLabel(message.sender),
-                  style: const TextStyle(color: Colors.white, fontSize: 11),
-                ),
-              ),
-              const SizedBox(height: 4),
               SelectableText(
                 message.text,
-                style: TextStyle(fontSize: _kContentFontSize, color: textColor),
+                style: const TextStyle(
+                  fontSize: _kContentFontSize,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                _formatTime(message.time),
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.white.withOpacity(0.7),
+                ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _botBubble(_ChatMessage message, bool isBot) {
+    final badgeColor = isBot ? _kAccentColor : Colors.blueGrey;
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.7,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircleAvatar(
+              radius: 14,
+              backgroundColor: badgeColor.withOpacity(0.15),
+              child: Icon(
+                isBot
+                    ? Icons.smart_toy_outlined
+                    : Icons.admin_panel_settings_outlined,
+                size: 16,
+                color: badgeColor,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Container(
+                margin: const EdgeInsets.symmetric(vertical: 4),
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(14),
+                    topRight: Radius.circular(14),
+                    bottomLeft: Radius.circular(4),
+                    bottomRight: Radius.circular(14),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        // Sender badge; the Bot badge uses the accent color.
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: badgeColor,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            _senderLabel(message.sender),
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 11),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _formatTime(message.time),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Theme.of(context).hintColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    SelectableText(
+                      message.text,
+                      style: TextStyle(
+                        fontSize: _kContentFontSize,
+                        color:
+                            Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Left-aligned bot bubble with a spinner shown while waiting for a reply.
+  Widget _typingBubble() {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircleAvatar(
+            radius: 14,
+            backgroundColor: _kAccentColor.withOpacity(0.15),
+            child: Icon(
+              Icons.smart_toy_outlined,
+              size: 16,
+              color: _kAccentColor,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(14),
+                topRight: Radius.circular(14),
+                bottomLeft: Radius.circular(4),
+                bottomRight: Radius.circular(14),
+              ),
+            ),
+            child: const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -303,6 +456,9 @@ class _AiChatPageState extends State<AiChatPage> {
         return 'Bot';
     }
   }
+
+  String _formatTime(DateTime time) =>
+      '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
 
   Widget _errorBanner() {
     return Container(
@@ -329,10 +485,16 @@ class _AiChatPageState extends State<AiChatPage> {
               decoration: InputDecoration(
                 hintText: translate('Type a message'),
                 isDense: true,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                filled: true,
+                fillColor: Theme.of(context)
+                    .colorScheme
+                    .surfaceContainerHighest
+                    .withOpacity(0.4),
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 10),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(24),
+                  borderSide: BorderSide.none,
                 ),
               ),
             ),
@@ -348,8 +510,19 @@ class _AiChatPageState extends State<AiChatPage> {
                 )
               : IconButton(
                   onPressed: _send,
-                  icon: const Icon(Icons.send),
-                  color: _kAccentColor,
+                  // Filled circular send button to match the bubble accent.
+                  icon: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: _kAccentColor,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.send,
+                      size: 16,
+                      color: Colors.white,
+                    ),
+                  ),
                   tooltip: translate('Send'),
                 ),
         ],

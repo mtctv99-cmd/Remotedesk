@@ -1,379 +1,1369 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="vi">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>DeskAgent Manager</title>
+<meta name="color-scheme" content="dark" />
+<title>DeskAgent Manager — Admin Console</title>
 <style>
-:root { --bg:#0f1420; --panel:#171e2e; --line:#26304a; --text:#dbe2f0; --dim:#8a94ab; --accent:#4f8cff; }
+/* ---------- design tokens: dark gray #111827 base, teal #14b8a6 accent ---------- */
+:root {
+  color-scheme: dark;
+  --bg: #111827;          /* app background (gray-900) */
+  --bg-deep: #0b1120;     /* sidebar, code blocks */
+  --panel: #1f2937;       /* panels (gray-800) */
+  --line: #374151;        /* borders (gray-700) */
+  --line-soft: #2b364b;
+  --text: #f3f4f6;        /* gray-100 */
+  --dim: #9ca3af;         /* gray-400 */
+  --dim-2: #6b7280;       /* gray-500 */
+  --accent: #14b8a6;      /* teal-500 */
+  --accent-hi: #2dd4bf;   /* teal-400 */
+  --accent-bg: rgba(20, 184, 166, 0.12);
+  --red: #f87171;
+  --amber: #fbbf24;
+  --blue: #60a5fa;
+  --violet: #a78bfa;
+  --radius: 10px;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
+}
 * { box-sizing: border-box; }
-body { margin:0; font:14px/1.5 "Segoe UI", system-ui, sans-serif; background:var(--bg); color:var(--text); }
-header { display:flex; align-items:center; gap:18px; padding:10px 20px; border-bottom:1px solid var(--line); background:var(--panel); }
-header h1 { font-size:16px; margin:0; }
-nav button { background:none; border:1px solid var(--line); color:var(--dim); padding:6px 14px; border-radius:6px; cursor:pointer; margin-right:6px; }
-nav button.active { color:var(--text); border-color:var(--accent); background:rgba(79,140,255,.12); }
-main { padding:16px 20px; max-width:1400px; margin:0 auto; }
-.hidden { display:none !important; }
-.cols { display:flex; gap:16px; align-items:flex-start; }
-.col { flex:1; min-width:0; }
-.panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; margin-bottom:16px; }
-.panel h2 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--dim); margin:0 0 10px; overflow:hidden; }
-table { width:100%; border-collapse:collapse; }
-th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); font-size:13px; word-break:break-all; vertical-align:top; }
-th { color:var(--dim); font-weight:600; }
-#client-rows tr { cursor:pointer; }
-#client-rows tr:hover { background:rgba(79,140,255,.08); }
-#client-rows tr.selected { background:rgba(79,140,255,.16); }
-pre { background:#0b0f1a; border:1px solid var(--line); border-radius:6px; padding:10px; overflow:auto; max-height:320px; font-size:12px; margin:0; }
-.badge { display:inline-block; padding:1px 8px; border-radius:10px; font-size:11px; font-weight:600; }
-.badge.bot { background:rgba(79,140,255,.2); color:#7fabff; }
-.badge.admin { background:rgba(55,178,108,.2); color:#5fd392; }
-.badge.user { background:rgba(217,165,58,.2); color:#e5b95c; }
-.badge.status { background:rgba(138,148,171,.18); color:var(--dim); }
-.msg { margin:6px 0; max-width:80%; }
-.msg .who { font-size:11px; color:var(--dim); margin-bottom:2px; }
-.msg .bubble { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:6px 10px; white-space:pre-wrap; word-break:break-word; display:inline-block; }
-.msg.me { margin-left:auto; text-align:right; }
-.thread { height:380px; overflow-y:auto; border:1px solid var(--line); border-radius:8px; padding:10px; background:#0b0f1a; margin-bottom:10px; }
-label { display:block; color:var(--dim); font-size:12px; margin:8px 0 3px; }
-input, textarea, select { width:100%; background:#0b0f1a; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:7px 9px; font:inherit; }
-textarea { min-height:60px; resize:vertical; }
-button.primary { background:var(--accent); border:none; color:#fff; padding:7px 16px; border-radius:6px; cursor:pointer; }
-button.ghost { background:none; border:1px solid var(--line); color:var(--text); padding:4px 12px; border-radius:6px; cursor:pointer; font-size:12px; }
-button.ghost:hover { border-color:var(--accent); }
-.err { color:#ff9a9a; font-size:12px; margin-left:8px; white-space:pre-wrap; }
-.muted { color:var(--dim); }
-code { color:#9fc1ff; }
-.conv-item { border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin-bottom:8px; cursor:pointer; background:#101728; }
-.conv-item:hover { border-color:var(--accent); }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font: 14px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  overflow: hidden;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 8px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-track { background: transparent; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.hidden { display: none !important; }
+.muted { color: var(--dim); }
+.small { font-size: 12px; }
+code { font-family: var(--mono); color: var(--accent-hi); font-size: 12px; word-break: break-all; }
+
+/* ---------- sidebar ---------- */
+#sidebar {
+  width: 232px; flex: 0 0 232px;
+  background: var(--bg-deep);
+  border-right: 1px solid var(--line-soft);
+  display: flex; flex-direction: column;
+  padding: 14px 10px;
+}
+.brand { display: flex; align-items: center; gap: 10px; padding: 6px 10px 16px; }
+.brand .mark {
+  width: 34px; height: 34px; border-radius: 9px; flex: 0 0 34px;
+  background: linear-gradient(135deg, #14b8a6, #0f766e);
+  display: flex; align-items: center; justify-content: center;
+  color: #04211d; font-weight: 800; font-size: 15px;
+  box-shadow: 0 0 0 1px rgba(20, 184, 166, 0.35), 0 4px 14px rgba(20, 184, 166, 0.25);
+}
+.brand .name { font-weight: 700; font-size: 15px; letter-spacing: 0.01em; }
+.brand .sub { font-size: 11px; color: var(--dim-2); }
+.nav-item {
+  display: flex; align-items: center; gap: 11px;
+  width: 100%; text-align: left;
+  background: none; border: none; color: var(--dim);
+  font: inherit; font-weight: 500;
+  padding: 10px 12px; border-radius: 8px;
+  cursor: pointer; position: relative; margin-bottom: 2px;
+}
+.nav-item svg { flex: 0 0 18px; width: 18px; height: 18px; }
+.nav-item:hover { color: var(--text); background: rgba(255, 255, 255, 0.04); }
+.nav-item.active { color: var(--accent-hi); background: var(--accent-bg); }
+.nav-item.active::before {
+  content: ""; position: absolute; left: 0; top: 9px; bottom: 9px;
+  width: 3px; border-radius: 3px; background: var(--accent);
+}
+.nav-footer { margin-top: auto; padding: 10px 12px; font-size: 11px; color: var(--dim-2); border-top: 1px solid var(--line-soft); }
+
+/* ---------- main column ---------- */
+#main { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
+#loadbar { position: absolute; top: 0; left: 0; right: 0; height: 2px; overflow: hidden; opacity: 0; transition: opacity 0.2s; z-index: 60; }
+#loadbar.on { opacity: 1; }
+#loadbar::before {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 40%;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: loadslide 1s linear infinite;
+}
+@keyframes loadslide { from { transform: translateX(-110%); } to { transform: translateX(360%); } }
+
+header.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 22px; border-bottom: 1px solid var(--line-soft);
+  background: rgba(17, 24, 39, 0.85); backdrop-filter: blur(4px);
+}
+header.topbar h1 { font-size: 17px; margin: 0; font-weight: 650; }
+.conn {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 12.5px; font-weight: 600; color: var(--dim);
+  border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px;
+  background: var(--bg-deep);
+}
+.dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 9px; background: var(--dim-2); }
+.dot.on { background: var(--accent-hi); box-shadow: 0 0 6px rgba(45, 212, 191, 0.8); }
+.dot.off { background: var(--red); box-shadow: 0 0 6px rgba(248, 113, 113, 0.7); }
+.dot.pulse { animation: pulsing 1.2s ease-in-out infinite; }
+@keyframes pulsing { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.conn.ok { color: var(--accent-hi); border-color: rgba(20, 184, 166, 0.4); }
+.conn.bad { color: var(--red); border-color: rgba(248, 113, 113, 0.4); }
+
+main.content { flex: 1; overflow-y: auto; padding: 20px 22px 34px; }
+.view { max-width: 1360px; margin: 0 auto; }
+
+/* ---------- panels ---------- */
+.panel {
+  background: var(--panel); border: 1px solid var(--line-soft);
+  border-radius: var(--radius); overflow: hidden; margin-bottom: 16px;
+}
+.panel-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 16px; border-bottom: 1px solid var(--line-soft);
+}
+.panel-head h2 { font-size: 13px; margin: 0; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); font-weight: 700; }
+.panel-head h2 .muted { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.panel-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.panel-body { padding: 14px 16px; }
+.split { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.split.conv-split { grid-template-columns: minmax(280px, 360px) minmax(0, 1fr); }
+
+/* ---------- buttons / inputs ---------- */
+.btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  font: inherit; font-size: 13px; font-weight: 600;
+  border-radius: 8px; padding: 7px 14px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel); color: var(--text);
+}
+.btn svg { width: 15px; height: 15px; }
+.btn:hover { border-color: var(--dim-2); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #04211d; }
+.btn.primary:hover:not(:disabled) { background: var(--accent-hi); }
+.btn.danger { background: rgba(248, 113, 113, 0.12); border-color: rgba(248, 113, 113, 0.45); color: var(--red); }
+.btn.danger:hover:not(:disabled) { background: rgba(248, 113, 113, 0.2); }
+.btn.ghost { background: transparent; }
+.btn.loading svg { display: none; }
+.btn.loading::before {
+  content: ""; width: 13px; height: 13px; border-radius: 50%;
+  border: 2px solid rgba(148, 163, 184, 0.35); border-top-color: currentColor;
+  animation: rot 0.7s linear infinite;
+}
+@keyframes rot { to { transform: rotate(360deg); } }
+.spin {
+  display: inline-block; width: 15px; height: 15px; border-radius: 50%;
+  border: 2px solid rgba(148, 163, 184, 0.3); border-top-color: var(--accent-hi);
+  animation: rot 0.7s linear infinite; vertical-align: -3px; margin-right: 8px;
+}
+label { display: block; font-size: 12px; font-weight: 600; color: var(--dim); margin: 0 0 5px; }
+input, textarea, select {
+  width: 100%; font: inherit; font-size: 13.5px;
+  background: var(--bg-deep); color: var(--text);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 11px;
+}
+input::placeholder, textarea::placeholder { color: var(--dim-2); }
+input:focus, textarea:focus, select:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.15); }
+textarea { resize: vertical; min-height: 64px; }
+.search { position: relative; flex: 0 1 320px; }
+.search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; color: var(--dim-2); }
+.search input { padding-left: 32px; }
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+.form-grid .full { grid-column: 1 / -1; }
+
+/* ---------- tables ---------- */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--line-soft); font-size: 13px; vertical-align: top; word-break: break-word; }
+th { color: var(--dim-2); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; white-space: nowrap; }
+tbody tr:last-child td { border-bottom: none; }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover { background: rgba(255, 255, 255, 0.03); }
+tr.sel, tr.sel:hover { background: var(--accent-bg); box-shadow: inset 3px 0 0 var(--accent); }
+td .strong { font-weight: 600; }
+tr.ev-err { background: rgba(248, 113, 113, 0.07); box-shadow: inset 3px 0 0 var(--red); }
+tr.ev-err td { color: #fca5a5; }
+.out summary { cursor: pointer; color: var(--dim); font-size: 12px; user-select: none; }
+.out pre { margin: 6px 0 0; }
+
+/* ---------- badges ---------- */
+.badge {
+  display: inline-block; padding: 1.5px 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap;
+}
+.badge.teal   { background: rgba(20, 184, 166, 0.16); color: var(--accent-hi); }
+.badge.violet { background: rgba(167, 139, 250, 0.16); color: var(--violet); }
+.badge.amber  { background: rgba(251, 191, 36, 0.15); color: var(--amber); }
+.badge.red    { background: rgba(248, 113, 113, 0.15); color: var(--red); }
+.badge.blue   { background: rgba(96, 165, 250, 0.15); color: var(--blue); }
+.badge.gray   { background: rgba(156, 163, 175, 0.14); color: var(--dim); }
+
+/* ---------- overview ---------- */
+.stat-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
+.stat-card {
+  text-align: left; font: inherit; color: var(--text);
+  background: var(--panel); border: 1px solid var(--line-soft);
+  border-radius: var(--radius); padding: 16px 18px; cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.stat-card:hover { border-color: rgba(20, 184, 166, 0.55); transform: translateY(-2px); }
+.stat-head { display: flex; align-items: center; gap: 8px; color: var(--dim); font-size: 12.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+.stat-head svg { width: 16px; height: 16px; color: var(--accent); }
+.stat-num { font-size: 34px; font-weight: 750; line-height: 1.2; margin: 8px 0 2px; color: var(--accent-hi); }
+.stat-num .of { font-size: 16px; color: var(--dim); font-weight: 600; }
+.stat-sub { font-size: 12px; color: var(--dim-2); }
+
+/* ---------- clients detail ---------- */
+.detail-meta { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 10px 16px; font-size: 12.5px; color: var(--dim); border-bottom: 1px solid var(--line-soft); background: rgba(0, 0, 0, 0.12); }
+pre.code {
+  background: var(--bg-deep); border: 1px solid var(--line-soft); border-radius: 8px;
+  padding: 12px; overflow: auto; max-height: 340px;
+  font: 12px/1.5 var(--mono); margin: 0; white-space: pre-wrap; word-break: break-word;
+}
+h3.sect { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); margin: 16px 0 8px; font-weight: 700; }
+h3.sect:first-child { margin-top: 0; }
+
+/* ---------- conversations ---------- */
+.conv-list { padding: 10px; }
+.conv-item {
+  border: 1px solid var(--line-soft); border-radius: 9px;
+  padding: 10px 12px; margin-bottom: 8px; cursor: pointer; background: rgba(0, 0, 0, 0.14);
+}
+.conv-item:hover { border-color: var(--accent); }
+.conv-item.sel { border-color: var(--accent); background: var(--accent-bg); }
+.conv-top { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+.conv-top code { font-size: 11.5px; }
+.conv-sub { font-size: 12px; color: var(--dim-2); margin-top: 4px; word-break: break-all; }
+.thread {
+  height: 420px; overflow-y: auto; padding: 14px 16px;
+  background: var(--bg-deep); border-bottom: 1px solid var(--line-soft);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.msg { max-width: 78%; }
+.msg .who { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--dim-2); margin-bottom: 3px; }
+.msg .bubble {
+  display: inline-block; padding: 7px 11px; border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--line-soft);
+  white-space: pre-wrap; word-break: break-word; font-size: 13.5px;
+}
+.msg.admin { align-self: flex-end; text-align: right; }
+.msg.admin .who { justify-content: flex-end; }
+.msg.admin .bubble { background: rgba(20, 184, 166, 0.13); border-color: rgba(20, 184, 166, 0.4); }
+.msg.bot .bubble { background: rgba(167, 139, 250, 0.09); border-color: rgba(167, 139, 250, 0.3); }
+.msg.user .bubble { background: rgba(251, 191, 36, 0.07); border-color: rgba(251, 191, 36, 0.25); }
+.composer { padding: 12px 16px; display: flex; gap: 10px; align-items: flex-end; }
+.composer textarea { flex: 1; min-height: 56px; }
+.composer .btn { flex: 0 0 auto; }
+
+/* ---------- empty state ---------- */
+.empty { padding: 26px 16px; text-align: center; color: var(--dim-2); font-size: 13px; }
+.empty svg { width: 26px; height: 26px; opacity: 0.5; display: block; margin: 0 auto 8px; }
+
+/* ---------- toasts ---------- */
+#toasts { position: fixed; right: 18px; bottom: 18px; z-index: 200; display: flex; flex-direction: column; gap: 8px; max-width: 380px; }
+.toast {
+  background: #0f1a2e; border: 1px solid var(--line); border-radius: 9px;
+  padding: 10px 14px 10px 12px; font-size: 13px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  display: flex; align-items: flex-start; gap: 9px; cursor: pointer;
+  animation: toastin 0.18s ease-out; word-break: break-word;
+}
+.toast::before { content: ""; width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex: 0 0 8px; }
+.toast.error::before { background: var(--red); box-shadow: 0 0 6px rgba(248, 113, 113, 0.8); }
+.toast.success::before { background: var(--accent-hi); box-shadow: 0 0 6px rgba(45, 212, 191, 0.8); }
+.toast.info::before { background: var(--blue); }
+.toast.out { opacity: 0; transform: translateY(6px); transition: opacity 0.22s, transform 0.22s; }
+@keyframes toastin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* ---------- modal ---------- */
+#modal-overlay {
+  position: fixed; inset: 0; z-index: 300;
+  background: rgba(3, 7, 18, 0.66); backdrop-filter: blur(2px);
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+#modal {
+  width: 480px; max-width: 100%;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  padding: 18px 20px;
+}
+#modal h3 { margin: 0 0 10px; font-size: 15px; }
+#modal-body div { font-size: 13.5px; color: var(--dim); margin: 4px 0; word-break: break-word; }
+#modal-body div b { color: var(--text); font-weight: 600; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+
+@media (max-width: 1080px) {
+  .split, .split.conv-split { grid-template-columns: 1fr; }
+  .stat-grid { grid-template-columns: 1fr; }
+  #sidebar { width: 64px; flex-basis: 64px; padding: 14px 8px; }
+  .brand .name, .brand .sub, .nav-item span, .nav-footer { display: none; }
+  .nav-item { justify-content: center; }
+}
 </style>
 </head>
 <body>
-<header>
-  <h1>DeskAgent Manager</h1>
-  <nav>
-    <button id="tab-btn-clients" class="active" onclick="showTab('clients')">Clients</button>
-    <button id="tab-btn-conversations" onclick="showTab('conversations')">Conversations</button>
-    <button id="tab-btn-jobs" onclick="showTab('jobs')">Jobs</button>
-  </nav>
-</header>
-<main>
-  <!-- Clients tab -->
-  <section id="tab-clients">
-    <div class="cols">
-      <div class="col">
-        <div class="panel">
-          <h2>Clients <button class="ghost" style="float:right" onclick="loadClients()">Refresh</button></h2>
-          <table>
-            <thead><tr><th>ID</th><th>Hostname</th><th>OS</th><th>Arch</th><th>Last seen</th></tr></thead>
-            <tbody id="client-rows"></tbody>
-          </table>
-          <div id="clients-empty" class="muted hidden">No clients registered yet.</div>
-        </div>
-      </div>
-      <div class="col hidden" id="client-detail">
-        <div class="panel">
-          <h2>Inventory — <span id="detail-host" class="muted"></span></h2>
-          <pre id="inv-pre"></pre>
-        </div>
-        <div class="panel">
-          <h2>Events</h2>
-          <table>
-            <thead><tr><th>Time</th><th>Source</th><th>Text</th></tr></thead>
-            <tbody id="event-rows"></tbody>
-          </table>
-          <div id="events-empty" class="muted hidden">No events.</div>
-        </div>
-      </div>
-    </div>
-  </section>
 
-  <!-- Conversations tab -->
-  <section id="tab-conversations" class="hidden">
-    <div class="cols">
-      <div class="col" style="max-width:340px">
-        <div class="panel">
-          <h2>Conversations <button class="ghost" style="float:right" onclick="loadConversations()">Refresh</button></h2>
-          <div id="conv-list"></div>
-          <div id="convs-empty" class="muted hidden">No conversations.</div>
-        </div>
-      </div>
-      <div class="col">
-        <div class="panel">
-          <h2>Thread — <span id="thread-title" class="muted">select a conversation</span></h2>
-          <div id="thread-box" class="thread"><div class="muted">No conversation selected.</div></div>
-          <div>
-            <button class="ghost" onclick="claimConv()">Claim</button>
-            <button class="ghost" onclick="closeConv()">Close</button>
-            <span id="conv-meta" class="muted" style="margin-left:8px"></span>
-            <span id="conv-err" class="err"></span>
-          </div>
-          <label for="reply-text">Reply as admin (also claims the conversation)</label>
-          <textarea id="reply-text" placeholder="Type a reply..."></textarea>
-          <div style="margin-top:8px">
-            <button class="primary" onclick="sendReply()">Send reply</button>
-            <span id="reply-err" class="err"></span>
-          </div>
-        </div>
-      </div>
+<!-- ================= sidebar ================= -->
+<aside id="sidebar">
+  <div class="brand">
+    <div class="mark">DA</div>
+    <div>
+      <div class="name">DeskAgent</div>
+      <div class="sub">Manager Console</div>
     </div>
-  </section>
+  </div>
+  <button class="nav-item active" data-view="overview" title="Tổng quan">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+    <span>Tổng quan</span>
+  </button>
+  <button class="nav-item" data-view="clients" title="Máy khách">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+    <span>Máy khách</span>
+  </button>
+  <button class="nav-item" data-view="conversations" title="Hội thoại">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    <span>Hội thoại</span>
+  </button>
+  <button class="nav-item" data-view="jobs" title="Job deploy">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>
+    <span>Job deploy</span>
+  </button>
+  <div class="nav-footer">DeskAgent · fork RustDesk nội bộ</div>
+</aside>
 
-  <!-- Jobs tab -->
-  <section id="tab-jobs" class="hidden">
-    <div class="panel">
-      <h2>Create job</h2>
-      <div class="cols">
-        <div class="col">
-          <label for="job-client">Client</label>
-          <select id="job-client"><option value="">—</option></select>
-          <label for="job-url">Package URL (optional)</label>
-          <input id="job-url" placeholder="https://example.com/pkg.msi" />
+<!-- ================= main ================= -->
+<div id="main">
+  <div id="loadbar"></div>
+  <header class="topbar">
+    <h1 id="page-title">Tổng quan</h1>
+    <div id="conn-pill" class="conn">
+      <span id="conn-dot" class="dot pulse"></span>
+      <span id="conn-text">Đang kết nối…</span>
+    </div>
+  </header>
+
+  <main class="content">
+
+    <!-- ============ overview ============ -->
+    <section id="view-overview" class="view">
+      <div class="stat-grid">
+        <button class="stat-card" data-goto="clients" title="Mở tab Máy khách">
+          <div class="stat-head">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+            Máy khách
+          </div>
+          <div class="stat-num"><span id="stat-online">–</span> <span class="of">/ <span id="stat-total">–</span></span></div>
+          <div class="stat-sub" id="stat-clients-sub">Đang tải…</div>
+        </button>
+        <button class="stat-card" data-goto="conversations" title="Mở tab Hội thoại">
+          <div class="stat-head">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            Hội thoại đang mở
+          </div>
+          <div class="stat-num" id="stat-convs">–</div>
+          <div class="stat-sub" id="stat-convs-sub">Đang tải…</div>
+        </button>
+        <button class="stat-card" data-goto="jobs" title="Mở tab Job deploy">
+          <div class="stat-head">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/></svg>
+            Job đang chạy
+          </div>
+          <div class="stat-num" id="stat-jobs">–</div>
+          <div class="stat-sub" id="stat-jobs-sub">Đang tải…</div>
+        </button>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Trạng thái hệ thống</h2></div>
+        <div class="panel-body muted small" id="overview-updated">Chưa có dữ liệu — đợi chu kỳ làm mới đầu tiên.</div>
+      </div>
+    </section>
+
+    <!-- ============ clients ============ -->
+    <section id="view-clients" class="view hidden">
+      <div class="split" id="clients-split">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Danh sách máy khách</h2>
+            <div class="panel-actions">
+              <div class="search">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                <input id="client-search" type="search" placeholder="Tìm theo id, hostname, OS…" autocomplete="off" />
+              </div>
+              <button class="btn ghost" id="btn-clients-refresh">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg>
+                Làm mới
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th></th><th>ID</th><th>Hostname</th><th>OS</th><th>Arch</th><th>Last seen</th></tr></thead>
+              <tbody id="client-rows"></tbody>
+            </table>
+          </div>
+          <div id="clients-empty" class="empty hidden"></div>
         </div>
-        <div class="col">
-          <label for="job-path">Package path (optional)</label>
-          <input id="job-path" placeholder="C:\path\to\pkg.msi" />
-          <label for="job-cmd">Silent install command</label>
-          <input id="job-cmd" placeholder="msiexec /i pkg.msi /qn" />
+
+        <div class="panel hidden" id="client-detail">
+          <div class="panel-head">
+            <h2>Chi tiết — <span class="muted" id="detail-name"></span></h2>
+            <button class="btn ghost" id="btn-detail-close" title="Đóng panel chi tiết">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div class="detail-meta" id="detail-meta"></div>
+          <div class="panel-body">
+            <h3 class="sect">Inventory <span class="muted" id="inv-updated"></span></h3>
+            <pre id="inv-pre" class="code">—</pre>
+            <h3 class="sect">Sự kiện <span class="muted" id="ev-count"></span></h3>
+            <div class="table-wrap" style="margin:0 -16px -14px">
+              <table>
+                <thead><tr><th>Thời gian</th><th>Nguồn</th><th>Nội dung</th></tr></thead>
+                <tbody id="event-rows"></tbody>
+              </table>
+            </div>
+            <div id="events-empty" class="empty hidden"></div>
+          </div>
         </div>
       </div>
-      <div style="margin-top:10px">
-        <button class="primary" onclick="createJob()">Create job</button>
-        <span id="job-form-err" class="err"></span>
+    </section>
+
+    <!-- ============ conversations ============ -->
+    <section id="view-conversations" class="view hidden">
+      <div class="split conv-split">
+        <div class="panel" style="margin-bottom:0">
+          <div class="panel-head">
+            <h2>Hội thoại</h2>
+            <button class="btn ghost" id="btn-convs-refresh">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg>
+            </button>
+          </div>
+          <div class="conv-list" id="conv-list"></div>
+          <div id="convs-empty" class="empty hidden"></div>
+        </div>
+
+        <div class="panel" style="margin-bottom:0">
+          <div class="panel-head">
+            <h2 id="thread-title">Chưa chọn hội thoại</h2>
+            <div class="panel-actions">
+              <span id="thread-badges"></span>
+              <button class="btn ghost" id="btn-claim" disabled>Claim</button>
+              <button class="btn danger" id="btn-close-conv" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                Đóng
+              </button>
+            </div>
+          </div>
+          <div class="thread" id="thread-box">
+            <div class="empty">Chọn một hội thoại ở bên trái để xem nội dung.</div>
+          </div>
+          <div class="composer">
+            <textarea id="reply-text" placeholder="Trả lời với tư cách admin… (Ctrl+Enter để gửi)" disabled></textarea>
+            <button class="btn primary" id="btn-send" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>
+              Gửi
+            </button>
+          </div>
+          <div class="panel-body muted small" id="composer-hint" style="padding-top:0">Chọn một hội thoại để trả lời.</div>
+        </div>
       </div>
+    </section>
+
+    <!-- ============ jobs ============ -->
+    <section id="view-jobs" class="view hidden">
+      <div class="panel">
+        <div class="panel-head"><h2>Tạo job deploy</h2></div>
+        <div class="panel-body">
+          <div class="form-grid">
+            <div>
+              <label for="job-client">Máy khách đích</label>
+              <select id="job-client">
+                <option value="all">Tất cả máy khách (all)</option>
+              </select>
+            </div>
+            <div>
+              <label for="job-cmd">Lệnh cài đặt im lặng (silent command)</label>
+              <input id="job-cmd" placeholder="msiexec /i pkg.msi /qn" autocomplete="off" />
+            </div>
+            <div>
+              <label for="job-url">Package URL (tuỳ chọn)</label>
+              <input id="job-url" placeholder="https://example.com/pkg.msi" autocomplete="off" />
+            </div>
+            <div>
+              <label for="job-path">Package path local (tuỳ chọn)</label>
+              <input id="job-path" placeholder="C:\path\to\pkg.msi" autocomplete="off" />
+            </div>
+          </div>
+          <div style="margin-top:14px">
+            <button class="btn primary" id="btn-job-create">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5v14"/></svg>
+              Tạo job
+            </button>
+          </div>
+          <div class="muted small" style="margin-top:10px">
+            Chọn "Tất cả máy khách (all)" sẽ tạo một job riêng cho từng máy đã đăng ký. Lệnh sẽ được client thực thi qua <code>cmd /C</code> — hãy kiểm tra kỹ trước khi tạo.
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Danh sách job</h2>
+          <button class="btn ghost" id="btn-jobs-refresh">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg>
+            Làm mới
+          </button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>Máy khách</th><th>Gói</th><th>Lệnh</th><th>Trạng thái</th><th>Kết quả</th><th>Tạo lúc</th></tr></thead>
+            <tbody id="job-rows"></tbody>
+          </table>
+        </div>
+        <div id="jobs-empty" class="empty hidden"></div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- toasts + confirm modal -->
+<div id="toasts" aria-live="polite"></div>
+<div id="modal-overlay" class="hidden">
+  <div id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <h3 id="modal-title">Xác nhận</h3>
+    <div id="modal-body"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="modal-cancel">Hủy</button>
+      <button class="btn danger" id="modal-ok">Xác nhận</button>
     </div>
-    <div class="panel">
-      <h2>Jobs <button class="ghost" style="float:right" onclick="loadJobs()">Refresh</button></h2>
-      <table>
-        <thead><tr><th>ID</th><th>Client</th><th>Status</th><th>Command</th><th>Package</th><th>Result</th><th>Created</th></tr></thead>
-        <tbody id="job-rows"></tbody>
-      </table>
-      <div id="jobs-empty" class="muted hidden">No jobs.</div>
-      <div id="jobs-err" class="err"></div>
-    </div>
-  </section>
-</main>
+  </div>
+</div>
+
 <script>
 'use strict';
-const $ = (id) => document.getElementById(id);
-const state = { clients: [], selected: null, activeConv: null, tab: 'clients' };
 
-async function api(path, opts = {}) {
-  const res = await fetch(path, opts);
-  const text = await res.text();
-  if (!res.ok) throw new Error(res.status + ' ' + text);
-  try { return text ? JSON.parse(text) : null; } catch (e) { return text; }
-}
-function esc(s) {
-  return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-function fmtTime(ts) { return ts ? new Date(ts * 1000).toLocaleString() : '-'; }
-function show(id, msg) { const el = $(id); el.textContent = msg; el.classList.remove('hidden'); }
+/* =====================================================================
+ * DeskAgent admin console — single file, vanilla JS, no dependencies.
+ * Talks only to the existing Manager REST API (manager/src/routes.rs):
+ *   GET  /api/admin/clients
+ *   GET  /api/admin/clients/:id/inventory     (404 when not uploaded yet)
+ *   GET  /api/admin/clients/:id/events        (newest first, max 500)
+ *   GET  /api/admin/conversations
+ *   GET  /api/admin/conversations/:id/messages
+ *   POST /api/admin/conversations/:id/claim | reply | close
+ *   POST /api/admin/jobs                      (create)
+ *   GET  /api/admin/jobs                      (list with results)
+ * There is no stats endpoint, so the Overview tab aggregates the three
+ * list endpoints client-side. XSS safety: every dynamic value rendered
+ * into HTML goes through esc(); JSON inventories use textContent.
+ * ===================================================================== */
 
-// ---- tabs ----
-function showTab(name) {
-  state.tab = name;
-  for (const t of ['clients', 'conversations', 'jobs']) {
-    $('tab-' + t).classList.toggle('hidden', t !== name);
-    $('tab-btn-' + t).classList.toggle('active', t === name);
+// ---------- constants ----------
+
+// A client counts as "online" when it registered within this window.
+// NOTE: the backend only refreshes last_seen on (re)registration (the agent
+// registers once, then only uploads inventory every 10 minutes), so this is
+// a heuristic — tune the constant if registration cadence changes.
+var ONLINE_WINDOW_SECS = 1800; // 30 minutes
+
+var OVERVIEW_INTERVAL_MS = 5000;  // overview refresh + connection heartbeat
+var THREAD_INTERVAL_MS = 3000;    // thread message poll
+var TOAST_DEDUP_MS = 10000;       // same-text error toast cooldown (pollers)
+
+// Heuristic for marking an event row as Error level: the API has no level
+// field, only (source, text), so we match common error keywords.
+var EVENT_ERROR_RE = /(error|fail|fatal|critical|lỗi|lỗi!|exception|panic)/i;
+
+// ---------- tiny helpers ----------
+
+function $(id) { return document.getElementById(id); }
+
+// Escape a value for safe interpolation into HTML text/attribute context.
+function esc(v) {
+  return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+function fmtTime(ts) {
+  return ts ? new Date(ts * 1000).toLocaleString('vi-VN') : '—';
+}
+
+function fmtRel(ts) {
+  if (!ts) return '—';
+  var d = Math.floor(Date.now() / 1000) - ts;
+  if (d < 0) d = 0;
+  if (d < 60) return 'vừa xong';
+  if (d < 3600) return Math.floor(d / 60) + ' phút trước';
+  if (d < 86400) return Math.floor(d / 3600) + ' giờ trước';
+  if (d < 86400 * 30) return Math.floor(d / 86400) + ' ngày trước';
+  return fmtTime(ts);
+}
+
+function shortId(id) {
+  id = String(id || '');
+  return id.length > 14 ? id.slice(0, 14) + '…' : id;
+}
+
+function jsonInit(method, obj) {
+  return {
+    method: method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(obj),
+  };
+}
+
+// ---------- app state ----------
+
+var state = {
+  view: 'overview',
+  clients: [],          // last known /api/admin/clients payload
+  convs: [],            // last known /api/admin/conversations payload
+  selectedClient: null, // client id shown in the detail panel
+  activeConv: null,     // conversation id opened in the thread view
+  clientQuery: '',      // client-side search term
+};
+
+// ---------- toasts ----------
+
+var toastLast = { text: '', t: 0 };
+
+// type: 'error' | 'success' | 'info'
+function toast(type, text, ms) {
+  var now = Date.now();
+  if (toastLast.text === text && now - toastLast.t < TOAST_DEDUP_MS) return;
+  toastLast = { text: text, t: now };
+  var el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = text; // textContent — never innerHTML for messages
+  el.title = 'Bấm để đóng';
+  el.onclick = function () { el.remove(); };
+  $('toasts').appendChild(el);
+  setTimeout(function () {
+    el.classList.add('out');
+    setTimeout(function () { el.remove(); }, 250);
+  }, ms || (type === 'error' ? 7000 : 4500));
+}
+
+function toastErr(e, ctx) {
+  toast('error', (ctx ? ctx + ': ' : '') + (e && e.message ? e.message : String(e)));
+}
+
+// ---------- connection pill ----------
+
+function setConn(ok) {
+  var pill = $('conn-pill'), dot = $('conn-dot'), text = $('conn-text');
+  if (ok === 'checking') {
+    pill.className = 'conn';
+    dot.className = 'dot pulse';
+    text.textContent = 'Đang kết nối…';
+    return;
   }
-  if (name === 'clients') loadClients();
-  if (name === 'conversations') loadConversations();
-  if (name === 'jobs') { fillClientSelect(); loadJobs(); }
+  if (ok) {
+    pill.className = 'conn ok';
+    dot.className = 'dot on';
+    text.textContent = 'Đã kết nối Manager';
+  } else {
+    pill.className = 'conn bad';
+    dot.className = 'dot off';
+    text.textContent = 'Mất kết nối Manager';
+  }
 }
 
-// ---- clients ----
+// ---------- fetch wrapper ----------
+
+var inflight = 0;
+
+function busy(on) {
+  inflight += on ? 1 : -1;
+  if (inflight < 0) inflight = 0;
+  $('loadbar').classList.toggle('on', inflight > 0);
+}
+
+function ApiError(status, body) {
+  var msg = status === 0 ? body : 'HTTP ' + status + (body ? ' — ' + body : '');
+  var err = new Error(msg);
+  err.status = status;
+  return err;
+}
+
+// Single entry point for all REST calls. Any non-2xx or network failure
+// throws; callers must catch and surface via toast — never swallow.
+async function api(path, opts) {
+  busy(true);
+  try {
+    var res;
+    try {
+      res = await fetch(path, opts || {});
+    } catch (e) {
+      setConn(false);
+      throw ApiError(0, 'không thể kết nối tới Manager');
+    }
+    var text = await res.text();
+    setConn(true); // any HTTP response means the server is reachable
+    if (!res.ok) throw ApiError(res.status, text.slice(0, 200));
+    if (!text) return null;
+    try { return JSON.parse(text); } catch (e) { return text; }
+  } finally {
+    busy(false);
+  }
+}
+
+// ---------- confirm modal (promise-based) ----------
+
+var modalResolve = null;
+
+function confirmDialog(opts) {
+  return new Promise(function (resolve) {
+    modalResolve = resolve;
+    $('modal-title').textContent = opts.title || 'Xác nhận';
+    var body = $('modal-body');
+    body.textContent = '';
+    (opts.lines || []).forEach(function (pair) {
+      // Each line is [label, value]; rendered with textContent only.
+      var div = document.createElement('div');
+      var b = document.createElement('b');
+      b.textContent = pair[0] + ': ';
+      div.appendChild(b);
+      div.appendChild(document.createTextNode(pair[1]));
+      body.appendChild(div);
+    });
+    var ok = $('modal-ok');
+    ok.textContent = opts.okLabel || 'Xác nhận';
+    ok.className = 'btn ' + (opts.danger ? 'danger' : 'primary');
+    $('modal-cancel').textContent = opts.cancelLabel || 'Hủy';
+    $('modal-overlay').classList.remove('hidden');
+    ok.focus();
+  });
+}
+
+function closeModal(result) {
+  if (!modalResolve) return;
+  $('modal-overlay').classList.add('hidden');
+  var r = modalResolve;
+  modalResolve = null;
+  r(result);
+}
+
+// ---------- badge renderers (all values escaped) ----------
+
+function jobStatusBadge(s) {
+  var map = {
+    pending: ['Chờ gửi', 'amber'],
+    running: ['Đang chạy', 'blue'],
+    success: ['Thành công', 'teal'],
+    failed: ['Thất bại', 'red'],
+  };
+  var m = map[String(s || '').toLowerCase()];
+  if (m) return '<span class="badge ' + m[1] + '">' + esc(m[0]) + '</span>';
+  return '<span class="badge gray">' + esc(s || '—') + '</span>';
+}
+
+function convBadge(c) {
+  if (c.status === 'closed') return '<span class="badge gray">Đã đóng</span>';
+  if (c.claimed) return '<span class="badge amber">Đã claim</span>';
+  return '<span class="badge violet">Bot</span>';
+}
+
+function senderBadge(sender) {
+  if (sender === 'bot') return '<span class="badge violet">Bot</span>';
+  if (sender === 'admin') return '<span class="badge teal">Admin</span>';
+  if (sender === 'user') return '<span class="badge amber">Client</span>';
+  return '<span class="badge gray">' + esc(sender || '?') + '</span>';
+}
+
+// ---------- views / navigation ----------
+
+var VIEWS = {
+  overview: { title: 'Tổng quan', enter: function () { refreshOverview(); } },
+  clients: {
+    title: 'Máy khách',
+    enter: function () {
+      loadClients();
+      if (state.selectedClient) loadClientDetail(state.selectedClient);
+    },
+  },
+  conversations: { title: 'Hội thoại', enter: function () { loadConversations(); } },
+  jobs: {
+    title: 'Job deploy',
+    enter: function () { fillClientSelect(); loadJobs(); },
+  },
+};
+
+function switchView(name) {
+  if (!VIEWS[name]) return;
+  state.view = name;
+  ['overview', 'clients', 'conversations', 'jobs'].forEach(function (v) {
+    $('view-' + v).classList.toggle('hidden', v !== name);
+  });
+  document.querySelectorAll('.nav-item').forEach(function (b) {
+    b.classList.toggle('active', b.getAttribute('data-view') === name);
+  });
+  $('page-title').textContent = VIEWS[name].title;
+  VIEWS[name].enter();
+}
+
+// ---------- overview ----------
+
+function skeletonRows(colspan) {
+  return '<tr><td colspan="' + colspan + '"><span class="spin"></span>Đang tải…</td></tr>';
+}
+
+async function refreshOverview() {
+  var results = await Promise.allSettled([
+    api('/api/admin/clients'),
+    api('/api/admin/conversations'),
+    api('/api/admin/jobs'),
+  ]);
+  var errs = [];
+  var clients = results[0].status === 'fulfilled' ? (results[0].value || []) : (errs.push(results[0].reason), state.clients);
+  var convs = results[1].status === 'fulfilled' ? (results[1].value || []) : (errs.push(results[1].reason), state.convs);
+  var jobs = results[2].status === 'fulfilled' ? (results[2].value || []) : (errs.push(results[2].reason), null);
+
+  if (errs.length) {
+    toastErr(errs[0], 'Tổng quan');
+  }
+  state.clients = clients;
+  state.convs = convs;
+
+  var nowSec = Math.floor(Date.now() / 1000);
+  var online = clients.filter(function (c) { return nowSec - (c.last_seen || 0) <= ONLINE_WINDOW_SECS; }).length;
+  var open = convs.filter(function (c) { return c.status === 'open'; }).length;
+  var claimed = convs.filter(function (c) { return c.status === 'open' && c.claimed; }).length;
+  var closed = convs.length - open;
+
+  $('stat-online').textContent = String(online);
+  $('stat-total').textContent = String(clients.length);
+  $('stat-clients-sub').textContent = clients.length
+    ? 'online trong ' + (ONLINE_WINDOW_SECS / 60) + ' phút gần nhất'
+    : 'Chưa có máy khách nào đăng ký';
+
+  $('stat-convs').textContent = String(open);
+  $('stat-convs-sub').textContent = convs.length
+    ? claimed + ' đã claim · ' + closed + ' đã đóng'
+    : 'Chưa có hội thoại nào';
+
+  if (jobs) {
+    var pending = jobs.filter(function (j) { return j.status === 'pending'; }).length;
+    var running = jobs.filter(function (j) { return j.status === 'running'; }).length;
+    var failed = jobs.filter(function (j) { return j.status === 'failed'; }).length;
+    var done = jobs.length - pending - running - failed;
+    $('stat-jobs').textContent = String(pending + running);
+    $('stat-jobs-sub').textContent = jobs.length
+      ? running + ' running · ' + pending + ' pending · ' + done + ' xong · ' + failed + ' lỗi'
+      : 'Chưa có job nào';
+  }
+
+  var jobCount = jobs ? jobs.length : 0;
+  $('overview-updated').textContent =
+    'Cập nhật lúc ' + new Date().toLocaleTimeString('vi-VN') +
+    ' · tự động làm mới mỗi ' + (OVERVIEW_INTERVAL_MS / 1000) + ' giây' +
+    ' · tổng ' + jobCount + ' job đã tạo';
+}
+
+// ---------- clients ----------
+
+function setEmpty(id, text) {
+  var el = $(id);
+  if (text === null) { el.classList.add('hidden'); return; }
+  el.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>' + esc(text);
+  el.classList.remove('hidden');
+}
+
+function isOnline(c) {
+  var nowSec = Math.floor(Date.now() / 1000);
+  return nowSec - (c.last_seen || 0) <= ONLINE_WINDOW_SECS;
+}
+
+function renderClients() {
+  var q = state.clientQuery.trim().toLowerCase();
+  var rows = state.clients.filter(function (c) {
+    if (!q) return true;
+    return [c.id, c.hostname, c.os, c.os_version, c.arch]
+      .map(function (v) { return String(v || '').toLowerCase(); })
+      .some(function (v) { return v.indexOf(q) !== -1; });
+  });
+  var tbody = $('client-rows');
+  if (!rows.length) {
+    tbody.innerHTML = '';
+    setEmpty('clients-empty', state.clients.length
+      ? 'Không có máy khách nào khớp từ khóa tìm kiếm.'
+      : 'Chưa có máy khách nào đăng ký. Hãy cài DeskAgent và trỏ nó về Manager này.');
+    return;
+  }
+  setEmpty('clients-empty', null);
+  tbody.innerHTML = rows.map(function (c) {
+    var on = isOnline(c);
+    return '<tr class="clickable' + (state.selectedClient === c.id ? ' sel' : '') + '" data-id="' + esc(c.id) + '">' +
+      '<td><span class="dot ' + (on ? 'on' : 'off') + '" title="' + (on ? 'Online' : 'Ngoài cửa sổ online') + '"></span></td>' +
+      '<td><code title="' + esc(c.id) + '">' + esc(c.id) + '</code></td>' +
+      '<td class="strong">' + esc(c.hostname || '—') + '</td>' +
+      '<td>' + esc(((c.os || '') + ' ' + (c.os_version || '')).trim() || '—') + '</td>' +
+      '<td>' + esc(c.arch || '—') + '</td>' +
+      '<td title="' + esc(fmtTime(c.last_seen)) + '">' + esc(fmtRel(c.last_seen)) + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
 async function loadClients() {
-  $('clients-empty').classList.add('hidden');
+  var btn = $('btn-clients-refresh');
+  btn.classList.add('loading');
+  btn.disabled = true;
+  if (!$('client-rows').children.length) $('client-rows').innerHTML = skeletonRows(6);
   try {
-    state.clients = (await api('/api/admin/clients')) || [];
-    $('client-rows').innerHTML = state.clients.map((c) =>
-      '<tr data-id="' + esc(c.id) + '" class="' + (state.selected === c.id ? 'selected' : '') +
-      '" onclick="selectClient(\'' + esc(c.id) + '\')">' +
-      '<td>' + esc(c.id) + '</td><td>' + esc(c.hostname) + '</td>' +
-      '<td>' + esc(c.os) + ' ' + esc(c.os_version) + '</td>' +
-      '<td>' + esc(c.arch) + '</td><td>' + fmtTime(c.last_seen) + '</td></tr>').join('');
-    if (state.clients.length === 0) show('clients-empty', 'No clients registered yet.');
+    var clients = await api('/api/admin/clients');
+    state.clients = clients || [];
+    renderClients();
+    fillClientSelect();
   } catch (e) {
-    show('clients-empty', 'Load failed: ' + e.message);
+    $('client-rows').innerHTML = '';
+    setEmpty('clients-empty', null);
+    toastErr(e, 'Tải danh sách máy khách');
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
   }
-  fillClientSelect();
 }
 
-async function selectClient(id) {
-  state.selected = id;
+function clientDetailMeta(c) {
+  var parts = [
+    ['Hostname', c.hostname || '—'],
+    ['OS', ((c.os || '') + ' ' + (c.os_version || '')).trim() || '—'],
+    ['Arch', c.arch || '—'],
+    ['Last seen', fmtRel(c.last_seen) + ' (' + fmtTime(c.last_seen) + ')'],
+    ['ID', c.id],
+  ];
+  return parts.map(function (p) {
+    return '<span><b>' + esc(p[0]) + ':</b> ' + esc(p[1]) + '</span>';
+  }).join('');
+}
+
+async function loadClientDetail(id) {
+  var c = state.clients.find(function (x) { return x.id === id; });
+  state.selectedClient = id;
   $('client-detail').classList.remove('hidden');
-  loadClients();
-  try {
-    const inv = await api('/api/admin/clients/' + encodeURIComponent(id) + '/inventory');
-    $('detail-host').textContent = inv.client_id;
-    $('inv-pre').textContent = JSON.stringify(inv.json, null, 2);
-  } catch (e) {
-    $('detail-host').textContent = id;
-    $('inv-pre').textContent = 'Inventory unavailable: ' + e.message;
+  // Keep table highlight in sync without a full reload.
+  document.querySelectorAll('#client-rows tr').forEach(function (tr) {
+    tr.classList.toggle('sel', tr.getAttribute('data-id') === id);
+  });
+  $('detail-name').textContent = c && c.hostname ? c.hostname + ' (' + shortId(id) + ')' : shortId(id);
+  $('detail-meta').innerHTML = c ? clientDetailMeta(c) : '<span>ID: ' + esc(id) + '</span>';
+  $('inv-updated').textContent = '';
+  $('inv-pre').textContent = 'Đang tải inventory…';
+  $('event-rows').innerHTML = skeletonRows(3);
+  setEmpty('events-empty', null);
+  $('ev-count').textContent = '';
+
+  // Inventory + events are independent: fetch in parallel, report separately.
+  var invReq = api('/api/admin/clients/' + encodeURIComponent(id) + '/inventory')
+    .then(function (inv) { return { ok: true, inv: inv }; })
+    .catch(function (e) { return { ok: false, err: e }; });
+  var evReq = api('/api/admin/clients/' + encodeURIComponent(id) + '/events')
+    .then(function (evs) { return { ok: true, evs: evs }; })
+    .catch(function (e) { return { ok: false, err: e }; });
+
+  var invRes = await invReq;
+  if (state.selectedClient !== id) return; // user switched away meanwhile
+  if (invRes.ok) {
+    var inv = invRes.inv || {};
+    $('inv-updated').textContent = inv.updated_at ? '(cập nhật ' + fmtRel(inv.updated_at) + ')' : '';
+    // Dynamic data → textContent only, never innerHTML. The backend stores
+    // inventory as text and falls back to a raw string when it is not JSON.
+    var payload = inv.json != null ? inv.json : inv;
+    if (typeof payload === 'string') {
+      try { payload = JSON.stringify(JSON.parse(payload), null, 2); } catch (e) { /* keep raw text */ }
+      $('inv-pre').textContent = payload;
+    } else {
+      $('inv-pre').textContent = JSON.stringify(payload, null, 2);
+    }
+  } else if (invRes.err && invRes.err.status === 404) {
+    $('inv-updated').textContent = '';
+    $('inv-pre').textContent = 'Máy này chưa gửi inventory nào.';
+    toast('info', 'Máy ' + shortId(id) + ' chưa có inventory (mới đăng ký hoặc chưa đến chu kỳ upload 10 phút).');
+  } else {
+    $('inv-pre').textContent = 'Không tải được inventory.';
+    toastErr(invRes.err, 'Tải inventory');
   }
-  try {
-    const events = (await api('/api/admin/clients/' + encodeURIComponent(id) + '/events')) || [];
-    $('event-rows').innerHTML = events.map((ev) =>
-      '<tr><td>' + fmtTime(ev.created_at) + '</td><td>' + esc(ev.source) +
-      '</td><td>' + esc(ev.text) + '</td></tr>').join('');
-    $('events-empty').classList.toggle('hidden', events.length > 0);
-    if (events.length === 0) show('events-empty', 'No events.');
-  } catch (e) {
-    show('events-empty', 'Load failed: ' + e.message);
+
+  var evRes = await evReq;
+  if (state.selectedClient !== id) return;
+  if (!evRes.ok) {
+    $('event-rows').innerHTML = '';
+    setEmpty('events-empty', null);
+    toastErr(evRes.err, 'Tải sự kiện');
+    return;
   }
+  // API already returns newest first; sort defensively anyway.
+  var evs = (evRes.evs || []).slice().sort(function (a, b) { return b.id - a.id; });
+  $('ev-count').textContent = evs.length ? '(' + evs.length + ' sự kiện, mới nhất trước)' : '';
+  if (!evs.length) {
+    $('event-rows').innerHTML = '';
+    setEmpty('events-empty', 'Chưa có sự kiện nào từ máy này.');
+    return;
+  }
+  setEmpty('events-empty', null);
+  $('event-rows').innerHTML = evs.map(function (ev) {
+    var isErr = EVENT_ERROR_RE.test(String(ev.source || '') + ' ' + String(ev.text || ''));
+    return '<tr class="' + (isErr ? 'ev-err' : '') + '">' +
+      '<td style="white-space:nowrap" title="' + esc(fmtTime(ev.created_at)) + '">' + esc(fmtRel(ev.created_at)) + '</td>' +
+      '<td>' + esc(ev.source || '—') + (isErr ? ' <span class="badge red">Error</span>' : '') + '</td>' +
+      '<td>' + esc(ev.text || '') + '</td>' +
+      '</tr>';
+  }).join('');
 }
 
-// ---- conversations ----
+function closeClientDetail() {
+  state.selectedClient = null;
+  $('client-detail').classList.add('hidden');
+  document.querySelectorAll('#client-rows tr').forEach(function (tr) { tr.classList.remove('sel'); });
+}
+
+// ---------- conversations ----------
+
+function renderConversations() {
+  var list = $('conv-list');
+  if (!state.convs.length) {
+    list.innerHTML = '';
+    setEmpty('convs-empty', 'Chưa có hội thoại nào. Client Flutter tạo hội thoại qua POST /api/conversations.');
+    return;
+  }
+  setEmpty('convs-empty', null);
+  list.innerHTML = state.convs.map(function (c) {
+    return '<div class="conv-item' + (state.activeConv === c.id ? ' sel' : '') + '" data-id="' + esc(c.id) + '">' +
+      '<div class="conv-top"><code title="' + esc(c.id) + '">' + esc(shortId(c.id)) + '</code>' + convBadge(c) + '</div>' +
+      '<div class="conv-sub">client: ' + esc(c.client_id || '—') + ' · ' + esc(fmtRel(c.created_at)) + '</div>' +
+      '</div>';
+  }).join('');
+}
+
 async function loadConversations() {
-  $('convs-empty').classList.add('hidden');
   try {
-    const convs = (await api('/api/admin/conversations')) || [];
-    $('conv-list').innerHTML = convs.map((c) => {
-      const owner = c.claimed
-        ? '<span class="badge admin">claimed</span>'
-        : '<span class="badge bot">bot</span>';
-      return '<div class="conv-item" onclick="openConv(\'' + esc(c.id) + '\')">' +
-        '<div><code>' + esc(c.id) + '</code> ' + owner +
-        ' <span class="badge status">' + esc(c.status) + '</span></div>' +
-        '<div class="muted" style="font-size:12px">client: ' + esc(c.client_id || '-') +
-        ' &middot; ' + fmtTime(c.created_at) + '</div></div>';
-    }).join('');
-    if (convs.length === 0) show('convs-empty', 'No conversations.');
-    const active = convs.find((c) => c.id === state.activeConv);
-    $('conv-meta').textContent = active
-      ? (active.claimed ? 'claimed — bot paused' : 'bot is answering')
-      : '';
+    var convs = await api('/api/admin/conversations');
+    state.convs = convs || [];
+    renderConversations();
+    updateThreadControls();
   } catch (e) {
-    show('convs-empty', 'Load failed: ' + e.message);
+    setEmpty('convs-empty', null);
+    toastErr(e, 'Tải hội thoại');
   }
-}
-
-function badgeFor(sender) {
-  const label = sender === 'bot' ? 'Bot' : sender === 'admin' ? 'Admin' : 'User';
-  return '<span class="badge ' + esc(sender) + '">' + label + '</span>';
 }
 
 function openConv(id) {
   state.activeConv = id;
-  $('thread-title').textContent = id;
-  $('thread-box').innerHTML = '';
+  $('thread-title').textContent = 'Hội thoại ' + shortId(id);
+  $('thread-box').innerHTML = '<div class="empty"><span class="spin"></span>Đang tải tin nhắn…</div>';
+  renderConversations();
+  updateThreadControls();
   refreshThread();
-  loadConversations();
+}
+
+function updateThreadControls() {
+  var conv = null;
+  for (var i = 0; i < state.convs.length; i++) {
+    if (state.convs[i].id === state.activeConv) { conv = state.convs[i]; break; }
+  }
+  var none = !conv;
+  var closed = none || conv.status === 'closed';
+  $('btn-claim').disabled = none || closed || conv.claimed;
+  $('btn-close-conv').disabled = closed;
+  $('btn-send').disabled = closed;
+  $('reply-text').disabled = closed;
+  $('thread-badges').innerHTML = conv ? convBadge(conv) : '';
+  $('composer-hint').textContent = none
+    ? 'Chọn một hội thoại để trả lời.'
+    : conv.status === 'closed'
+      ? 'Hội thoại đã đóng — không thể trả lời thêm.'
+      : 'Gửi trả lời sẽ tự động claim hội thoại và bot sẽ ngừng phản hồi.';
+}
+
+function renderThread(msgs) {
+  var box = $('thread-box');
+  // Preserve scroll position when the user scrolled up to read.
+  var stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 40;
+  if (!msgs.length) {
+    box.innerHTML = '<div class="empty">Chưa có tin nhắn nào trong hội thoại này.</div>';
+    return;
+  }
+  box.innerHTML = msgs.map(function (m) {
+    return '<div class="msg ' + esc(m.sender) + '">' +
+      '<div class="who">' + senderBadge(m.sender) + '<span title="' + esc(fmtTime(m.created_at)) + '">' + esc(fmtRel(m.created_at)) + '</span></div>' +
+      '<div class="bubble">' + esc(m.text) + '</div>' +
+      '</div>';
+  }).join('');
+  if (stick) box.scrollTop = box.scrollHeight;
 }
 
 async function refreshThread() {
   if (!state.activeConv) return;
+  var id = state.activeConv;
   try {
-    const msgs = (await api('/api/admin/conversations/' + encodeURIComponent(state.activeConv) + '/messages')) || [];
-    const box = $('thread-box');
-    const stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 30;
-    box.innerHTML = msgs.length === 0
-      ? '<div class="muted">No messages yet.</div>'
-      : msgs.map((m) =>
-          '<div class="msg' + (m.sender === 'admin' ? ' me' : '') + '">' +
-          '<div class="who">' + badgeFor(m.sender) + ' <span>' + fmtTime(m.created_at) + '</span></div>' +
-          '<div class="bubble">' + esc(m.text) + '</div></div>').join('');
-    if (stick) box.scrollTop = box.scrollHeight;
-  } catch (e) { /* keep the last view on transient errors */ }
+    var msgs = await api('/api/admin/conversations/' + encodeURIComponent(id) + '/messages');
+    if (state.activeConv !== id) return;
+    renderThread(msgs || []);
+  } catch (e) {
+    // Polling errors must not be silent: deduped toast + connection state.
+    toastErr(e, 'Poll tin nhắn');
+  }
 }
-
-// Thread poll every 3 seconds while a conversation is open.
-setInterval(() => {
-  if (state.tab === 'conversations' && state.activeConv) refreshThread();
-}, 3000);
 
 async function claimConv() {
   if (!state.activeConv) return;
-  $('conv-err').textContent = '';
+  var id = state.activeConv;
   try {
-    await api('/api/admin/conversations/' + encodeURIComponent(state.activeConv) + '/claim', { method: 'POST' });
-    loadConversations();
-  } catch (e) { $('conv-err').textContent = e.message; }
+    await api('/api/admin/conversations/' + encodeURIComponent(id) + '/claim', { method: 'POST' });
+    toast('success', 'Đã claim hội thoại ' + shortId(id) + ' — bot sẽ ngừng trả lời.');
+    await loadConversations();
+    renderConversations();
+  } catch (e) {
+    toastErr(e, 'Claim hội thoại');
+  }
 }
 
 async function closeConv() {
   if (!state.activeConv) return;
-  $('conv-err').textContent = '';
+  var id = state.activeConv;
+  var ok = await confirmDialog({
+    title: 'Đóng hội thoại?',
+    lines: [
+      ['Hội thoại', shortId(id)],
+      ['Lưu ý', 'Hành động này không thể hoàn tác qua console (không có API mở lại).'],
+    ],
+    danger: true,
+    okLabel: 'Đóng hội thoại',
+  });
+  if (!ok) return;
   try {
-    await api('/api/admin/conversations/' + encodeURIComponent(state.activeConv) + '/close', { method: 'POST' });
-    loadConversations();
-  } catch (e) { $('conv-err').textContent = e.message; }
+    await api('/api/admin/conversations/' + encodeURIComponent(id) + '/close', { method: 'POST' });
+    toast('success', 'Đã đóng hội thoại ' + shortId(id));
+    await loadConversations();
+    renderConversations();
+  } catch (e) {
+    toastErr(e, 'Đóng hội thoại');
+  }
 }
 
 async function sendReply() {
   if (!state.activeConv) return;
-  $('reply-err').textContent = '';
-  const text = $('reply-text').value.trim();
-  if (!text) { $('reply-err').textContent = 'Reply is empty.'; return; }
+  var id = state.activeConv;
+  var text = $('reply-text').value.trim();
+  if (!text) { toast('info', 'Nội dung trả lời đang trống.'); return; }
+  var btn = $('btn-send');
+  btn.disabled = true;
   try {
-    await api('/api/admin/conversations/' + encodeURIComponent(state.activeConv) + '/reply', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: text }),
-    });
+    await api('/api/admin/conversations/' + encodeURIComponent(id) + '/reply', jsonInit('POST', { text: text }));
     $('reply-text').value = '';
-    refreshThread();
-    loadConversations();
-  } catch (e) { $('reply-err').textContent = e.message; }
-}
-
-// ---- jobs ----
-function fillClientSelect() {
-  const sel = $('job-client');
-  const cur = sel.value;
-  sel.innerHTML = '<option value="">—</option>' + state.clients.map((c) =>
-    '<option value="' + esc(c.id) + '">' + esc(c.hostname || c.id) + '</option>').join('');
-  if (cur) sel.value = cur;
-}
-
-async function loadJobs() {
-  $('jobs-err').textContent = '';
-  $('jobs-empty').classList.add('hidden');
-  try {
-    const jobs = (await api('/api/admin/jobs')) || [];
-    $('job-rows').innerHTML = jobs.map((j) =>
-      '<tr><td><code>' + esc(j.id) + '</code></td>' +
-      '<td>' + esc(j.client_id) + '</td>' +
-      '<td><span class="badge status">' + esc(j.status) + '</span></td>' +
-      '<td><code>' + esc(j.silent_cmd) + '</code></td>' +
-      '<td class="muted">' + esc(j.package_url || j.package_path || '-') + '</td>' +
-      '<td>' + (j.result
-        ? '<span class="badge status">' + esc(j.result.status) + '</span>' +
-          '<div style="white-space:pre-wrap;font-size:12px;max-width:280px;word-break:break-word">' + esc(j.result.output) + '</div>'
-        : '<span class="muted">-</span>') + '</td>' +
-      '<td>' + fmtTime(j.created_at) + '</td></tr>').join('');
-    if (jobs.length === 0) show('jobs-empty', 'No jobs.');
+    toast('success', 'Đã gửi trả lời (hội thoại được claim tự động).');
+    await refreshThread();
+    await loadConversations();
   } catch (e) {
-    $('jobs-err').textContent = 'Load failed: ' + e.message;
+    toastErr(e, 'Gửi trả lời');
+  } finally {
+    btn.disabled = false;
+    updateThreadControls();
   }
 }
 
-async function createJob() {
-  $('job-form-err').textContent = '';
-  const body = {
-    client_id: $('job-client').value,
-    package_url: $('job-url').value.trim() || null,
-    package_path: $('job-path').value.trim() || null,
-    silent_cmd: $('job-cmd').value,
-  };
-  if (!body.client_id) { $('job-form-err').textContent = 'Select a client first.'; return; }
-  if (!body.silent_cmd.trim()) { $('job-form-err').textContent = 'Silent command is required.'; return; }
+// ---------- jobs ----------
+
+function fillClientSelect() {
+  var sel = $('job-client');
+  var cur = sel.value;
+  var html = '<option value="all">Tất cả máy khách (all)</option>';
+  state.clients.forEach(function (c) {
+    html += '<option value="' + esc(c.id) + '">' + esc((c.hostname || c.id) + ' — ' + shortId(c.id)) + '</option>';
+  });
+  sel.innerHTML = html;
+  // Restore the previous choice when it still exists.
+  for (var i = 0; i < sel.options.length; i++) {
+    if (sel.options[i].value === cur) { sel.value = cur; break; }
+  }
+}
+
+function renderJobs(jobs) {
+  var tbody = $('job-rows');
+  if (!jobs.length) {
+    tbody.innerHTML = '';
+    setEmpty('jobs-empty', 'Chưa có job nào. Tạo job ở form phía trên.');
+    return;
+  }
+  setEmpty('jobs-empty', null);
+  tbody.innerHTML = jobs.map(function (j) {
+    var pkg = j.package_url || j.package_path || '';
+    var resultHtml;
+    if (j.result) {
+      var out = j.result.output || '';
+      resultHtml = jobStatusBadge(j.result.status) +
+        (out ? '<details class="out"><summary>Xem output</summary><pre class="code">' + esc(out) + '</pre></details>' : '');
+    } else {
+      resultHtml = '<span class="muted">—</span>';
+    }
+    return '<tr>' +
+      '<td><code title="' + esc(j.id) + '">' + esc(shortId(j.id)) + '</code></td>' +
+      '<td>' + esc(j.client_id === 'all' ? 'all' : shortId(j.client_id)) + '</td>' +
+      '<td class="muted" style="max-width:220px">' + (pkg ? esc(pkg) : '—') + '</td>' +
+      '<td><code>' + esc(j.silent_cmd || '—') + '</code></td>' +
+      '<td>' + jobStatusBadge(j.status) + '</td>' +
+      '<td style="max-width:300px">' + resultHtml + '</td>' +
+      '<td style="white-space:nowrap" title="' + esc(fmtTime(j.created_at)) + '">' + esc(fmtRel(j.created_at)) + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+async function loadJobs() {
+  var btn = $('btn-jobs-refresh');
+  btn.classList.add('loading');
+  btn.disabled = true;
+  if (!$('job-rows').children.length) $('job-rows').innerHTML = skeletonRows(7);
   try {
-    await api('/api/admin/jobs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+    var jobs = await api('/api/admin/jobs');
+    renderJobs(jobs || []);
+  } catch (e) {
+    $('job-rows').innerHTML = '';
+    toastErr(e, 'Tải danh sách job');
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+  }
+}
+
+// POST one job to the existing endpoint. The backend stores client_id as-is,
+// so "all" is expanded by the console into one job per registered client
+// (clients only poll jobs addressed to their own id).
+async function postJob(clientId, packageUrl, packagePath, silentCmd) {
+  return api('/api/admin/jobs', jsonInit('POST', {
+    client_id: clientId,
+    package_url: packageUrl || null,
+    package_path: packagePath || null,
+    silent_cmd: silentCmd,
+  }));
+}
+
+async function createJob() {
+  var clientId = $('job-client').value;
+  var url = $('job-url').value.trim();
+  var path = $('job-path').value.trim();
+  var cmd = $('job-cmd').value.trim();
+
+  if (!clientId) { toast('error', 'Chưa chọn máy khách đích.'); return; }
+  if (!cmd) { toast('error', 'Lệnh cài đặt im lặng (silent command) là bắt buộc.'); return; }
+  if (!url && !path) {
+    toast('info', 'Chưa nhập package URL/path — job sẽ chỉ chạy lệnh trên máy client.');
+  }
+
+  var isAll = clientId === 'all';
+  var targets = isAll ? state.clients.map(function (c) { return c.id; }) : [clientId];
+  if (isAll && !targets.length) {
+    toast('error', 'Không có máy khách nào đã đăng ký để nhân bản job "all".');
+    return;
+  }
+
+  var ok = await confirmDialog({
+    title: 'Tạo job deploy?',
+    lines: [
+      ['Đối tượng', isAll ? 'TẤT CẢ máy khách (' + targets.length + ' máy — tạo ' + targets.length + ' job)' : clientId],
+      ['Lệnh sẽ chạy trên client', cmd],
+      ['Package', url || path || '(không)'],
+      ['Cảnh báo', 'Lệnh được client thực thi cục bộ qua cmd /C. Hãy chắc chắn bạn hiểu lệnh này.'],
+    ],
+    danger: true,
+    okLabel: 'Tạo job',
+  });
+  if (!ok) return;
+
+  var btn = $('btn-job-create');
+  btn.disabled = true;
+  btn.classList.add('loading');
+  try {
+    if (!isAll) {
+      var res = await postJob(clientId, url, path, cmd);
+      toast('success', 'Đã tạo job ' + shortId(res && res.job_id ? res.job_id : '') + ' cho ' + shortId(clientId) + '.');
+    } else {
+      // Fan out "all" sequentially so a slow manager is not hammered.
+      var created = 0, failed = 0;
+      for (var i = 0; i < targets.length; i++) {
+        try {
+          await postJob(targets[i], url, path, cmd);
+          created++;
+        } catch (e) {
+          failed++;
+          toastErr(e, 'Tạo job cho ' + shortId(targets[i]));
+        }
+      }
+      if (failed === 0) toast('success', 'Đã tạo ' + created + '/' + targets.length + ' job cho tất cả máy khách.');
+      else toast('error', 'Đã tạo ' + created + '/' + targets.length + ' job — ' + failed + ' thất bại (xem toast lỗi ở trên).');
+    }
     $('job-url').value = '';
     $('job-path').value = '';
     $('job-cmd').value = '';
-    loadJobs();
-  } catch (e) { $('job-form-err').textContent = e.message; }
+    await loadJobs();
+  } catch (e) {
+    toastErr(e, 'Tạo job');
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('loading');
+  }
 }
 
-showTab('clients');
+// ---------- wiring ----------
+
+document.querySelectorAll('.nav-item').forEach(function (b) {
+  b.addEventListener('click', function () { switchView(b.getAttribute('data-view')); });
+});
+document.querySelectorAll('.stat-card').forEach(function (b) {
+  b.addEventListener('click', function () { switchView(b.getAttribute('data-goto')); });
+});
+
+// Client table: event delegation so no inline onclick with interpolated ids.
+$('client-rows').addEventListener('click', function (e) {
+  var tr = e.target.closest('tr[data-id]');
+  if (tr) loadClientDetail(tr.getAttribute('data-id'));
+});
+$('client-search').addEventListener('input', function (e) {
+  state.clientQuery = e.target.value;
+  renderClients();
+});
+$('btn-clients-refresh').addEventListener('click', loadClients);
+$('btn-detail-close').addEventListener('click', closeClientDetail);
+
+// Conversation list: delegated clicks.
+$('conv-list').addEventListener('click', function (e) {
+  var item = e.target.closest('.conv-item[data-id]');
+  if (item) openConv(item.getAttribute('data-id'));
+});
+$('btn-convs-refresh').addEventListener('click', loadConversations);
+$('btn-claim').addEventListener('click', claimConv);
+$('btn-close-conv').addEventListener('click', closeConv);
+$('btn-send').addEventListener('click', sendReply);
+$('reply-text').addEventListener('keydown', function (e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') sendReply();
+});
+
+// Jobs.
+$('btn-jobs-refresh').addEventListener('click', loadJobs);
+$('btn-job-create').addEventListener('click', createJob);
+
+// Modal.
+$('modal-ok').addEventListener('click', function () { closeModal(true); });
+$('modal-cancel').addEventListener('click', function () { closeModal(false); });
+$('modal-overlay').addEventListener('click', function (e) {
+  if (e.target === $('modal-overlay')) closeModal(false);
+});
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') closeModal(false);
+});
+
+// Background loops: overview doubles as the connection heartbeat; the thread
+// poll only runs while the conversations view is open with a thread selected.
+setInterval(function () { refreshOverview(); }, OVERVIEW_INTERVAL_MS);
+setInterval(function () {
+  if (state.view === 'conversations' && state.activeConv) refreshThread();
+}, THREAD_INTERVAL_MS);
+
+// Boot.
+setConn('checking');
+switchView('overview');
 </script>
 </body>
 </html>
