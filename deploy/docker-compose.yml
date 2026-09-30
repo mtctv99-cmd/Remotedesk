@@ -13,7 +13,9 @@ services:
   hbbs:
     image: rustdesk/rustdesk-server:latest
     container_name: deskagent-hbbs
-    command: hbbs
+    # -r QUAN TRỌNG: quảng bá relay đúng bằng IP của HOST chạy Docker
+    # (không có -r, hbbs trong container quảng bá IP nội bộ 172.x -> client không relay được)
+    command: hbbs -r <DOCKER-HOST-IP>:21117
     ports:
       - "21115:21115/tcp"   # NAT type test
       - "21116:21116/tcp"   # TCP hole punching + ID server
