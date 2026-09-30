@@ -6,7 +6,8 @@ set "LIBCLANG_PATH=C:\Users\chu.mai\Desktop\Remote\tools\llvm-15\bin"
 set "PATH=C:\Users\chu.mai\.cargo\bin;C:\Users\chu.mai\Desktop\Remote\tools\flutter\bin;%PATH%"
 cd /d "C:\Users\chu.mai\Desktop\Remote\DeskAgent"
 echo === cargo build --release ===
-cargo build --release 2>&1
+rem hwcodec tam thoi loai (C++ build script fail - backlog); software codec VP9/AV1 van day du
+cargo build --locked --lib --features flutter --release 2>&1
 if errorlevel 1 exit /b 1
 echo === flutter build windows --release ===
 cd flutter
