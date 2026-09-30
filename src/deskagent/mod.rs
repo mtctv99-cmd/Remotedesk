@@ -17,6 +17,23 @@ use std::time::Duration;
 /// Daemon poll interval in seconds.
 const DAEMON_INTERVAL_SECS: u64 = 30;
 
+/// One-time viewer defaults tuned for smooth sessions.
+///
+/// [Note]
+/// Only fills options the user has never set (empty user-default), so
+/// explicit user choices always win. "auto" codec preference lets the
+/// encoder pick the hardware codec (h264/h265) when both sides support it,
+/// which is the biggest single latency lever on local networks.
+fn apply_smooth_defaults() {
+    const RECOMMENDED: [(&str, &str); 1] = [("codec-preference", "auto")];
+    for (key, value) in RECOMMENDED {
+        if hbb_common::config::UserDefaultConfig::load().get(key).is_empty() {
+            let mut cfg = hbb_common::config::UserDefaultConfig::load();
+            cfg.set(key.to_owned(), value.to_owned());
+        }
+    }
+}
+
 /// Start the background DeskAgent daemon (no-op after the first call).
 ///
 /// [Note]
@@ -26,6 +43,7 @@ const DAEMON_INTERVAL_SECS: u64 = 30;
 pub fn start_background() {
     static START: Once = Once::new();
     START.call_once(|| {
+        apply_smooth_defaults();
         let spawned = std::thread::Builder::new()
             .name("deskagent-daemon".to_owned())
             .spawn(|| loop {
