@@ -32,7 +32,8 @@ class _EventEntry {
 // Event viewer page for DeskAgent: reads recent critical/error/warning events
 // from the Windows event log via wevtutil.
 class EventViewerPage extends StatefulWidget {
-  const EventViewerPage({Key? key}) : super(key: key);
+  final bool embedded;
+  const EventViewerPage({Key? key, this.embedded = false}) : super(key: key);
 
   @override
   State<StatefulWidget> createState() => _EventViewerPageState();
@@ -123,6 +124,7 @@ class _EventViewerPageState extends State<EventViewerPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: !widget.embedded,
         title: Text(translate('Event Viewer')),
       ),
       body: _buildBody(),

@@ -33,7 +33,8 @@ class _ChatMessage {
 // poll on GET kApiBase/conversations/{id}/messages?after={lastId} picks up
 // Bot/Admin replies.
 class AiChatPage extends StatefulWidget {
-  const AiChatPage({Key? key}) : super(key: key);
+  final bool embedded;
+  const AiChatPage({Key? key, this.embedded = false}) : super(key: key);
 
   @override
   State<StatefulWidget> createState() => _AiChatPageState();
@@ -210,6 +211,7 @@ class _AiChatPageState extends State<AiChatPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: !widget.embedded,
         title: Text(translate('AI Chat')),
       ),
       body: Column(

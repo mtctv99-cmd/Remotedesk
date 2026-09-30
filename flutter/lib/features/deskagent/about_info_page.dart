@@ -70,7 +70,8 @@ const Map<String, String> _kKeyLabels = {
 // About-info page for DeskAgent: collects host info like the Rust client by
 // running a PowerShell script with the same JSON shape as system_info.rs.
 class AboutInfoPage extends StatefulWidget {
-  const AboutInfoPage({Key? key}) : super(key: key);
+  final bool embedded;
+  const AboutInfoPage({Key? key, this.embedded = false}) : super(key: key);
 
   @override
   State<StatefulWidget> createState() => _AboutInfoPageState();
@@ -137,6 +138,7 @@ class _AboutInfoPageState extends State<AboutInfoPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: !widget.embedded,
         title: Text(translate('About')),
         actions: [
           // Refresh action: spinner replaces the button while loading.
