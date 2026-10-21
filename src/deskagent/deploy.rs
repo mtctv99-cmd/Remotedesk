@@ -156,12 +156,14 @@ fn validate_http_url(url: &str) -> ResultType<Url> {
 }
 
 /// Resolve the Manager base URL from `DESKAGENT_MANAGER_URL`, else the
-/// `deskagent-manager-url` option, else the loopback default.
+/// `deskagent-manager-url` option, else the `api-server` option, else the
+/// loopback default.
 ///
 /// [Note]
-/// The Manager is a separate service from the API server, so it gets its
-/// own option. Reusing `api-server` pointed the daemon at the API host,
-/// where every job poll answered 404.
+/// The Manager serves the api and the admin console on the same port, so a
+/// deployment that points `api-server` at the Manager keeps working. The
+/// dedicated option comes first for the deployments that run the api
+/// somewhere else.
 fn manager_base_url() -> ResultType<Url> {
     let env_url = std::env::var_os(MANAGER_URL_ENV)
         .map(|v| v.to_string_lossy().into_owned())
@@ -169,12 +171,17 @@ fn manager_base_url() -> ResultType<Url> {
     resolve_manager_url(
         &env_url,
         &hbb_common::config::Config::get_option(MANAGER_URL_OPTION),
+        &hbb_common::config::Config::get_option("api-server"),
     )
 }
 
-fn resolve_manager_url(env_url: &str, option_url: &str) -> ResultType<Url> {
+fn resolve_manager_url(env_url: &str, option_url: &str, api_server: &str) -> ResultType<Url> {
     let mut raw = if env_url.trim().is_empty() {
-        option_url.trim().to_owned()
+        if option_url.trim().is_empty() {
+            api_server.trim().to_owned()
+        } else {
+            option_url.trim().to_owned()
+        }
     } else {
         env_url.trim().to_owned()
     };
@@ -206,6 +213,11 @@ fn device_token_path() -> PathBuf {
     manager_file_path("manager_device_token")
 }
 
+/// Path of the client id the Manager bound this client to.
+fn manager_bound_id_path() -> PathBuf {
+    manager_file_path("manager_bound_id")
+}
+
 /// Path of the marker recording that the Manager issues no device token.
 fn token_state_path() -> PathBuf {
     manager_file_path("manager_token_state")
@@ -218,6 +230,27 @@ fn manager_file_path(name: &str) -> PathBuf {
     dir.push("DeskAgent");
     dir.push(name);
     dir
+}
+
+/// The client id the Manager recognises this client as.
+///
+/// [Note]
+/// The Manager keeps one row per machine and binds the device token to it,
+/// so a second instance of the same machine gets a token for the canonical
+/// row. The requests have to use that id, otherwise the Manager refuses
+/// them as a client id mismatch.
+fn manager_bound_id(local_id: &str) -> String {
+    match std::fs::read_to_string(manager_bound_id_path()) {
+        Ok(s) => {
+            let s = s.trim().to_owned();
+            if s.is_empty() {
+                local_id.to_owned()
+            } else {
+                s
+            }
+        }
+        Err(_) => local_id.to_owned(),
+    }
 }
 
 /// Read the persisted device token, or an empty string when unregistered.
@@ -286,6 +319,17 @@ enum Registration {
     NoToken,
 }
 
+/// The stable per-machine identity the Manager uses to recognise this
+/// client again after a reinstall or a new client id.
+///
+/// [Note]
+/// On Windows this is the MachineGuid, exactly the value the Manager
+/// stores. Without it the Manager cannot tell that a register belongs to a
+/// client it already knows and refuses it.
+fn machine_id() -> String {
+    hbb_common::machine_uid::get().unwrap_or_default().trim().to_owned()
+}
+
 /// Register the client with the Manager and persist the device token it
 /// hands back.
 ///
@@ -309,15 +353,30 @@ fn register_client(
         "os": info.os,
         "os_version": info.os_version,
         "arch": info.arch,
+        "version": env!("CARGO_PKG_VERSION"),
+        "machine_id": machine_id(),
     });
     let resp = with_token(agent.post(&url), token)
         .set("Content-Type", "application/json")
         .send_string(&body.to_string())?;
-    let token = resp
+    let answer = resp
         .into_string()
         .ok()
         .and_then(|b| serde_json::from_str::<serde_json::Value>(&b).ok())
-        .and_then(|v| v.get("device_token")?.as_str().map(str::to_owned))
+        .unwrap_or(serde_json::Value::Null);
+    // The Manager may answer with the canonical row it bound this machine
+    // to; the requests have to use that id.
+    if let Some(bound) = answer.get("client_id").and_then(|v| v.as_str()) {
+        if !bound.is_empty() && bound != client_id {
+            if let Err(e) = std::fs::write(manager_bound_id_path(), bound) {
+                log::warn!("failed to persist the manager bound client id: {}", e);
+            }
+        }
+    }
+    let token = answer
+        .get("device_token")
+        .and_then(|v| v.as_str())
+        .map(str::to_owned)
         .unwrap_or_default();
     if token.is_empty() {
         if let Err(e) = std::fs::write(token_state_path(), "no-token") {
@@ -410,6 +469,9 @@ pub fn tick() -> ResultType<()> {
         }
     }
     let token = load_device_token();
+    // The Manager may have bound this machine to another row; the token is
+    // only valid for that row.
+    let client_id = manager_bound_id(&client_id);
     // (a) Inventory + event upload every 20 ticks (10 minutes).
     let n = TICK_COUNT.fetch_add(1, Ordering::Relaxed);
     if n % INVENTORY_INTERVAL_TICKS == 0 {
@@ -464,9 +526,10 @@ fn upload_inventory(agent: &ureq::Agent, base: &Url, client_id: &str, token: &st
         }
     };
     let url = join_path(base, &format!("api/client/{}/events", client_id));
+    let body = serde_json::json!({ "events": events }).to_string();
     if let Err(e) = with_token(agent.post(&url), token)
         .set("Content-Type", "application/json")
-        .send_string(&events)
+        .send_string(&body)
     {
         if is_auth_rejection(&e) {
             NEEDS_REGISTRATION.store(true, Ordering::Relaxed);
@@ -709,24 +772,39 @@ mod test {
 
     #[test]
     fn test_resolve_manager_url() {
-        // No env var and no option: the loopback default. Url::parse
-        // appends a trailing '/' for the empty path.
+        // No env var, no option and no api-server: the loopback default.
+        // Url::parse appends a trailing '/' for the empty path.
         assert_eq!(
-            resolve_manager_url("", "").unwrap().as_str(),
+            resolve_manager_url("", "", "").unwrap().as_str(),
             "http://127.0.0.1:8080/"
         );
         // A deployed client points at a remote Manager through the
         // `deskagent-manager-url` option; the daemon must follow it
         // instead of dialing loopback.
         assert_eq!(
-            resolve_manager_url("", "http://192.168.232.129:8080")
+            resolve_manager_url("", "http://192.168.232.129:8080", "")
                 .unwrap()
                 .as_str(),
             "http://192.168.232.129:8080/"
         );
+        // A deployment that runs the api and the Manager on the same port
+        // points `api-server` at it; that keeps working.
+        assert_eq!(
+            resolve_manager_url("", "", "http://192.168.232.129:8080")
+                .unwrap()
+                .as_str(),
+            "http://192.168.232.129:8080/"
+        );
+        // The dedicated option wins over the api server.
+        assert_eq!(
+            resolve_manager_url("", "http://manager:8080", "http://api:21116")
+                .unwrap()
+                .as_str(),
+            "http://manager:8080/"
+        );
         // The env var still wins over the option.
         assert_eq!(
-            resolve_manager_url("http://10.0.0.5:9000", "http://192.168.232.129:8080")
+            resolve_manager_url("http://10.0.0.5:9000", "http://192.168.232.129:8080", "")
                 .unwrap()
                 .as_str(),
             "http://10.0.0.5:9000/"

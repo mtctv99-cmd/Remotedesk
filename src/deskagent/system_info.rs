@@ -79,19 +79,112 @@ pub fn collect_system_info() -> ResultType<String> {
     }
 }
 
+/// One event record, in the shape the Manager stores.
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
+pub struct EventEntry {
+    /// The log the record came from: "system" or "application".
+    pub source: String,
+    /// The record text as wevtutil rendered it.
+    pub text: String,
+    /// Unix epoch seconds of the record.
+    pub created_at: i64,
+}
+
+/// The longest event text kept for one record.
+const MAX_EVENT_TEXT: usize = 300;
+
 /// Collect recent critical/error/warning events from the Windows event
-/// logs as `{"system": "<text>", "application": "<text>"}`.
+/// logs in the shape the Manager stores.
 ///
 /// [Note]
 /// Two wevtutil queries, no shell involved. A failed query is logged and
 /// reported as "error: ..." in its channel text so the daemon never
 /// breaks on event collection.
-pub fn collect_events() -> ResultType<String> {
-    Ok(serde_json::json!({
-        "system": query_event_log("System"),
-        "application": query_event_log("Application"),
-    })
-    .to_string())
+pub fn collect_events() -> ResultType<Vec<EventEntry>> {
+    let mut events = Vec::new();
+    for (source, log_name) in [("system", "System"), ("application", "Application")] {
+        events.extend(parse_event_log(source, &query_event_log(log_name)));
+    }
+    Ok(events)
+}
+
+/// Split one wevtutil text log into records.
+///
+/// [Note]
+/// The text format writes "Event[N]:" before every record, then the
+/// fields of the record one per line, with the description last.
+fn parse_event_log(source: &str, text: &str) -> Vec<EventEntry> {
+    let mut events = Vec::new();
+    for record in text.split("Event[") {
+        let record = record.trim_start_matches(|c: char| c.is_ascii_digit() || c == ']');
+        let record = record.trim_start_matches(':');
+        if record.trim().is_empty() {
+            continue;
+        }
+        let created_at = record
+            .lines()
+            .find_map(|line| parse_event_time(line.trim()))
+            .unwrap_or_else(now_secs);
+        events.push(EventEntry {
+            source: source.to_owned(),
+            text: describe_event(record),
+            created_at,
+        });
+    }
+    events
+}
+
+/// Parse the date field of a wevtutil record.
+///
+/// [Note]
+/// The field is RFC 3339, for example "2026-10-21T11:06:33.0380000Z".
+fn parse_event_time(line: &str) -> Option<i64> {
+    let value = line.strip_prefix("Date:")?.trim();
+    chrono::DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|dt| dt.timestamp())
+}
+
+/// A readable one-line summary of a record.
+fn describe_event(record: &str) -> String {
+    let mut id = String::new();
+    let mut level = String::new();
+    let mut description = String::new();
+    let mut in_description = false;
+    for line in record.lines() {
+        let trimmed = line.trim();
+        if in_description {
+            if !trimmed.is_empty() {
+                description = trimmed.to_owned();
+                break;
+            }
+            continue;
+        }
+        if let Some(v) = trimmed.strip_prefix("Event ID:") {
+            id = v.trim().to_owned();
+        } else if let Some(v) = trimmed.strip_prefix("Level:") {
+            level = v.trim().to_owned();
+        } else if trimmed == "Description:" {
+            in_description = true;
+        }
+    }
+    let mut summary = format!("Event {id} ({level})");
+    if !description.is_empty() {
+        summary.push_str(": ");
+        summary.push_str(&description);
+    }
+    if summary.len() > MAX_EVENT_TEXT {
+        summary.truncate(MAX_EVENT_TEXT);
+    }
+    summary
+}
+
+/// The current unix epoch seconds.
+fn now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 /// Map a `collect_system_info` payload onto [`SystemInfo`].
@@ -268,5 +361,40 @@ mod test {
         assert!(args.contains(&"/rd:true".to_owned()));
         assert!(args.contains(&"/f:text".to_owned()));
         assert_eq!(args.len(), 6);
+    }
+
+    #[test]
+    fn test_parse_event_log_splits_records() {
+        let text = "Event[0]:\n  Log Name: System\n  Source: Microsoft-Windows-DistributedCOM\n\
+                    \x20 Date: 2026-10-21T11:06:33.0380000Z\n  Event ID: 10016\n  Level: Warning\n\
+                    \x20 Description: \nThe machine-default permission settings do not grant access\n";
+        let events = parse_event_log("system", text);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].source, "system");
+        assert_eq!(events[0].created_at, 1792580793);
+        assert!(events[0].text.starts_with("Event 10016 (Warning)"));
+        assert!(events[0].text.contains("machine-default permission"));
+    }
+
+    #[test]
+    fn test_parse_event_log_reads_every_record() {
+        let text = "Event[0]:\n  Date: 2026-10-21T11:06:33.0380000Z\n  Event ID: 1\n  Level: Error\n\
+                    \x20 Description: \nfirst\n\nEvent[1]:\n  Date: 2026-10-21T10:39:34.7900000Z\n\
+                    \x20 Event ID: 2\n  Level: Warning\n  Description: \nsecond\n";
+        let events = parse_event_log("system", text);
+        assert_eq!(events.len(), 2);
+        assert!(events[0].text.contains("first"));
+        assert!(events[1].text.contains("second"));
+        assert!(events[1].created_at < events[0].created_at);
+    }
+
+    #[test]
+    fn test_parse_event_time_ignores_a_header_line() {
+        assert_eq!(parse_event_time("System"), None);
+        assert_eq!(parse_event_time("Event ID: 7036"), None);
+        assert_eq!(
+            parse_event_time("Date: 2026-10-21T11:06:33.0380000Z"),
+            Some(1792580793)
+        );
     }
 }
