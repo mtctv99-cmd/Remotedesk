@@ -21,7 +21,7 @@ Bạn tiếp tục dự án **DeskAgent** — gồm **hai sản phẩm độc l�
 > giữ attribution "Based on RustDesk (AGPL-3.0)". Chỉ `deskagent-clean` là của bạn hoàn toàn.
 > Chi tiết: `docs/OWNERSHIP.md`, `docs/PROJECT_STATUS.md`.
 
-**Điểm số chuẩn hoá hiện hành: Rust = 54/100 (2026-10-21).** Đọc
+**Điểm số chuẩn hoá hiện hành: Rust = 57/100 (2026-10-21).** Đọc
 `docs/PROJECT_STATUS.md` — đó là nguồn duy nhất, đừng tự ghi con số khác.
 
 ---
@@ -65,15 +65,15 @@ Bạn tiếp tục dự án **DeskAgent** — gồm **hai sản phẩm độc l�
 - **4 tính năng riêng** trong `src/deskagent/`: System Info (PowerShell CIM), Event Viewer
   (wevtutil), Deploy daemon (poll Manager mỗi 30s, silent install dưới SYSTEM),
   AI Chat (gọi Manager API + `X-Device-Token`). Widget mode 380×560 góc dưới phải.
-- **Manager** (`manager/` — axum + rusqlite + ureq): auth admin + per-device token (fail-closed),
-  SSRF guard AI proxy, server key bắt buộc qua env `DESKAGENT_SERVER_PRIVKEY`,
-  trust anchor deploy riêng `deskagent-deploy-pubkey`, chữ ký job gồm `package_path`.
-  > **Đoạn trên mô tả trạng thái MONG MUỐN, không phải trạng thái hiện tại.**
-  > Đối chiếu mã nguồn 2026-10-21: `admin_routes()` **không có middleware xác thực**,
-  > `register_client` trả `{"ok":true}` và **không phát hành `device_token`**, không có
-  > `DESKAGENT_SERVER_PRIVKEY`, không có ký job, không có trust anchor deploy.
-  > Hệ quả: `POST /api/admin/jobs` không cần credential, Manager bind `0.0.0.0:8080`,
-  > client thực thi `silent_cmd` ⇒ **RCE qua LAN**. Xem `docs/PROJECT_STATUS.md` §7 — P0.
+- **Manager** (`manager/` — axum + rusqlite + ureq): **đã có** admin token
+  (`DESKAGENT_MANAGER_ADMIN_TOKEN`, fail-closed → 403 khi thiếu) cho mọi route
+  `/api/admin/*`; **đã có** device token theo từng client — `register_client` cấp
+  token 32 byte, Manager lưu hash SHA-256, client gửi `X-Device-Token`;
+  `POST /api/admin/clients/:id/reset-token` để mở lại client mất token;
+  bind mặc định `127.0.0.1:8080`; SSRF guard AI proxy; console web có ô nhập
+  admin token (lưu trong `sessionStorage`).
+  > **Còn thiếu:** ký Ed25519 cho job + trust anchor `deskagent-deploy-pubkey`;
+  > HTTPS cho Manager nếu bind ra ngoài loopback. Xem `docs/PROJECT_STATUS.md` §7.
 - **Token thiết bị của Manager** được bọc DPAPI trên Windows, quyền 0600 ngoài Windows
   (`src/deskagent/secret.rs`). Manager dùng option riêng `deskagent-manager-url` —
   **không** dùng `api-server` (đó là host API, không phải Manager).
@@ -126,14 +126,14 @@ Bạn tiếp tục dự án **DeskAgent** — gồm **hai sản phẩm độc l�
 
 ## 4. Công việc ưu tiên tiếp theo
 
-0. **[P0 — BẢO MẬT] Đóng đường RCE qua Manager.** `admin_routes()` không có xác thực
-   và Manager bind `0.0.0.0:8080`. Thêm admin token lấy từ env
-   `DESKAGENT_MANAGER_ADMIN_TOKEN`, fail-closed khi env thiếu, đặt trên mọi route
-   `/api/admin/*`; phát hành `device_token` lúc `register_client` và kiểm tra
-   `X-Device-Token` trên `/api/client/*`; đổi `DESKAGENT_MANAGER_BIND` mặc định thành
-   `127.0.0.1`. Chi tiết + khai thác: `docs/PROJECT_STATUS.md` §7.
-   *Phối hợp:* chuyển fail-closed sẽ làm fleet hiện tại ngừng đăng ký cho tới khi đặt env,
-   nên deploy lại image Manager trên VM .129 cùng lúc.
+0. **[P1 — BẢO MẬT] Ký job + HTTPS cho Manager.** Admin token và device token đã
+   đóng được đường RCE qua LAN (2026-10-21), nhưng job **chưa được ký**: một MITM
+   trên đường mạng vẫn chèn được job nếu Manager chạy qua HTTP thay vì HTTPS.
+   Việc cần làm: ký Ed25519 cho job + trust anchor `deskagent-deploy-pubkey`, và
+   bắt buộc TLS khi `DESKAGENT_MANAGER_BIND` không còn là loopback.
+   Chi tiết: `docs/PROJECT_STATUS.md` §7.3.
+   *Phối hợp:* deploy lại image Manager trên VM .129 sau khi đặt
+   `DESKAGENT_MANAGER_ADMIN_TOKEN` (xem §7.4).
 1. **Vendor 50 git dep `rustdesk-org`** → crates.io nếu version khớp, ngược lại copy từ
    cargo git cache vào `vendor/<tên>/` rồi đổi sang path dep. Giữ nguyên revision.
    Gate: `cargo check --locked --lib --features flutter` pass. Đây là việc rẻ nhất và mở

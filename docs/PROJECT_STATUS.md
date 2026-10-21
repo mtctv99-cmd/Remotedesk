@@ -33,7 +33,7 @@ DeskAgent gồm **hai sản phẩm độc lập**, mục tiêu thương mại h�
 
 | Nhánh | Điểm Strict-DoD | Ngày chốt | Nguồn |
 |---|---|---|---|
-| **Rust (`DeskAgent/`)** | **54/100** | 2026-10-21 | `docs/INDEPENDENT_AUDIT_REPORT_2026-10-09.md` (bản DRAFT) |
+| **Rust (`DeskAgent/`)** | **57/100** | 2026-10-21 | `docs/INDEPENDENT_AUDIT_REPORT_2026-10-09.md` (bản DRAFT) |
 | **Go (`deskagent-clean/`)** | **không chấm theo Strict-DoD** | — | `deskagent-clean/AUDIT_P0_P4.md` (P0–P4 nghiệm thu thực tế trên VM) |
 
 **Ngưỡng đạt** theo `docs/STRICT_DOD_RUBRIC.md`: ≥ 85/100, không chiều nào < 5/10,
@@ -48,7 +48,7 @@ Nhánh Rust hiện **chưa đạt** (thiếu 28 điểm; 3 chiều ở mức 4/1
 | 2026-10-07 | 38/100 | `docs/SESSION_PROGRESS_2026-10-07.md` |
 | 2026-10-08 | ~55/100 | `docs/SESSION_PROGRESS_2026-10-08.md` (ước lượng, không có bảng điểm chi tiết) |
 | 2026-10-09 | ~~100/100~~ | `docs/INDEPENDENT_AUDIT_REPORT_2026-10-09.md` — **đã bị bác bỏ**, xem mục 4 của bản DRAFT |
-| **2026-10-21** | **54/100** | **Hiện hành.** Đối chiếu từng claim với cây mã nguồn thật |
+| **2026-10-21** | **57/100** | **Hiện hành.** Đối chiếu từng claim với cây mã nguồn thật |
 
 ---
 
@@ -105,69 +105,84 @@ Nhánh Rust hiện **chưa đạt** (thiếu 28 điểm; 3 chiều ở mức 4/1
 
 ---
 
-## 7. 🔴 Lỗ hổng bảo mật đã biết — chưa sửa
+## 7. 🔒 Lỗ hổng bảo mật — đã đóng ngày 2026-10-21
 
-> Phát hiện 2026-10-21 trong lúc đối chiếu claim của tài liệu với mã nguồn.
-> **Xếp cao hơn mọi việc kể trên.**
+> Phát hiện trong lúc đối chiếu claim của tài liệu với mã nguồn. Đã sửa ở commit
+> `fix(manager): require an admin token and a device token`. Bên dưới là bản ghi
+> lại để không mất dấu vết.
 
-### 7.1 Manager không có bất kỳ cơ chế xác thực nào → RCE qua mạng LAN
+### 7.1 ~~Manager không có bất kỳ cơ chế xác thực nào → RCE qua mạng LAN~~ **ĐÃ ĐÓNG**
 
-**Chuỗi tấn công:**
+**Chuỗi tấn công đã chặn:**
 
-1. Manager bind `0.0.0.0:8080` mặc định (`manager/src/main.rs:42`,
-   `DESKAGENT_MANAGER_BIND`) và `deploy/docker-compose.yml:44` map `8080:8080`.
-   Comment trong compose tự thừa nhận: *"CHUA co auth - chi LAN/VPN!"*.
-2. `manager/src/routes.rs` — `admin_routes()` **không có middleware xác thực**:
-   `POST /api/admin/jobs` nhận `JobIn { client_id, package_url, package_path, silent_cmd }`
-   và ghi thẳng vào DB.
-3. Client (`src/deskagent/deploy.rs`) poll `GET /api/client/{id}/jobs` mỗi 30 giây và
-   **thực thi `silent_cmd`** — theo tài liệu là dưới quyền SYSTEM.
+1. ~~Manager bind `0.0.0.0:8080` mặc định~~ → mặc định nay là `127.0.0.1:8080`;
+   container Docker đặt tường minh `DESKAGENT_MANAGER_BIND=0.0.0.0:8080`.
+2. ~~`admin_routes()` không có middleware xác thực~~ → nay có `require_admin`,
+   đọc `DESKAGENT_MANAGER_ADMIN_TOKEN` từ header `X-Admin-Token`.
+3. ~~`POST /api/admin/jobs` nhận `silent_cmd` tùy ý~~ → nay trả **401** nếu thiếu
+   hoặc sai token.
 
-**Khai thác (không cần credential):**
+**Thay đổi:**
+
+| Hạng mục | Trước | Sau |
+|---|---|---|
+| Admin API | không auth | `X-Admin-Token`, **fail-closed** khi env thiếu → 403 |
+| `/api/client/*` | không auth | `X-Device-Token`, kiểm tra theo hash của client đó |
+| `POST /api/client/register` | không token, ai cũng chiếm được id | client mới → cấp token; client cũ → phải có token hiện tại, nếu không → **409** |
+| `/api/conversations/*` | không auth | yêu cầu device token của client sở hữu hội thoại |
+| Lưu trữ token | — | chỉ lưu **SHA-256 hash**; bản rõ nằm trong file client, bọc DPAPI |
+| Reset token | không có | `POST /api/admin/clients/:id/reset-token` |
+| Console web | không gửi gì | ô nhập admin token, lưu trong `sessionStorage` của tab |
+
+**Kiểm chứng end-to-end** (Manager chạy thật, 14 test):
+
+| Tình huống | Trước | Sau |
+|---|---|---|
+| `POST /api/admin/jobs` không token | **200 → RCE** | **401** |
+| `GET /api/admin/clients` không token | 200 (rò inventory) | **401** |
+| `GET /api/admin/clients` token sai | 200 | **401** |
+| `GET /api/admin/clients` token đúng | 200 | 200 |
+| `POST /api/client/{id}/inventory` không device token | 200 | **401** |
+| `POST /api/client/{id}/inventory` token của client khác | 200 | **401** |
+| `POST /api/client/register` lại id đã có, không token | **200 (chiếm id)** | **409** |
+| `POST /api/client/register` lại id đã có, có token | – | 200 (xoay token) |
+| Manager không có env token | 200 | **403** |
+
+### 7.2 ~~Model "device token" chưa được Manager hiện thực~~ **ĐÃ ĐÓNG**
+
+`POST /api/client/register` nay trả `device_token` (32 byte từ CSPRNG của SQLite),
+Manager lưu hash SHA-256, client Rust nhận và bọc DPAPI
+(`src/deskagent/secret.rs`). Khi Manager từ chối 401/403, client tự đăng ký lại
+kèm token hiện tại.
+
+### 7.3 Còn mở
+
+| Hạng mục | Ghi chú |
+|---|---|
+| **Job không được ký** | `src/deskagent/deploy.rs` chưa xác minh chữ ký. Admin token + device token chặn được kẻ tấn công mạng, nhưng một MITM trên đường mạt vẫn chèn được job nếu Manager chạy qua HTTP thay vì HTTPS. |
+| **Chưa có HTTPS** | Manager dùng HTTP thuần. Với `DESKAGENT_MANAGER_BIND=127.0.0.1` thì chỉ loopback là an toàn; nếu mở ra ngoài LAN thì phải bọc TLS. |
+| **Chưa ký Authenticode** | Không có `signtool` trong `scripts/`. |
+| **Trust anchor deploy** | `docs/archive/deploy_pubkey.txt` có khoá, nhưng Manager không dùng nó. Cần ký Ed25519 cho job. |
+
+### 7.4 Việc cần làm khi triển khai lại
 
 ```bash
-curl -X POST http://<manager-host>:8080/api/admin/jobs \
-  -H 'Content-Type: application/json' \
-  -d '{"client_id":"<id>","name":"poc","silent_cmd":"calc.exe"}'
+# 1. Sinh admin token
+openssl rand -hex 32
+
+# 2. Đặt vào .env của docker compose
+echo "DESKAGENT_MANAGER_ADMIN_TOKEN=<token vừa sinh>" >> .env
+
+# 3. Deploy lại image Manager (image trên VM .129 đang cũ)
+docker compose up -d --build deskagent-manager
+
+# 4. Mở console, dán token vào ô "Admin token"
 ```
 
-Kết quả: lệnh chạy trên mọi client đang poll Manager.
-
-**Các endpoint khác cũng không có auth:**
-
-| Endpoint | Tác động |
-|---|---|
-| `GET /api/admin/clients` | rò toàn bộ inventory máy khách |
-| `GET /api/admin/clients/:id/inventory` | rò chi tiết hệ thống |
-| `POST /api/client/{id}/inventory` | ghi dữ liệu giả vào bất kỳ client nào |
-| `GET /api/client/{id}/jobs` | đọc job của bất kỳ client nào |
-| `POST /api/conversations` | chèn hội thoại vào luồng AI chat |
-
-### 7.2 Model "device token" chưa được Manager hiện thực
-
-`POST /api/client/register` trả `{"ok": true}` và **không phát hành `device_token`**.
-Client Rust đã hỗ trợ gửi `X-Device-Token` (commit `4ae37e46f`) nhưng phía Manager
-chưa kiểm tra header đó. Tài liệu mô tả *"per-device token (fail-closed)"* là mô tả
-trạng thái mong muốn, không phải trạng thái hiện tại.
-
-### 7.3 Job không được ký
-
-`src/deskagent/deploy.rs` không có mã xác minh chữ ký (không `ed25519`, không `verify`).
-Tài liệu nói *"chữ ký job bao gồm `package_path`"* và *"trust anchor deploy riêng
-`deskagent-deploy-pubkey`"* — cả hai **không có trong mã nguồn**.
-Kể cả khi thêm admin token, một MITM trên đường mạng vẫn có thể chèn job nếu
-Manager chạy qua HTTP thay vì HTTPS.
-
-### 7.4 Việc cần làm
-
-| Ưu tiên | Hạng mục |
-|---|---|
-| **P0** | Admin token cho `admin_routes()` — lấy từ env `DESKAGENT_MANAGER_ADMIN_TOKEN`, **fail-closed** khi env thiếu, đặt trên mọi route `/api/admin/*` |
-| **P0** | Phát hành `device_token` lúc `register_client`, lưu hash trong DB, kiểm tra `X-Device-Token` trên `/api/client/*` |
-| **P0** | `DESKAGENT_MANAGER_BIND` mặc định `127.0.0.1` thay vì `0.0.0.0` |
-| P1 | Ký Ed25519 cho job + trust anchor `deskagent-deploy-pubkey` |
-| P1 | Bắt buộc HTTPS cho Manager khi nó không còn bind loopback |
-
-> **Lưu ý về triển khai:** chuyển sang fail-closed sẽ làm fleet hiện tại ngừng
-> đăng ký cho tới khi toán tử đặt env. Cần phối hợp với việc deploy lại image
-> Manager trên VM .129 (image đang chạy đã cũ sẵn).
+> **Hệ quả vận hành:** client đang chạy với Manager cũ sẽ nhận 401 → tự đăng ký lại
+> → nhận token mới. Nếu client cũ đã lưu token của Manager cũ (chưa có), nó
+> đăng ký lại bình thường. Không cần thao tác tay phía client.
+>
+> **Client có token cũ nhưng Manager đã bị reset DB:** client sẽ bị 409. Dùng
+> `POST /api/admin/clients/{id}/reset-token` để mở lại, client đăng ký lại ở lượt
+> tick kế tiếp (tối đa 1h do backoff).
