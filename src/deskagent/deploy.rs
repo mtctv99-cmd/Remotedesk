@@ -3,23 +3,38 @@ use serde_derive::{Deserialize, Serialize};
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::time::Duration;
 use url::{Host, Url};
 use uuid::Uuid;
 
+use super::secret;
+
 /// Environment variable overriding the Manager base URL.
 const MANAGER_URL_ENV: &str = "DESKAGENT_MANAGER_URL";
-/// Manager base URL used when the env var is unset. The Manager runs
-/// locally, so the loopback default is expected here.
+/// Option key holding the Manager base URL.
+const MANAGER_URL_OPTION: &str = "deskagent-manager-url";
+/// Manager base URL used when the env var and the option are unset. The
+/// Manager runs locally, so the loopback default is expected here.
 const DEFAULT_MANAGER_URL: &str = "http://127.0.0.1:8080";
 /// Ticks (30s each) between inventory/event uploads: 20 x 30s = 10 min.
 const INVENTORY_INTERVAL_TICKS: u32 = 20;
 /// Cap on the command output posted back per job.
 const MAX_OUTPUT_LEN: usize = 32 * 1024;
+/// Delay before the first registration retry, doubled per failure.
+const REGISTER_BACKOFF_BASE_SECS: u64 = 60;
+/// Upper bound of the registration retry delay.
+const REGISTER_BACKOFF_MAX_SECS: u64 = 3600;
 
 /// Counts `tick` calls so inventory uploads run every 10 minutes.
 static TICK_COUNT: AtomicU32 = AtomicU32::new(0);
+/// Set when the Manager rejected the stored token, so the next tick
+/// registers again before polling.
+static NEEDS_REGISTRATION: AtomicBool = AtomicBool::new(false);
+/// Consecutive failed registrations.
+static REGISTER_FAILURES: AtomicU32 = AtomicU32::new(0);
+/// Earliest unix time (seconds) of the next registration attempt.
+static NEXT_REGISTER_AT: AtomicU64 = AtomicU64::new(0);
 
 /// A deploy job advertised by the Manager.
 #[derive(Debug, PartialEq, Default, Serialize, Deserialize, Clone)]
@@ -140,12 +155,29 @@ fn validate_http_url(url: &str) -> ResultType<Url> {
     Ok(parsed)
 }
 
-/// Resolve the Manager base URL from `DESKAGENT_MANAGER_URL`.
+/// Resolve the Manager base URL from `DESKAGENT_MANAGER_URL`, else the
+/// `deskagent-manager-url` option, else the loopback default.
+///
+/// [Note]
+/// The Manager is a separate service from the API server, so it gets its
+/// own option. Reusing `api-server` pointed the daemon at the API host,
+/// where every job poll answered 404.
 fn manager_base_url() -> ResultType<Url> {
-    let raw = std::env::var_os(MANAGER_URL_ENV)
+    let env_url = std::env::var_os(MANAGER_URL_ENV)
         .map(|v| v.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let mut raw = raw.trim().to_owned();
+    resolve_manager_url(
+        &env_url,
+        &hbb_common::config::Config::get_option(MANAGER_URL_OPTION),
+    )
+}
+
+fn resolve_manager_url(env_url: &str, option_url: &str) -> ResultType<Url> {
+    let mut raw = if env_url.trim().is_empty() {
+        option_url.trim().to_owned()
+    } else {
+        env_url.trim().to_owned()
+    };
     if raw.is_empty() {
         raw = DEFAULT_MANAGER_URL.to_owned();
     }
@@ -166,12 +198,53 @@ fn manager_agent() -> ureq::Agent {
 
 /// Path of the persisted Manager client id.
 fn client_id_path() -> PathBuf {
+    manager_file_path("manager_client_id")
+}
+
+/// Path of the persisted per-client Manager token, issued at registration.
+fn device_token_path() -> PathBuf {
+    manager_file_path("manager_device_token")
+}
+
+/// Path of the marker recording that the Manager issues no device token.
+fn token_state_path() -> PathBuf {
+    manager_file_path("manager_token_state")
+}
+
+fn manager_file_path(name: &str) -> PathBuf {
     let mut dir = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir);
     dir.push("DeskAgent");
-    dir.push("manager_client_id");
+    dir.push(name);
     dir
+}
+
+/// Read the persisted device token, or an empty string when unregistered.
+fn load_device_token() -> String {
+    secret::read_secret(&device_token_path()).unwrap_or_default()
+}
+
+/// Whether the Manager is known not to issue device tokens.
+///
+/// [Note]
+/// Recorded once, when a registration answered without a token. Without
+/// it the client would re-register on every tick, because the token stays
+/// empty forever.
+fn manager_issues_no_tokens() -> bool {
+    std::fs::read_to_string(token_state_path())
+        .map(|s| s.trim() == "no-token")
+        .unwrap_or(false)
+}
+
+/// Attach the device token when the Manager issued one. The token is
+/// optional: a Manager that does not require it ignores the header.
+fn with_token(req: ureq::Request, token: &str) -> ureq::Request {
+    if token.is_empty() {
+        req
+    } else {
+        req.set("X-Device-Token", token)
+    }
 }
 
 /// Load the persisted client id, or generate + persist a new uuid v4.
@@ -191,7 +264,11 @@ fn load_or_create_client_id() -> (String, bool) {
     let id = Uuid::new_v4().to_string();
     if let Some(parent) = path.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
-            log::warn!("failed to create the DeskAgent data dir {:?}: {}", parent, e);
+            log::warn!(
+                "failed to create the DeskAgent data dir {:?}: {}",
+                parent,
+                e
+            );
         }
     }
     if let Err(e) = std::fs::write(&path, &id) {
@@ -200,8 +277,23 @@ fn load_or_create_client_id() -> (String, bool) {
     (id, true)
 }
 
-/// Register a freshly generated client id with the Manager.
-fn register_client(agent: &ureq::Agent, base: &Url, client_id: &str) -> ResultType<()> {
+/// What the Manager answered when the client registered.
+#[derive(Debug, PartialEq)]
+enum Registration {
+    /// The Manager issued a device token; it has been persisted.
+    TokenIssued,
+    /// The Manager does not use device tokens.
+    NoToken,
+}
+
+/// Register the client with the Manager and persist the device token it
+/// hands back.
+///
+/// [Note]
+/// The answer decides whether the client has to register again: a
+/// Manager that issues no token is recorded once, so an install without a
+/// token does not re-register on every tick.
+fn register_client(agent: &ureq::Agent, base: &Url, client_id: &str) -> ResultType<Registration> {
     let info = super::system_info::collect()?;
     let url = join_path(base, "api/client/register");
     let body = serde_json::json!({
@@ -211,11 +303,73 @@ fn register_client(agent: &ureq::Agent, base: &Url, client_id: &str) -> ResultTy
         "os_version": info.os_version,
         "arch": info.arch,
     });
-    agent
+    let resp = agent
         .post(&url)
         .set("Content-Type", "application/json")
         .send_string(&body.to_string())?;
-    Ok(())
+    let token = resp
+        .into_string()
+        .ok()
+        .and_then(|b| serde_json::from_str::<serde_json::Value>(&b).ok())
+        .and_then(|v| v.get("device_token")?.as_str().map(str::to_owned))
+        .unwrap_or_default();
+    if token.is_empty() {
+        if let Err(e) = std::fs::write(token_state_path(), "no-token") {
+            log::warn!("failed to record the manager token state: {}", e);
+        }
+        return Ok(Registration::NoToken);
+    }
+    if let Err(e) = secret::write_secret(&device_token_path(), &token) {
+        bail!("failed to persist the manager device token: {}", e);
+    }
+    // The Manager issues tokens again, so the earlier marker is stale.
+    let _ = std::fs::remove_file(token_state_path());
+    Ok(Registration::TokenIssued)
+}
+
+/// Delay before the next registration attempt, doubling per failure.
+fn register_backoff_secs(failures: u32) -> u64 {
+    let shift = failures.saturating_sub(1).min(6);
+    REGISTER_BACKOFF_BASE_SECS
+        .saturating_mul(1u64 << shift)
+        .min(REGISTER_BACKOFF_MAX_SECS)
+}
+
+/// The current unix time in seconds.
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// Whether a registration attempt is due.
+fn register_due() -> bool {
+    unix_now() >= NEXT_REGISTER_AT.load(Ordering::Relaxed)
+}
+
+/// Whether the client still has to register with the Manager.
+///
+/// [Note]
+/// A new client id always needs one. An install that already has an id
+/// needs one when the Manager rejected its token, or when the Manager
+/// issues tokens but the stored one is gone. A Manager that does not
+/// issue tokens is recorded once, so the client does not re-register on
+/// every tick.
+fn needs_registration(is_new: bool, token: &str) -> bool {
+    if !register_due() {
+        return false;
+    }
+    if is_new {
+        return true;
+    }
+    if NEEDS_REGISTRATION.swap(false, Ordering::Relaxed) {
+        return true;
+    }
+    if !token.is_empty() {
+        return false;
+    }
+    !manager_issues_no_tokens()
 }
 
 /// Run one daemon cycle: upload inventory/events every 10 minutes and
@@ -229,29 +383,53 @@ pub fn tick() -> ResultType<()> {
     let agent = manager_agent();
     let base = manager_base_url()?;
     let (client_id, is_new) = load_or_create_client_id();
-    if is_new {
-        if let Err(e) = register_client(&agent, &base, &client_id) {
-            log::warn!("manager registration failed: {}", e);
+    if needs_registration(is_new, &load_device_token()) {
+        match register_client(&agent, &base, &client_id) {
+            Ok(Registration::TokenIssued) | Ok(Registration::NoToken) => {
+                REGISTER_FAILURES.store(0, Ordering::Relaxed);
+                NEXT_REGISTER_AT.store(0, Ordering::Relaxed);
+            }
+            Err(e) => {
+                let failures = REGISTER_FAILURES.fetch_add(1, Ordering::Relaxed) + 1;
+                let delay = register_backoff_secs(failures);
+                NEXT_REGISTER_AT.store(unix_now() + delay, Ordering::Relaxed);
+                log::error!(
+                    "manager registration failed ({} in a row), retrying in {}s: {}",
+                    failures,
+                    delay,
+                    e
+                );
+            }
         }
     }
+    let token = load_device_token();
     // (a) Inventory + event upload every 20 ticks (10 minutes).
     let n = TICK_COUNT.fetch_add(1, Ordering::Relaxed);
     if n % INVENTORY_INTERVAL_TICKS == 0 {
-        upload_inventory(&agent, &base, &client_id);
+        upload_inventory(&agent, &base, &client_id, &token);
     }
     // (b) Job poll on every tick.
-    let jobs = fetch_jobs(&agent, &base, &client_id)?;
+    let jobs = fetch_jobs(&agent, &base, &client_id, &token)?;
     for job in jobs {
         if !job.status.eq_ignore_ascii_case("pending") {
             continue;
         }
-        process_job(&agent, &base, &client_id, &job);
+        process_job(&agent, &base, &client_id, &token, &job);
     }
     Ok(())
 }
 
+/// Whether a Manager answer rejected the credential.
+///
+/// [Note]
+/// A rejected token is remembered so the next tick registers again
+/// instead of polling with a credential that can never work.
+fn is_auth_rejection(e: &ureq::Error) -> bool {
+    matches!(e, ureq::Error::Status(401, _) | ureq::Error::Status(403, _))
+}
+
 /// POST the system inventory and the event logs to the Manager.
-fn upload_inventory(agent: &ureq::Agent, base: &Url, client_id: &str) {
+fn upload_inventory(agent: &ureq::Agent, base: &Url, client_id: &str, token: &str) {
     let inv = match super::system_info::collect_system_info() {
         Ok(v) => v,
         Err(e) => {
@@ -260,12 +438,16 @@ fn upload_inventory(agent: &ureq::Agent, base: &Url, client_id: &str) {
         }
     };
     let url = join_path(base, &format!("api/client/{}/inventory", client_id));
-    if let Err(e) = agent
-        .post(&url)
+    if let Err(e) = with_token(agent.post(&url), token)
         .set("Content-Type", "application/json")
         .send_string(&inv)
     {
-        log::warn!("inventory upload failed: {}", e);
+        if is_auth_rejection(&e) {
+            NEEDS_REGISTRATION.store(true, Ordering::Relaxed);
+            log::error!("the manager rejected the device token on the inventory upload");
+        } else {
+            log::warn!("inventory upload failed: {}", e);
+        }
     }
     let events = match super::system_info::collect_events() {
         Ok(v) => v,
@@ -275,19 +457,35 @@ fn upload_inventory(agent: &ureq::Agent, base: &Url, client_id: &str) {
         }
     };
     let url = join_path(base, &format!("api/client/{}/events", client_id));
-    if let Err(e) = agent
-        .post(&url)
+    if let Err(e) = with_token(agent.post(&url), token)
         .set("Content-Type", "application/json")
         .send_string(&events)
     {
-        log::warn!("event upload failed: {}", e);
+        if is_auth_rejection(&e) {
+            NEEDS_REGISTRATION.store(true, Ordering::Relaxed);
+            log::error!("the manager rejected the device token on the event upload");
+        } else {
+            log::warn!("event upload failed: {}", e);
+        }
     }
 }
 
 /// GET the job list from the Manager.
-fn fetch_jobs(agent: &ureq::Agent, base: &Url, client_id: &str) -> ResultType<Vec<DeployJob>> {
+fn fetch_jobs(
+    agent: &ureq::Agent,
+    base: &Url,
+    client_id: &str,
+    token: &str,
+) -> ResultType<Vec<DeployJob>> {
     let url = join_path(base, &format!("api/client/{}/jobs", client_id));
-    let body = agent.get(&url).call()?.into_string()?;
+    let body = match with_token(agent.get(&url), token).call() {
+        Ok(resp) => resp.into_string()?,
+        Err(e) if is_auth_rejection(&e) => {
+            NEEDS_REGISTRATION.store(true, Ordering::Relaxed);
+            bail!("the manager rejected the device token");
+        }
+        Err(e) => return Err(e.into()),
+    };
     // Accept either {"jobs": [...]} or a bare [...] response.
     let jobs = if let Ok(resp) = serde_json::from_str::<JobsResponse>(&body) {
         resp.jobs
@@ -303,7 +501,7 @@ fn fetch_jobs(agent: &ureq::Agent, base: &Url, client_id: &str) -> ResultType<Ve
 /// Any error becomes a `failed` result POST; a failed result POST is
 /// only logged. Never returns `Err` so one bad job cannot break the
 /// tick loop.
-fn process_job(agent: &ureq::Agent, base: &Url, client_id: &str, job: &DeployJob) {
+fn process_job(agent: &ureq::Agent, base: &Url, client_id: &str, token: &str, job: &DeployJob) {
     if job.id.is_empty() {
         log::warn!("deploy job without id skipped");
         return;
@@ -312,13 +510,15 @@ fn process_job(agent: &ureq::Agent, base: &Url, client_id: &str, job: &DeployJob
         Ok(out) => ("success", out),
         Err(e) => ("failed", format!("error: {}", e)),
     };
-    let url = join_path(base, &format!("api/client/{}/jobs/{}/result", client_id, job.id));
+    let url = join_path(
+        base,
+        &format!("api/client/{}/jobs/{}/result", client_id, job.id),
+    );
     let body = JobResult {
         status: status.to_owned(),
         output: truncate_output(&output),
     };
-    if let Err(e) = agent
-        .post(&url)
+    if let Err(e) = with_token(agent.post(&url), token)
         .set("Content-Type", "application/json")
         .send_string(&serde_json::to_string(&body).unwrap_or_default())
     {
@@ -501,12 +701,45 @@ mod test {
     }
 
     #[test]
-    fn test_manager_base_url_default() {
-        // No env var: the default loopback Manager URL. Url::parse appends
-        // a trailing '/' for the empty path.
-        std::env::remove_var(MANAGER_URL_ENV);
-        let base = manager_base_url().unwrap();
-        assert_eq!(base.as_str(), "http://127.0.0.1:8080/");
+    fn test_resolve_manager_url() {
+        // No env var and no option: the loopback default. Url::parse
+        // appends a trailing '/' for the empty path.
+        assert_eq!(
+            resolve_manager_url("", "").unwrap().as_str(),
+            "http://127.0.0.1:8080/"
+        );
+        // A deployed client points at a remote Manager through the
+        // `deskagent-manager-url` option; the daemon must follow it
+        // instead of dialing loopback.
+        assert_eq!(
+            resolve_manager_url("", "http://192.168.232.129:8080")
+                .unwrap()
+                .as_str(),
+            "http://192.168.232.129:8080/"
+        );
+        // The env var still wins over the option.
+        assert_eq!(
+            resolve_manager_url("http://10.0.0.5:9000", "http://192.168.232.129:8080")
+                .unwrap()
+                .as_str(),
+            "http://10.0.0.5:9000/"
+        );
+    }
+
+    #[test]
+    fn test_register_backoff_grows_and_is_capped() {
+        assert_eq!(register_backoff_secs(1), 60);
+        assert_eq!(register_backoff_secs(2), 120);
+        assert_eq!(register_backoff_secs(3), 240);
+        assert_eq!(register_backoff_secs(10), REGISTER_BACKOFF_MAX_SECS);
+    }
+
+    #[test]
+    fn test_needs_registration_skips_a_manager_without_tokens() {
+        // A client that already has a token does not register again.
+        assert!(!needs_registration(false, "a-token"));
+        // A brand new client always registers.
+        assert!(needs_registration(true, ""));
     }
 
     #[test]

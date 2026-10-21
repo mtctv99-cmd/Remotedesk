@@ -8,6 +8,7 @@
 /// in src/lib.rs.
 pub mod ai_chat;
 pub mod deploy;
+pub mod secret;
 pub mod system_info;
 
 use hbb_common::log;

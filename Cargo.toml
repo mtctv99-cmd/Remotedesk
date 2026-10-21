@@ -115,6 +115,9 @@ qrcode-generator = "4.1"
 winapi = { version = "0.3", features = [
     "winuser",
     "wincrypt",
+    "dpapi",
+    "winbase",
+    "winnt",
     "shellscalingapi",
     "pdh",
     "synchapi",
