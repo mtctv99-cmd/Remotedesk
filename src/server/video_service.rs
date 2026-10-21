@@ -275,6 +275,8 @@ pub struct VideoService {
     sp: GenericService,
     idx: usize,
     source: VideoSource,
+    #[cfg(any(feature = "hwcodec", feature = "vram"))]
+    hardware_failed: Arc<std::sync::atomic::AtomicBool>,
     #[cfg(windows)]
     dxgi_recovery_state: Arc<Mutex<DxgiRecoveryState>>,
 }
@@ -310,6 +312,8 @@ pub fn new(source: VideoSource, idx: usize) -> GenericService {
         sp: GenericService::new(get_service_name(source, idx), true),
         idx,
         source,
+        #[cfg(any(feature = "hwcodec", feature = "vram"))]
+        hardware_failed: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         #[cfg(windows)]
         dxgi_recovery_state: Arc::new(Mutex::new(DxgiRecoveryState::new())),
     };
@@ -665,10 +669,19 @@ fn run(vs: VideoService) -> ResultType<()> {
         last_portable_service_running,
         vs.source,
         display_idx,
+        #[cfg(any(feature = "hwcodec", feature = "vram"))]
+        vs.hardware_failed.load(std::sync::atomic::Ordering::SeqCst),
     ) {
         Ok(result) => result,
         Err(err) => {
             log::error!("Failed to create encoder: {err:?}, fallback to VP9");
+            #[cfg(any(feature = "hwcodec", feature = "vram"))]
+            if vs.hardware_failed.load(std::sync::atomic::Ordering::SeqCst) {
+                return Err(err);
+            }
+            #[cfg(any(feature = "hwcodec", feature = "vram"))]
+            vs.hardware_failed
+                .store(true, std::sync::atomic::Ordering::SeqCst);
             Encoder::set_fallback(&EncoderCfg::VPX(VpxEncoderConfig {
                 width: c.width as _,
                 height: c.height as _,
@@ -685,6 +698,8 @@ fn run(vs: VideoService) -> ResultType<()> {
                 last_portable_service_running,
                 vs.source,
                 display_idx,
+                #[cfg(any(feature = "hwcodec", feature = "vram"))]
+                true,
             )?
         }
     };
@@ -750,7 +765,19 @@ fn run(vs: VideoService) -> ResultType<()> {
             log::info!("switch to refresh");
             bail!("SWITCH");
         }
+        #[cfg(not(any(feature = "hwcodec", feature = "vram")))]
         if codec_format != Encoder::negotiated_codec() {
+            log::info!(
+                "switch due to codec changed, {:?} -> {:?}",
+                codec_format,
+                Encoder::negotiated_codec()
+            );
+            bail!("SWITCH");
+        }
+        #[cfg(any(feature = "hwcodec", feature = "vram"))]
+        if !vs.hardware_failed.load(std::sync::atomic::Ordering::SeqCst)
+            && codec_format != Encoder::negotiated_codec()
+        {
             log::info!(
                 "switch due to codec changed, {:?} -> {:?}",
                 codec_format,
@@ -859,6 +886,8 @@ fn run(vs: VideoService) -> ResultType<()> {
                         &mut first_frame,
                         capture_width,
                         capture_height,
+                        #[cfg(any(feature = "hwcodec", feature = "vram"))]
+                        &vs.hardware_failed,
                     )?;
                     frame_controller.set_send(now, send_conn_ids);
                     send_counter += 1;
@@ -923,6 +952,8 @@ fn run(vs: VideoService) -> ResultType<()> {
                             &mut first_frame,
                             capture_width,
                             capture_height,
+                            #[cfg(any(feature = "hwcodec", feature = "vram"))]
+                            &vs.hardware_failed,
                         )?;
                         frame_controller.set_send(now, send_conn_ids);
                         send_counter += 1;
@@ -1039,6 +1070,7 @@ fn setup_encoder(
     last_portable_service_running: bool,
     source: VideoSource,
     display_idx: usize,
+    #[cfg(any(feature = "hwcodec", feature = "vram"))] software_only: bool,
 ) -> ResultType<(
     Encoder,
     EncoderCfg,
@@ -1053,8 +1085,22 @@ fn setup_encoder(
         client_record || record_incoming,
         last_portable_service_running,
         source,
+        #[cfg(any(feature = "hwcodec", feature = "vram"))]
+        software_only,
     );
+    #[cfg(any(feature = "hwcodec", feature = "vram"))]
+    if !software_only {
+        Encoder::set_fallback(&encoder_cfg);
+    }
+    #[cfg(not(any(feature = "hwcodec", feature = "vram")))]
     Encoder::set_fallback(&encoder_cfg);
+    #[cfg(any(feature = "hwcodec", feature = "vram"))]
+    let codec_format = if software_only {
+        CodecFormat::VP9
+    } else {
+        Encoder::negotiated_codec()
+    };
+    #[cfg(not(any(feature = "hwcodec", feature = "vram")))]
     let codec_format = Encoder::negotiated_codec();
     let recorder = get_recorder(record_incoming, display_idx, source == VideoSource::Camera);
     let use_i444 = Encoder::use_i444(&encoder_cfg);
@@ -1069,6 +1115,7 @@ fn get_encoder_config(
     record: bool,
     _portable_service: bool,
     _source: VideoSource,
+    #[cfg(any(feature = "hwcodec", feature = "vram"))] software_only: bool,
 ) -> EncoderCfg {
     #[cfg(all(windows, feature = "vram"))]
     if _portable_service || c.is_gdi() || _source == VideoSource::Camera {
@@ -1080,29 +1127,40 @@ fn get_encoder_config(
     // https://www.wowza.com/community/t/the-correct-keyframe-interval-in-obs-studio/95162
     let keyframe_interval = if record { Some(240) } else { None };
     let negotiated_codec = Encoder::negotiated_codec();
+    #[cfg(any(feature = "hwcodec", feature = "vram"))]
+    let negotiated_codec = if software_only {
+        log::warn!("hardware encoder failed for this video service; using VP9 software encoder");
+        CodecFormat::VP9
+    } else {
+        negotiated_codec
+    };
     match negotiated_codec {
         CodecFormat::H264 | CodecFormat::H265 => {
             #[cfg(feature = "vram")]
-            if let Some(feature) = VRamEncoder::try_get(&c.device(), negotiated_codec) {
-                return EncoderCfg::VRAM(VRamEncoderConfig {
-                    device: c.device(),
-                    width: c.width,
-                    height: c.height,
-                    quality,
-                    feature,
-                    keyframe_interval,
-                });
+            if !software_only {
+                if let Some(feature) = VRamEncoder::try_get(&c.device(), negotiated_codec) {
+                    return EncoderCfg::VRAM(VRamEncoderConfig {
+                        device: c.device(),
+                        width: c.width,
+                        height: c.height,
+                        quality,
+                        feature,
+                        keyframe_interval,
+                    });
+                }
             }
             #[cfg(feature = "hwcodec")]
-            if let Some(hw) = HwRamEncoder::try_get(negotiated_codec) {
-                return EncoderCfg::HWRAM(HwRamEncoderConfig {
-                    name: hw.name,
-                    mc_name: hw.mc_name,
-                    width: c.width,
-                    height: c.height,
-                    quality,
-                    keyframe_interval,
-                });
+            if !software_only {
+                if let Some(hw) = HwRamEncoder::try_get(negotiated_codec) {
+                    return EncoderCfg::HWRAM(HwRamEncoderConfig {
+                        name: hw.name,
+                        mc_name: hw.mc_name,
+                        width: c.width,
+                        height: c.height,
+                        quality,
+                        keyframe_interval,
+                    });
+                }
             }
             EncoderCfg::VPX(VpxEncoderConfig {
                 width: c.width as _,
@@ -1233,6 +1291,45 @@ fn check_privacy_mode_changed(
     Ok(())
 }
 
+#[cfg(any(feature = "hwcodec", feature = "vram", test))]
+fn hardware_failure_requires_software_fallback(
+    is_hardware: bool,
+    is_android: bool,
+    error: &str,
+) -> bool {
+    is_hardware && !is_android && error != scrap::codec::ENCODE_NEED_SWITCH
+}
+
+#[cfg(test)]
+mod hardware_fallback_tests {
+    use super::hardware_failure_requires_software_fallback;
+    use scrap::codec::ENCODE_NEED_SWITCH;
+
+    #[test]
+    fn hardware_failure_switches_to_software_except_special_switch() {
+        assert!(hardware_failure_requires_software_fallback(
+            true,
+            false,
+            "no valid frame"
+        ));
+        assert!(!hardware_failure_requires_software_fallback(
+            false,
+            false,
+            "no valid frame"
+        ));
+        assert!(!hardware_failure_requires_software_fallback(
+            true,
+            true,
+            "no valid frame"
+        ));
+        assert!(!hardware_failure_requires_software_fallback(
+            true,
+            false,
+            ENCODE_NEED_SWITCH
+        ));
+    }
+}
+
 #[inline]
 fn handle_one_frame(
     display: usize,
@@ -1245,6 +1342,8 @@ fn handle_one_frame(
     first_frame: &mut bool,
     width: usize,
     height: usize,
+    #[cfg(any(feature = "hwcodec", feature = "vram"))]
+    hardware_failed: &std::sync::atomic::AtomicBool,
 ) -> ResultType<HashSet<i32>> {
     sp.snapshot(|sps| {
         // so that new sub and old sub share the same encoder after switch
@@ -1273,7 +1372,17 @@ fn handle_one_frame(
         }
         Err(e) => {
             *encode_fail_counter += 1;
-            // Encoding errors are not frequent except on Android
+            #[cfg(any(feature = "hwcodec", feature = "vram"))]
+            if hardware_failure_requires_software_fallback(
+                encoder.is_hardware(),
+                cfg!(target_os = "android"),
+                &e.to_string(),
+            ) {
+                encoder.disable();
+                hardware_failed.store(true, std::sync::atomic::Ordering::SeqCst);
+                log::error!("hardware encode failed, switching to software: {e:?}");
+                bail!("SWITCH");
+            }
             if !cfg!(target_os = "android") {
                 log::error!("encode fail: {e:?}, times: {}", *encode_fail_counter,);
             }
@@ -1283,11 +1392,14 @@ fn handle_one_frame(
                 3
             };
             let repeat = !encoder.latency_free();
-            // repeat encoders can reach max_fail_times on the first frame
             if (first && !repeat) || *encode_fail_counter >= max_fail_times {
                 *encode_fail_counter = 0;
                 if encoder.is_hardware() {
                     encoder.disable();
+                    #[cfg(any(feature = "hwcodec", feature = "vram"))]
+                    if e.to_string() != scrap::codec::ENCODE_NEED_SWITCH {
+                        hardware_failed.store(true, std::sync::atomic::Ordering::SeqCst);
+                    }
                     log::error!("switch due to encoding fails, first frame: {first}, error: {e:?}");
                     bail!("SWITCH");
                 }
