@@ -36,6 +36,10 @@ DeskAgent gồm **hai sản phẩm độc lập**, mục tiêu thương mại h�
 | **Rust (`DeskAgent/`)** | **57/100** | 2026-10-21 | `docs/INDEPENDENT_AUDIT_REPORT_2026-10-09.md` (bản DRAFT) |
 | **Go (`deskagent-clean/`)** | **không chấm theo Strict-DoD** | — | `deskagent-clean/AUDIT_P0_P4.md` (P0–P4 nghiệm thu thực tế trên VM) |
 
+> Nhánh Go đã có **repo git riêng** từ 2026-10-21 (commit `711c563`), nên sửa code
+> bên đó cũng được version. Binary, khoá TLS riêng và artifact release không
+> được track.
+
 **Ngưỡng đạt** theo `docs/STRICT_DOD_RUBRIC.md`: ≥ 85/100, không chiều nào < 5/10,
 8/8 Gate CLOSED, ≥ 2 người chấm độc lập, mọi claim kèm bằng chứng máy.
 Nhánh Rust hiện **chưa đạt** (thiếu 28 điểm; 3 chiều ở mức 4/10; 0/8 Gate có bằng chứng
