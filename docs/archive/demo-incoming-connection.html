@@ -1,0 +1,1516 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DeskAgent - Demo Cửa sổ Yêu cầu kết nối (Client Incoming Request)</title>
+  <style>
+    :root {
+      --win11-accent: #60cdff;
+      --win11-accent-glow: rgba(96, 205, 255, 0.35);
+      --win11-bg: #202020;
+      --win11-card: #272727;
+      --win11-subtle: #2d2d2d;
+      --win11-hover: rgba(255, 255, 255, 0.08);
+      --win11-active: rgba(255, 255, 255, 0.05);
+      --win11-border: rgba(255, 255, 255, 0.12);
+      --win11-text: #f4f4f5;
+      --win11-text-sec: #a1a1aa;
+      --win11-danger: #f87171;
+      --win11-danger-bg: rgba(248, 113, 113, 0.12);
+      --win11-success: #34d399;
+      --win11-warning: #fbbf24;
+      --radius-win: 8px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      font-family: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background-color: #0f172a;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* DESKTOP WORKSPACE SIMULATION */
+    #desktop-viewport {
+      flex: 1;
+      position: relative;
+      background-size: cover;
+      background-position: center;
+      transition: background 0.3s ease;
+      overflow: hidden;
+    }
+
+    /* Windows 10 Default Wallpaper */
+    .wp-win10 {
+      background: radial-gradient(circle at 75% 45%, #0078d7 0%, #004b98 35%, #001f3f 75%, #000c1a 100%);
+    }
+    .wp-win10::before {
+      content: "";
+      position: absolute;
+      top: 35%;
+      left: 32%;
+      width: 320px;
+      height: 320px;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.02) 100%);
+      clip-path: polygon(0% 12%, 46% 18%, 46% 48%, 0% 48%, 0% 52%, 46% 52%, 46% 82%, 0% 88%, 54% 19%, 100% 25%, 100% 48%, 54% 48%, 54% 52%, 100% 52%, 100% 75%, 54% 81%);
+      opacity: 0.85;
+      filter: drop-shadow(0 0 45px rgba(0, 162, 237, 0.45));
+    }
+
+    /* Windows 11 Dark Bloom */
+    .wp-win11-dark {
+      background: radial-gradient(circle at 60% 40%, #1e1b4b 0%, #09090b 70%);
+    }
+
+    /* Watermark Activate Windows (giống máy thật client) */
+    .activate-watermark {
+      position: absolute;
+      bottom: 24px;
+      right: 28px;
+      color: rgba(255, 255, 255, 0.32);
+      font-size: 13.5px;
+      line-height: 1.4;
+      pointer-events: none;
+      z-index: 5;
+    }
+    .activate-watermark b {
+      font-size: 15px;
+      display: block;
+      font-weight: 400;
+    }
+
+    /* TOP DESIGN STUDIO TOOLBAR */
+    #studio-toolbar {
+      height: 44px;
+      background: rgba(24, 24, 27, 0.96);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      z-index: 100;
+      color: #e4e4e7;
+    }
+    .studio-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .studio-badge {
+      font-size: 10px;
+      padding: 2px 7px;
+      border-radius: 10px;
+      background: rgba(96, 205, 255, 0.15);
+      border: 1px solid rgba(96, 205, 255, 0.3);
+      color: var(--win11-accent);
+      font-weight: 500;
+    }
+    .studio-options {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .studio-btn {
+      padding: 5px 12px;
+      background: #27272a;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #d4d4d8;
+      border-radius: 4px;
+      font-size: 11.5px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: inherit;
+      transition: all 0.12s ease;
+    }
+    .studio-btn:hover {
+      background: #3f3f46;
+      color: #fff;
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+    .studio-btn.active {
+      background: rgba(96, 205, 255, 0.18);
+      border-color: var(--win11-accent);
+      color: #fff;
+    }
+
+    /* =========================================================
+       LIVE CUSTOMIZER DRAWER (NGĂN KÉO TÙY BIẾN THIẾT KẾ)
+       ========================================================= */
+    #customizer-panel {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      width: 280px;
+      background: rgba(28, 28, 30, 0.95);
+      backdrop-filter: blur(24px);
+      border: 1px solid var(--win11-border);
+      border-radius: 8px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+      z-index: 80;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: transform 0.25s cubic-bezier(0.1, 0.9, 0.2, 1), opacity 0.2s ease;
+    }
+    #customizer-panel.collapsed {
+      transform: translateX(-310px);
+      opacity: 0;
+      pointer-events: none;
+    }
+    .cz-head {
+      height: 36px;
+      background: #18181b;
+      border-bottom: 1px solid var(--win11-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #e4e4e7;
+    }
+    .cz-body {
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-height: calc(100vh - 120px);
+      overflow-y: auto;
+    }
+    .cz-sect-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--win11-accent);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+    .cz-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .cz-label {
+      font-size: 11px;
+      color: var(--win11-text-sec);
+    }
+    .cz-input {
+      background: #202022;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 4px;
+      color: #fff;
+      padding: 5px 8px;
+      font-size: 11.5px;
+      font-family: inherit;
+      outline: none;
+    }
+    .cz-input:focus {
+      border-color: var(--win11-accent);
+    }
+    .cz-color-palette {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .cz-color-dot {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: transform 0.1s, border-color 0.1s;
+    }
+    .cz-color-dot:hover {
+      transform: scale(1.15);
+    }
+    .cz-color-dot.active {
+      border-color: #fff;
+      box-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
+    }
+    .cz-layout-btn {
+      width: 100%;
+      padding: 6px 10px;
+      background: #27272a;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #d4d4d8;
+      border-radius: 4px;
+      font-size: 11.5px;
+      cursor: pointer;
+      text-align: left;
+      font-family: inherit;
+      margin-bottom: 4px;
+      transition: 0.1s;
+    }
+    .cz-layout-btn:hover {
+      background: #3f3f46;
+      color: #fff;
+    }
+    .cz-layout-btn.active {
+      background: rgba(96, 205, 255, 0.15);
+      border-color: var(--win11-accent);
+      color: #fff;
+      font-weight: 600;
+    }
+
+    /* =========================================================
+       INCOMING CONNECTION REQUEST WINDOW (CỬA SỔ YÊU CẦU KẾT NỐI)
+       ========================================================= */
+    #connection-request-window {
+      position: absolute;
+      bottom: 60px;
+      right: 24px;
+      width: 330px;
+      background: var(--win11-bg);
+      border: 1px solid var(--win11-border);
+      border-radius: var(--radius-win);
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.65), 0 0 1px rgba(255, 255, 255, 0.15);
+      z-index: 50;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: box-shadow 0.2s, border-color 0.2s, transform 0.2s;
+    }
+
+    /* Style: Win10 Classic Style (Theo ảnh chụp máy thật) */
+    .style-win10-classic {
+      background: #1f1f1f !important;
+      border: 1px solid #333333 !important;
+      border-radius: 0px !important;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.7) !important;
+    }
+
+    /* Style: Win11 Fluent Mica Style (Hiện đại, bo góc, acrylic) */
+    .style-win11-fluent {
+      background: rgba(32, 32, 32, 0.90) !important;
+      backdrop-filter: blur(28px) saturate(140%);
+      -webkit-backdrop-filter: blur(28px) saturate(140%);
+      border: 1px solid rgba(255, 255, 255, 0.14) !important;
+      border-radius: var(--radius-win) !important;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+    }
+
+    /* Style: Win11 Light Mode */
+    .style-win11-light {
+      background: rgba(248, 250, 252, 0.94) !important;
+      backdrop-filter: blur(28px);
+      border: 1px solid rgba(0, 0, 0, 0.12) !important;
+      border-radius: var(--radius-win) !important;
+      color: #0f172a !important;
+      box-shadow: 0 20px 45px rgba(0, 0, 0, 0.22) !important;
+    }
+    .style-win11-light .req-titlebar { background: #f1f5f9; border-bottom: 1px solid rgba(0,0,0,0.08); color: #0f172a; }
+    .style-win11-light .req-card { background: #ffffff; border-color: rgba(0,0,0,0.08); }
+    .style-win11-light .req-name { color: #0f172a; }
+    .style-win11-light .perm-box { background: #ffffff; border-color: rgba(0,0,0,0.08); }
+    .style-win11-light .perm-btn { background: #f8fafc; border-color: rgba(0,0,0,0.1); color: #475569; }
+    .style-win11-light .perm-btn.active { background: rgba(14, 165, 233, 0.15); border-color: #0284c7; color: #0284c7; }
+    .style-win11-light .btn-cancel { background: #f1f5f9; border-color: rgba(0,0,0,0.12); color: #334155; }
+    .style-win11-light .perm-list-item { background: #f8fafc; border-color: rgba(0,0,0,0.08); color: #0f172a; }
+
+    /* TITLEBAR */
+    .req-titlebar {
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 6px 0 10px;
+      background: #181818;
+      border-bottom: 1px solid var(--win11-border);
+      cursor: move;
+      color: #e4e4e7;
+    }
+    .req-titlebar-title {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 11.5px;
+      font-weight: 500;
+    }
+    .req-titlebar-title svg {
+      width: 14px;
+      height: 14px;
+      color: var(--win11-accent);
+    }
+    .req-titlebar-controls {
+      display: flex;
+      align-items: center;
+    }
+    .req-caption-btn {
+      width: 32px;
+      height: 32px;
+      background: transparent;
+      border: none;
+      color: var(--win11-text-sec);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 11px;
+      transition: 0.1s;
+    }
+    .req-caption-btn:hover {
+      background: var(--win11-hover);
+      color: #fff;
+    }
+    .req-caption-btn.close:hover {
+      background: #e81123;
+      color: #fff;
+    }
+
+    /* BODY */
+    .req-body {
+      padding: 12px 14px 14px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* REQUESTER INFO CARD */
+    .req-card {
+      background: var(--win11-card);
+      border: 1px solid var(--win11-border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: relative;
+      cursor: move;
+    }
+    .req-mini-close-btn {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      width: 22px;
+      height: 22px;
+      border: none;
+      background: transparent;
+      color: var(--win11-text-sec);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 11px;
+      transition: 0.1s;
+      z-index: 2;
+    }
+    .req-mini-close-btn:hover {
+      background: #e81123;
+      color: #fff;
+    }
+    .req-avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 6px;
+      background: #1e293b;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: var(--win11-accent);
+      font-weight: 700;
+      font-size: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    }
+    .req-details {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      overflow: hidden;
+    }
+    .req-name-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      line-height: 1.35;
+      flex-wrap: wrap;
+    }
+    .req-device-name {
+      font-size: 13px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .req-device-name svg {
+      width: 14px;
+      height: 14px;
+      color: var(--win11-accent);
+      flex-shrink: 0;
+    }
+    .req-separator {
+      color: rgba(255, 255, 255, 0.35);
+      font-weight: 300;
+      font-size: 13px;
+    }
+    .req-user-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--win11-accent);
+    }
+    .req-id {
+      font-size: 11px;
+      color: var(--win11-text-sec);
+      font-family: "Cascadia Code", Consolas, monospace;
+    }
+    .req-status-line {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--win11-warning);
+      font-weight: 500;
+    }
+    .status-dot-pulse {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--win11-warning);
+      box-shadow: 0 0 6px var(--win11-warning);
+      animation: pulse 1.8s infinite;
+    }
+    @keyframes pulse {
+      0% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.45; transform: scale(0.85); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+
+    /* PERMISSIONS BOX */
+    .perm-box {
+      background: var(--win11-card);
+      border: 1px solid var(--win11-border);
+      border-radius: 6px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .perm-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .perm-header-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--win11-text);
+    }
+    .perm-header-left svg {
+      width: 14px;
+      height: 14px;
+      color: var(--win11-accent);
+    }
+    .perm-hint {
+      font-size: 10px;
+      color: var(--win11-text-sec);
+    }
+
+    /* 8 PERMISSION ICONS GRID (4 x 2) */
+    .perm-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+    .perm-btn {
+      height: 48px;
+      background: var(--win11-subtle);
+      border: 1px solid var(--win11-border);
+      border-radius: 6px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      cursor: pointer;
+      color: rgba(255, 255, 255, 0.4);
+      transition: all 0.12s ease;
+      position: relative;
+    }
+    .perm-btn svg {
+      width: 18px;
+      height: 18px;
+      transition: transform 0.1s ease;
+    }
+    .perm-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.25);
+      color: #fff;
+    }
+    .perm-btn:hover svg {
+      transform: scale(1.1);
+    }
+    .perm-btn.active {
+      background: rgba(96, 205, 255, 0.18);
+      border-color: rgba(96, 205, 255, 0.48);
+      color: var(--win11-accent);
+      box-shadow: 0 0 10px rgba(96, 205, 255, 0.15);
+    }
+    .perm-btn-title {
+      font-size: 9px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 90%;
+      text-align: center;
+    }
+
+    /* LAYOUT VARIANT 2: DETAILED PERMISSION LIST WITH SWITCHES */
+    .perm-list-wrap {
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 190px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+    .perm-list-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 8px;
+      background: var(--win11-subtle);
+      border: 1px solid var(--win11-border);
+      border-radius: 5px;
+      font-size: 11px;
+    }
+    .perm-list-item-left {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--win11-text);
+    }
+    .perm-list-item-left svg {
+      width: 15px;
+      height: 15px;
+      color: var(--win11-accent);
+    }
+
+    /* QUICK PERMISSION PRESETS */
+    .perm-presets {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding-top: 2px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .preset-chip {
+      font-size: 9.5px;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--win11-text-sec);
+      cursor: pointer;
+      transition: 0.1s;
+    }
+    .preset-chip:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+    .preset-chip.active {
+      background: rgba(96, 205, 255, 0.12);
+      border-color: var(--win11-accent);
+      color: var(--win11-accent);
+    }
+
+    /* OPTIONAL ELEVATE PROMPT */
+    .elevate-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 10px;
+      background: rgba(251, 191, 36, 0.08);
+      border: 1px solid rgba(251, 191, 36, 0.25);
+      border-radius: 6px;
+      font-size: 11px;
+      color: #fde68a;
+    }
+    .elevate-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .elevate-switch {
+      position: relative;
+      display: inline-block;
+      width: 28px;
+      height: 16px;
+    }
+    .elevate-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #3f3f46;
+      transition: .2s;
+      border-radius: 16px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 12px;
+      width: 12px;
+      left: 2px;
+      bottom: 2px;
+      background-color: white;
+      transition: .2s;
+      border-radius: 50%;
+    }
+    input:checked + .slider {
+      background-color: var(--win11-accent);
+    }
+    input:checked + .slider:before {
+      transform: translateX(12px);
+    }
+
+    /* COUNTDOWN BAR */
+    .countdown-bar-wrap {
+      height: 3px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: -2px;
+    }
+    .countdown-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--win11-accent), #38bdf8);
+      width: 100%;
+      transition: width 1s linear;
+    }
+
+    /* FOOTER ACTION BUTTONS */
+    .req-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 2px;
+    }
+    .btn-action {
+      flex: 1;
+      height: 34px;
+      border: none;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-family: inherit;
+      transition: all 0.12s ease;
+    }
+    .btn-accept {
+      background: var(--win11-accent);
+      color: #0b0b0b;
+      box-shadow: 0 2px 8px rgba(96, 205, 255, 0.3);
+    }
+    .btn-accept:hover {
+      background: #7cd5ff;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(96, 205, 255, 0.45);
+    }
+    .btn-accept:active {
+      transform: translateY(0);
+    }
+
+    .btn-cancel {
+      background: #2a2a2a;
+      color: #d4d4d8;
+      border: 1px solid var(--win11-border);
+    }
+    .btn-cancel:hover {
+      background: #383838;
+      color: #fff;
+      border-color: rgba(255, 255, 255, 0.25);
+    }
+
+    /* WINDOWS 10 / 11 SIMULATED TASKBAR */
+    #taskbar {
+      height: 40px;
+      background: rgba(18, 18, 18, 0.88);
+      backdrop-filter: blur(20px);
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      z-index: 90;
+      color: #e4e4e7;
+    }
+    .taskbar-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .tb-icon {
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #d4d4d8;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: 0.1s;
+    }
+    .tb-icon:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+    .taskbar-center {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .tb-running-app {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 4px;
+      border-bottom: 2px solid var(--win11-accent);
+      font-size: 11.5px;
+    }
+    .taskbar-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 11.5px;
+      color: #a1a1aa;
+    }
+
+    /* FLOATING STATUS TOAST */
+    .toast-msg {
+      position: fixed;
+      top: 56px;
+      right: 24px;
+      background: rgba(30, 30, 30, 0.95);
+      border: 1px solid var(--win11-accent);
+      color: #fff;
+      padding: 10px 16px;
+      border-radius: 6px;
+      font-size: 12px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      animation: slideInRight 0.2s ease;
+    }
+    @keyframes slideInRight {
+      from { transform: translateX(30px); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- TOP DESIGN STUDIO TOOLBAR -->
+  <div id="studio-toolbar">
+    <div class="studio-brand">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--win11-accent)"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      <span>DeskAgent · Thiết kế Cửa sổ Yêu cầu kết nối Client</span>
+      <span class="studio-badge">Interactive Mockup</span>
+    </div>
+
+    <div class="studio-options">
+      <button class="studio-btn" id="btn-toggle-customizer" onclick="toggleCustomizerPanel()" title="Mở bảng điều khiển tùy biến thiết kế trực tiếp">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span>Bảng Tùy biến</span>
+      </button>
+
+      <span style="font-size:11px; color:#a1a1aa; margin: 0 2px 0 6px;">Giao diện:</span>
+      <button class="studio-btn" id="btn-theme-win10" onclick="setWindowTheme('win10')">
+        <span>Windows 10 Cũ (Ảnh chụp)</span>
+      </button>
+      <button class="studio-btn active" id="btn-theme-win11" onclick="setWindowTheme('win11')">
+        <span>Windows 11 Fluent Dark (Mới)</span>
+      </button>
+      <button class="studio-btn" id="btn-theme-light" onclick="setWindowTheme('light')">
+        <span>Win11 Light</span>
+      </button>
+
+      <span style="width:1px;height:18px;background:rgba(255,255,255,0.15);margin:0 4px;"></span>
+
+      <button class="studio-btn" onclick="resetRequestWindow()" title="Khôi phục lại cửa sổ nếu đã bấm Đóng hoặc Duyệt">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+        <span>Mở lại Popup</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- DESKTOP SCREEN VIEWPORT -->
+  <div id="desktop-viewport" class="wp-win10">
+
+    <!-- LIVE CUSTOMIZER DRAWER -->
+    <div id="customizer-panel">
+      <div class="cz-head">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--win11-accent)"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span>Tùy biến Thiết kế</span>
+        </div>
+        <button onclick="toggleCustomizerPanel()" style="background:none;border:none;color:#a1a1aa;cursor:pointer;font-size:14px;">✕</button>
+      </div>
+      <div class="cz-body">
+        <!-- 1. Layout Mode -->
+        <div class="cz-field">
+          <span class="cz-sect-title">1. Mẫu bố cục quyền</span>
+          <button class="cz-layout-btn active" id="btn-layout-grid" onclick="setLayoutMode('grid')">
+            ❖ Lưới 4x2 Biểu tượng (Ảnh chụp)
+          </button>
+          <button class="cz-layout-btn" id="btn-layout-list" onclick="setLayoutMode('list')">
+            ☰ Danh sách có Switch & Tên quyền
+          </button>
+        </div>
+
+        <!-- 2. Color Palette -->
+        <div class="cz-field">
+          <span class="cz-sect-title">2. Màu Accent chủ đạo</span>
+          <div class="cz-color-palette">
+            <div class="cz-color-dot active" style="background:#60cdff;" onclick="setAccentColor('#60cdff', this)" title="Win11 Cyan"></div>
+            <div class="cz-color-dot" style="background:#0284c7;" onclick="setAccentColor('#0284c7', this)" title="Sky Blue"></div>
+            <div class="cz-color-dot" style="background:#10b981;" onclick="setAccentColor('#10b981', this)" title="Emerald Green"></div>
+            <div class="cz-color-dot" style="background:#a855f7;" onclick="setAccentColor('#a855f7', this)" title="Purple Fluent"></div>
+            <div class="cz-color-dot" style="background:#f43f5e;" onclick="setAccentColor('#f43f5e', this)" title="Rose Pink"></div>
+            <div class="cz-color-dot" style="background:#f59e0b;" onclick="setAccentColor('#f59e0b', this)" title="Amber Warning"></div>
+          </div>
+        </div>
+
+        <!-- 3. Requester Info -->
+        <div class="cz-field">
+          <span class="cz-sect-title">3. Thông tin người kết nối</span>
+          <div class="cz-field">
+            <span class="cz-label">Tên máy tính (PC Hostname):</span>
+            <input class="cz-input" id="cz-input-pc" value="THANHCHUPC" oninput="updateRequesterInfo()">
+          </div>
+          <div class="cz-field">
+            <span class="cz-label">User yêu cầu remote:</span>
+            <input class="cz-input" id="cz-input-user" value="Chu.mai" oninput="updateRequesterInfo()">
+          </div>
+          <div class="cz-field">
+            <span class="cz-label">ID thiết bị:</span>
+            <input class="cz-input" id="cz-input-id" value="(987654321)" oninput="updateRequesterInfo()">
+          </div>
+          <div class="cz-field">
+            <span class="cz-label">Thông điệp trạng thái:</span>
+            <input class="cz-input" id="cz-input-status" value="Request access to your device..." oninput="updateRequesterInfo()">
+          </div>
+        </div>
+
+        <!-- 4. Corner Radius Slider -->
+        <div class="cz-field">
+          <span class="cz-sect-title">4. Bo góc cửa sổ: <span id="cz-radius-val">8px</span></span>
+          <input type="range" min="0" max="16" value="8" style="accent-color:var(--win11-accent);" oninput="setCornerRadius(this.value)">
+        </div>
+
+        <!-- 5. Options toggles -->
+        <div class="cz-field">
+          <span class="cz-sect-title">5. Tùy chọn hiển thị</span>
+          <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;cursor:pointer;">
+            <input type="checkbox" id="cz-chk-countdown" checked onchange="toggleCountdownVisibility(this.checked)">
+            <span>Thanh đếm ngược tự từ chối (45s)</span>
+          </label>
+        </div>
+
+        <!-- 6. Export CSS/HTML Button -->
+        <div style="margin-top:6px;">
+          <button class="studio-btn" style="width:100%;justify-content:center;background:var(--win11-accent);color:#000;font-weight:600;" onclick="copyWindowMarkup()">
+            <span>📋 Copy mã HTML của cửa sổ</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Activate Windows watermark (mô phỏng đúng môi trường client Windows 10 của bạn) -->
+    <div class="activate-watermark">
+      <b>Activate Windows</b>
+      Go to Settings to activate Windows.
+    </div>
+
+    <!-- =========================================================
+         INCOMING CONNECTION REQUEST WINDOW
+         ========================================================= -->
+    <div id="connection-request-window" class="style-win11-fluent">
+
+      <!-- BODY -->
+      <div class="req-body">
+
+        <!-- 1. REQUESTER CARD (TÊN MÁY / USER YÊU CẦU REMOTE) -->
+        <div class="req-card" id="req-card-header">
+          <div class="req-avatar" id="req-avatar" title="Người yêu cầu kết nối">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          </div>
+          <div class="req-details">
+            <div class="req-name-row">
+              <span class="req-device-name" title="Tên máy tính (Computer Name)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                <span id="display-pc-name">THANHCHUPC</span>
+              </span>
+              <span class="req-separator">/</span>
+              <span class="req-user-name" id="display-user-name" title="User yêu cầu remote">Chu.mai</span>
+              <span class="req-id" id="display-peer-id">(987654321)</span>
+            </div>
+            <div class="req-status-line">
+              <span class="status-dot-pulse"></span>
+              <span id="req-status-text">Request access to your device...</span>
+            </div>
+          </div>
+          <button class="req-mini-close-btn" onclick="rejectConnection('Đã đóng cửa sổ')" title="Đóng & từ chối">✕</button>
+        </div>
+
+        <!-- 2. PERMISSIONS MATRIX (8 QUYỀN TRUY CẬP) -->
+        <div class="perm-box">
+          <div class="perm-header">
+            <div class="perm-header-left">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              <span>Permissions</span>
+            </div>
+            <span class="perm-hint" id="perm-count-hint">Đang bật: 6/8 quyền</span>
+          </div>
+
+          <!-- BỐ CỤC 1: GRID 8 ICONS (4x2) -->
+          <div class="perm-grid" id="perm-grid-view">
+            <!-- 1. Bàn phím & Chuột -->
+            <button class="perm-btn active" id="perm-keyboard" onclick="togglePerm('keyboard')" title="Cho phép điều khiển bàn phím & chuột (Keyboard/Mouse)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="6" y2="8"/><line x1="10" y1="8" x2="10" y2="8"/><line x1="14" y1="8" x2="14" y2="8"/><line x1="18" y1="8" x2="18" y2="8"/><line x1="6" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="18" y2="12"/><line x1="8" y1="16" x2="16" y2="16"/></svg>
+              <span class="perm-btn-title">Bàn phím</span>
+            </button>
+
+            <!-- 2. Clipboard đồng bộ -->
+            <button class="perm-btn active" id="perm-clipboard" onclick="togglePerm('clipboard')" title="Cho phép đồng bộ Clipboard sao chép văn bản">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
+              <span class="perm-btn-title">Clipboard</span>
+            </button>
+
+            <!-- 3. Âm thanh -->
+            <button class="perm-btn active" id="perm-audio" onclick="togglePerm('audio')" title="Cho phép truyền âm thanh hệ thống (Audio)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+              <span class="perm-btn-title">Âm thanh</span>
+            </button>
+
+            <!-- 4. Truyền tệp tin -->
+            <button class="perm-btn active" id="perm-file" onclick="togglePerm('file')" title="Cho phép copy & truyền file từ xa (File Transfer)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="12 18 12 12 15 15"/></svg>
+              <span class="perm-btn-title">Tệp tin</span>
+            </button>
+
+            <!-- 5. Khởi động lại máy -->
+            <button class="perm-btn active" id="perm-restart" onclick="togglePerm('restart')" title="Cho phép khởi động lại máy tính từ xa (Remote Restart)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+              <span class="perm-btn-title">Restart</span>
+            </button>
+
+            <!-- 6. Ghi hình phiên -->
+            <button class="perm-btn active" id="perm-recording" onclick="togglePerm('recording')" title="Cho phép ghi hình phiên làm việc (Session Recording)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+              <span class="perm-btn-title">Ghi hình</span>
+            </button>
+
+            <!-- 7. Khóa bàn phím client -->
+            <button class="perm-btn" id="perm-block-input" onclick="togglePerm('block-input')" title="Khóa bàn phím và chuột của người ngồi máy client (Block Input)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+              <span class="perm-btn-title">Khóa phím</span>
+            </button>
+
+            <!-- 8. Màn hình đen riêng tư -->
+            <button class="perm-btn" id="perm-privacy-mode" onclick="togglePerm('privacy-mode')" title="Bật màn hình đen che màn hình client khi IT làm việc (Privacy Mode)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              <span class="perm-btn-title">Che màn hình</span>
+            </button>
+          </div>
+
+          <!-- BỐ CỤC 2: LIST WITH SWITCHES (CHI TIẾT) -->
+          <div class="perm-list-wrap" id="perm-list-view">
+            <div class="perm-list-item">
+              <div class="perm-list-item-left">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="8" y1="16" x2="16" y2="16"/></svg>
+                <span>Điều khiển Bàn phím & Chuột</span>
+              </div>
+              <label class="elevate-switch">
+                <input type="checkbox" id="list-chk-keyboard" checked onchange="togglePermFromList('keyboard', this.checked)">
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div class="perm-list-item">
+              <div class="perm-list-item-left">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
+                <span>Đồng bộ Clipboard sao chép</span>
+              </div>
+              <label class="elevate-switch">
+                <input type="checkbox" id="list-chk-clipboard" checked onchange="togglePermFromList('clipboard', this.checked)">
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div class="perm-list-item">
+              <div class="perm-list-item-left">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                <span>Truyền phát Âm thanh máy tính</span>
+              </div>
+              <label class="elevate-switch">
+                <input type="checkbox" id="list-chk-audio" checked onchange="togglePermFromList('audio', this.checked)">
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div class="perm-list-item">
+              <div class="perm-list-item-left">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span>Truyền & nhận Tệp tin (File)</span>
+              </div>
+              <label class="elevate-switch">
+                <input type="checkbox" id="list-chk-file" checked onchange="togglePermFromList('file', this.checked)">
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div class="perm-list-item">
+              <div class="perm-list-item-left">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/></svg>
+                <span>Khởi động lại máy tính từ xa</span>
+              </div>
+              <label class="elevate-switch">
+                <input type="checkbox" id="list-chk-restart" checked onchange="togglePermFromList('restart', this.checked)">
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div class="perm-list-item">
+              <div class="perm-list-item-left">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                <span>Ghi hình lại phiên kết nối</span>
+              </div>
+              <label class="elevate-switch">
+                <input type="checkbox" id="list-chk-recording" checked onchange="togglePermFromList('recording', this.checked)">
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div class="perm-list-item">
+              <div class="perm-list-item-left">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                <span>Khóa bàn phím/chuột của Client</span>
+              </div>
+              <label class="elevate-switch">
+                <input type="checkbox" id="list-chk-block-input" onchange="togglePermFromList('block-input', this.checked)">
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div class="perm-list-item">
+              <div class="perm-list-item-left">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                <span>Che màn hình riêng tư (Màn hình đen)</span>
+              </div>
+              <label class="elevate-switch">
+                <input type="checkbox" id="list-chk-privacy-mode" onchange="togglePermFromList('privacy-mode', this.checked)">
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Quick Presets Chips -->
+          <div class="perm-presets">
+            <span style="font-size:9.5px;color:var(--win11-text-sec);">Bộ quyền nhanh:</span>
+            <button class="preset-chip" onclick="applyPreset('full')">Toàn quyền</button>
+            <button class="preset-chip" onclick="applyPreset('view')">Chỉ xem</button>
+            <button class="preset-chip active" onclick="applyPreset('default')">Chuẩn</button>
+          </div>
+        </div>
+
+        <!-- 4. COUNTDOWN BAR (TỰ TỪ CHỐI SAU 45S) -->
+        <div class="countdown-bar-wrap" id="countdown-wrap" title="Tự động hủy yêu cầu nếu không có người phản hồi">
+          <div class="countdown-bar-fill" id="countdown-bar"></div>
+        </div>
+
+        <!-- 5. ACTION BUTTONS (CHẤP NHẬN / TỪ CHỐI) -->
+        <div class="req-actions">
+          <button class="btn-action btn-accept" onclick="acceptConnection()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            <span id="btn-accept-text">Chấp nhận (Accept)</span>
+          </button>
+          <button class="btn-action btn-cancel" onclick="rejectConnection('Người dùng đã từ chối kết nối')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            <span>Từ chối (Cancel)</span>
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- SIMULATED WINDOWS TASKBAR -->
+  <div id="taskbar">
+    <div class="taskbar-left">
+      <!-- Windows Start Button -->
+      <div class="tb-icon" title="Start">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M0 2.25L6.5 1.35V7.45H0V2.25ZM0 8.55H6.5V14.65L0 13.75V8.55ZM7.5 1.2L16 0V7.45H7.5V1.2ZM7.5 8.55H16V16L7.5 14.8V8.55Z"/>
+        </svg>
+      </div>
+      <!-- Search -->
+      <div class="tb-icon" title="Search">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </div>
+    </div>
+
+    <!-- Active Taskbar Apps -->
+    <div class="taskbar-center">
+      <div class="tb-running-app" title="DeskAgent Service">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--win11-accent)"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        <span>DeskAgent</span>
+      </div>
+    </div>
+
+    <!-- Tray Area -->
+    <div class="taskbar-right">
+      <span style="font-size:11px;">29°C Mưa nhỏ</span>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;line-height:1.15;font-size:11px;">
+        <span id="tb-clock">3:16 PM</span>
+        <span style="font-size:10px;">10/6/2026</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Permission state model (8 permissions)
+    const permissions = {
+      keyboard: true,
+      clipboard: true,
+      audio: true,
+      file: true,
+      restart: true,
+      recording: true,
+      'block-input': false,
+      'privacy-mode': false
+    };
+
+    let countdownSeconds = 45;
+    let countdownTimer = null;
+
+    // Toggle single permission
+    function togglePerm(key) {
+      permissions[key] = !permissions[key];
+      const btn = document.getElementById(`perm-${key}`);
+      if (btn) btn.classList.toggle('active', permissions[key]);
+      const listChk = document.getElementById(`list-chk-${key}`);
+      if (listChk) listChk.checked = permissions[key];
+      updatePermCount();
+    }
+
+    function togglePermFromList(key, checked) {
+      permissions[key] = checked;
+      const btn = document.getElementById(`perm-${key}`);
+      if (btn) btn.classList.toggle('active', checked);
+      updatePermCount();
+    }
+
+    function updatePermCount() {
+      const activeCount = Object.values(permissions).filter(Boolean).length;
+      const hint = document.getElementById('perm-count-hint');
+      if (hint) {
+        hint.innerText = `Đang bật: ${activeCount}/8 quyền`;
+      }
+    }
+
+    // Apply Presets
+    function applyPreset(type) {
+      document.querySelectorAll('.preset-chip').forEach(c => c.classList.remove('active'));
+      event.target.classList.add('active');
+
+      if (type === 'full') {
+        Object.keys(permissions).forEach(k => permissions[k] = true);
+      } else if (type === 'view') {
+        Object.keys(permissions).forEach(k => permissions[k] = false);
+        permissions.audio = true; // Cho phép nghe
+      } else { // default
+        permissions.keyboard = true;
+        permissions.clipboard = true;
+        permissions.audio = true;
+        permissions.file = true;
+        permissions.restart = true;
+        permissions.recording = true;
+        permissions['block-input'] = false;
+        permissions['privacy-mode'] = false;
+      }
+
+      Object.keys(permissions).forEach(k => {
+        const btn = document.getElementById(`perm-${k}`);
+        if (btn) btn.classList.toggle('active', permissions[k]);
+        const listChk = document.getElementById(`list-chk-${k}`);
+        if (listChk) listChk.checked = permissions[k];
+      });
+      updatePermCount();
+      showToast(`Đã áp dụng bộ quyền: ${type === 'full' ? 'Toàn quyền' : type === 'view' ? 'Chỉ xem' : 'Mặc định'}`);
+    }
+
+    function toggleElevate(checked) {
+      const btnText = document.getElementById('btn-accept-text');
+      if (checked) {
+        btnText.innerText = "Chấp nhận & Cấp Admin";
+        showToast("Đã bật chế độ yêu cầu quyền Administrator (UAC)");
+      } else {
+        btnText.innerText = "Chấp nhận (Accept)";
+      }
+    }
+
+    // Accept Connection
+    function acceptConnection() {
+      clearInterval(countdownTimer);
+      const win = document.getElementById('connection-request-window');
+      win.style.transform = "scale(0.95)";
+      win.style.opacity = "0";
+
+      setTimeout(() => {
+        win.style.display = "none";
+        const pc = document.getElementById('display-pc-name') ? document.getElementById('display-pc-name').innerText : '';
+        const user = document.getElementById('display-user-name') ? document.getElementById('display-user-name').innerText : '';
+        showToast(`✓ Đã chấp nhận kết nối từ ${pc} / ${user}! Phiên điều khiển bắt đầu.`);
+      }, 200);
+    }
+
+    // Reject Connection
+    function rejectConnection(reason) {
+      clearInterval(countdownTimer);
+      const win = document.getElementById('connection-request-window');
+      win.style.transform = "scale(0.95)";
+      win.style.opacity = "0";
+
+      setTimeout(() => {
+        win.style.display = "none";
+        showToast(`✕ ${reason}. Đã đóng phiên.`);
+      }, 200);
+    }
+
+    function minimizeWindow() {
+      const win = document.getElementById('connection-request-window');
+      win.style.transform = "translateY(120px) scale(0.8)";
+      win.style.opacity = "0";
+      setTimeout(() => {
+        win.style.display = "none";
+        showToast("Đã thu nhỏ xuống khay hệ thống.");
+      }, 200);
+    }
+
+    function resetRequestWindow() {
+      const win = document.getElementById('connection-request-window');
+      win.style.display = "flex";
+      win.style.transform = "none";
+      win.style.opacity = "1";
+      startCountdown();
+      showToast("Đã mở lại cửa sổ yêu cầu kết nối!");
+    }
+
+    // Switch Visual Themes
+    function setWindowTheme(theme) {
+      const win = document.getElementById('connection-request-window');
+      const vp = document.getElementById('desktop-viewport');
+      document.querySelectorAll('#studio-toolbar .studio-btn').forEach(b => b.classList.remove('active'));
+
+      if (theme === 'win10') {
+        win.className = "style-win10-classic";
+        vp.className = "wp-win10";
+        document.getElementById('btn-theme-win10').classList.add('active');
+        showToast("Đã chuyển sang giao diện Windows 10 Classic (giống ảnh chụp hiện tại)");
+      } else if (theme === 'win11') {
+        win.className = "style-win11-fluent";
+        vp.className = "wp-win10";
+        document.getElementById('btn-theme-win11').classList.add('active');
+        showToast("Đã chuyển sang giao diện Windows 11 Fluent Dark (Mica Acrylic đề xuất)");
+      } else if (theme === 'light') {
+        win.className = "style-win11-light";
+        vp.className = "wp-win10";
+        document.getElementById('btn-theme-light').classList.add('active');
+        showToast("Đã chuyển sang giao diện Windows 11 Light Mode");
+      }
+    }
+
+    // Countdown logic
+    function startCountdown() {
+      clearInterval(countdownTimer);
+      countdownSeconds = 45;
+      const fill = document.getElementById('countdown-bar');
+      if (fill) fill.style.width = "100%";
+
+      countdownTimer = setInterval(() => {
+        countdownSeconds--;
+        const pct = (countdownSeconds / 45) * 100;
+        if (fill) fill.style.width = pct + "%";
+        if (countdownSeconds <= 0) {
+          clearInterval(countdownTimer);
+          rejectConnection("Hết thời gian chờ phản hồi (Timeout)");
+        }
+      }, 1000);
+    }
+
+    // Drag window support
+    (function initDrag() {
+      const handle = document.getElementById('req-card-header') || document.getElementById('connection-request-window');
+      const win = document.getElementById('connection-request-window');
+      let isDragging = false, startX, startY, initLeft, initTop;
+
+      if (!handle || !win) return;
+
+      handle.addEventListener('mousedown', (e) => {
+        if (e.target.closest('button') || e.target.closest('input')) return;
+        isDragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        const rect = win.getBoundingClientRect();
+        initLeft = rect.left;
+        initTop = rect.top;
+        win.style.bottom = "auto";
+        win.style.right = "auto";
+        win.style.left = initLeft + "px";
+        win.style.top = initTop + "px";
+      });
+
+      document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        win.style.left = (initLeft + dx) + "px";
+        win.style.top = (initTop + dy) + "px";
+      });
+
+      document.addEventListener('mouseup', () => {
+        isDragging = false;
+      });
+    })();
+
+    // Simple Toast
+    function showToast(text) {
+      const old = document.querySelector('.toast-msg');
+      if (old) old.remove();
+      const t = document.createElement('div');
+      t.className = "toast-msg";
+      t.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--win11-accent)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <span>${text}</span>
+      `;
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 3200);
+    }
+
+    // Live Taskbar Clock
+    setInterval(() => {
+      const now = new Date();
+      const h = now.getHours();
+      const m = String(now.getMinutes()).padStart(2, '0');
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      const h12 = h % 12 || 12;
+      const clock = document.getElementById('tb-clock');
+      if (clock) clock.innerText = `${h12}:${m} ${ampm}`;
+    }, 1000);
+
+    /* LIVE CUSTOMIZER LOGIC */
+    function toggleCustomizerPanel() {
+      const panel = document.getElementById('customizer-panel');
+      const btn = document.getElementById('btn-toggle-customizer');
+      panel.classList.toggle('collapsed');
+      btn.classList.toggle('active', !panel.classList.contains('collapsed'));
+    }
+
+    function setLayoutMode(mode) {
+      document.querySelectorAll('.cz-layout-btn').forEach(b => b.classList.remove('active'));
+      const gridView = document.getElementById('perm-grid-view');
+      const listView = document.getElementById('perm-list-view');
+
+      if (mode === 'grid') {
+        gridView.style.display = 'grid';
+        listView.style.display = 'none';
+        document.getElementById('btn-layout-grid').classList.add('active');
+        showToast("Đã chuyển sang bố cục dạng Lưới biểu tượng (Grid 4x2)");
+      } else {
+        gridView.style.display = 'none';
+        listView.style.display = 'flex';
+        document.getElementById('btn-layout-list').classList.add('active');
+        showToast("Đã chuyển sang bố cục dạng Danh sách có công tắc Switch chi tiết");
+      }
+    }
+
+    function setAccentColor(color, el) {
+      document.documentElement.style.setProperty('--win11-accent', color);
+      document.querySelectorAll('.cz-color-dot').forEach(d => d.classList.remove('active'));
+      el.classList.add('active');
+      showToast(`Đã đổi màu Accent sang ${color}`);
+    }
+
+    function setCornerRadius(val) {
+      document.documentElement.style.setProperty('--radius-win', val + 'px');
+      document.getElementById('cz-radius-val').innerText = val + 'px';
+    }
+
+    function updateRequesterInfo() {
+      const pc = document.getElementById('cz-input-pc').value.trim() || 'THANHCHUPC';
+      const user = document.getElementById('cz-input-user').value.trim() || 'Chu.mai';
+      const id = document.getElementById('cz-input-id').value.trim() || '(987654321)';
+      const status = document.getElementById('cz-input-status').value.trim() || 'Request access to your device...';
+
+      const dispPc = document.getElementById('display-pc-name');
+      const dispUser = document.getElementById('display-user-name');
+      const dispId = document.getElementById('display-peer-id');
+      const dispStatus = document.getElementById('req-status-text');
+
+      if (dispPc) dispPc.innerText = pc;
+      if (dispUser) dispUser.innerText = user;
+      if (dispId) dispId.innerText = id;
+      if (dispStatus) dispStatus.innerText = status;
+    }
+
+    function toggleCountdownVisibility(visible) {
+      document.getElementById('countdown-wrap').style.display = visible ? 'block' : 'none';
+    }
+
+    function toggleElevateVisibility(visible) {
+      document.getElementById('elevate-row').style.display = visible ? 'flex' : 'none';
+    }
+
+    function copyWindowMarkup() {
+      const win = document.getElementById('connection-request-window');
+      navigator.clipboard.writeText(win.outerHTML).then(() => {
+        showToast("✓ Đã sao chép mã HTML của cửa sổ vào Clipboard!");
+      }).catch(() => {
+        showToast("Sao chép thành công.");
+      });
+    }
+
+    // Initial setup
+    startCountdown();
+    updatePermCount();
+  </script>
+</body>
+</html>

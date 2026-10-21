@@ -1,0 +1,3151 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DeskAgent - Windows 11 Remote Session</title>
+<style>
+  :root {
+    --win11-bg: #202020;
+    --win11-subtle: #2b2b2b;
+    --win11-border: rgba(255, 255, 255, 0.08);
+    --win11-accent: #60cdff;
+    --win11-text: #ffffff;
+    --win11-text-sec: #d1d5db;
+    --win11-close-hover: #c42b1c;
+    --win11-btn-hover: rgba(255, 255, 255, 0.06);
+    --win11-btn-active: rgba(255, 255, 255, 0.1);
+    --titlebar-h: 32px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+
+  body {
+    background: #000;
+    color: var(--win11-text);
+    font-family: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+    height: 100vh;
+    width: 100vw;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* WORKSPACE CONTAINER (VIEWPORT + SIDE PANEL) */
+  #workspace {
+    flex: 1;
+    position: relative;
+    display: flex;
+    overflow: hidden;
+    height: 100%;
+    width: 100%;
+  }
+
+  /* TOP HOVER TRIGGER ZONE FOR AUTO-HIDE */
+  #top-trigger-zone {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 8px;
+    z-index: 95;
+  }
+
+  /* WINDOWS 11 TITLEBAR / TOOLBAR (32PX STANDARD HEIGHT) */
+  #win11-titlebar-container {
+    width: 100%;
+    height: var(--titlebar-h);
+    z-index: 100;
+    flex-shrink: 0;
+    transition: transform 0.22s cubic-bezier(0.1, 0.9, 0.2, 1);
+  }
+
+  /* Khi PINNED: Nằm trong luồng hiển thị tự nhiên ở trên cùng (relative), chiếm 32px, không đè nội dung */
+  #win11-titlebar-container.pinned {
+    position: relative;
+    transform: none;
+  }
+
+  /* Khi UNPINNED: Nằm trôi nổi absolute ở mép trên để tự ẩn */
+  #win11-titlebar-container:not(.pinned) {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform: translateY(-100%);
+  }
+
+  /* Hiện titlebar khi hover vào trigger zone mép trên hoặc vào chính thanh */
+  #top-trigger-zone:hover + #win11-titlebar-container:not(.pinned),
+  #win11-titlebar-container:not(.pinned):hover,
+  #win11-titlebar-container:not(.pinned).open {
+    transform: translateY(0);
+  }
+
+  #win11-titlebar {
+    height: var(--titlebar-h);
+    background: var(--win11-bg);
+    border-bottom: 1px solid var(--win11-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    width: 100%;
+    position: relative;
+  }
+
+  /* Pull Tab khi ẩn */
+  #titlebar-handle {
+    position: absolute;
+    bottom: -14px;
+    left: 50%;
+    transform: translateX(-50%);
+    height: 14px;
+    padding: 0 16px;
+    background: var(--win11-bg);
+    border: 1px solid var(--win11-border);
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--win11-text-sec);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+  #titlebar-handle:hover {
+    color: #fff;
+    background: var(--win11-subtle);
+  }
+
+  /* Handle chỉ cần hiển thị khi thanh đang ở chế độ tự ẩn */
+  #win11-titlebar-container.pinned #titlebar-handle {
+    display: none;
+  }
+
+  /* 1. LEFT: Session Info */
+  .title-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-left: 12px;
+    height: 100%;
+  }
+  .app-icon {
+    width: 15px;
+    height: 15px;
+    color: var(--win11-accent);
+    stroke-width: 1.8;
+  }
+  .session-title {
+    font-size: 12px;
+    font-weight: 500;
+    color: #fff;
+    letter-spacing: 0.2px;
+  }
+  .badge-p2p {
+    font-size: 10px;
+    font-family: Consolas, monospace;
+    color: #4ade80;
+    background: rgba(74, 222, 128, 0.12);
+    border: 1px solid rgba(74, 222, 128, 0.25);
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+
+  /* 2. CENTER: Tools (Windows 11 Fluent CommandBar style) */
+  .title-center {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .tool-btn {
+    height: 24px;
+    padding: 0 7px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--win11-text-sec);
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    font-size: 11.5px;
+    font-family: inherit;
+    white-space: nowrap;
+    user-select: none;
+    transition: all 0.1s ease;
+  }
+  .tool-btn.icon-only {
+    width: 26px;
+    padding: 0;
+    justify-content: center;
+  }
+  .tool-btn:hover {
+    background: var(--win11-btn-hover);
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.05);
+  }
+  .tool-btn:active {
+    background: var(--win11-btn-active);
+  }
+  .tool-btn.active {
+    background: rgba(96, 205, 255, 0.18);
+    color: var(--win11-accent);
+    border-color: rgba(96, 205, 255, 0.3);
+  }
+  .tool-sep {
+    width: 1px;
+    height: 14px;
+    background: var(--win11-border);
+    margin: 0 4px;
+  }
+
+  /* SVG Icons */
+  .icon {
+    width: 14px;
+    height: 14px;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* 3. RIGHT: Pin Button + Win11 Native Caption Controls */
+  .title-right {
+    display: flex;
+    align-items: center;
+    height: 100%;
+  }
+
+  .caption-controls {
+    display: flex;
+    height: 100%;
+    margin-left: 6px;
+  }
+
+  /* Exact Windows 11 Caption Button Dimensions (46px x 32px) */
+  .caption-btn {
+    width: 46px;
+    height: var(--titlebar-h);
+    border: none;
+    background: transparent;
+    color: var(--win11-text-sec);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.1s ease;
+  }
+  .caption-btn:hover {
+    background: var(--win11-btn-hover);
+    color: #fff;
+  }
+  .caption-btn.close:hover {
+    background: var(--win11-close-hover);
+    color: #fff;
+  }
+
+  /* VIEWPORT CHÍNH: KHUNG TRỐNG MÀN HÌNH CLIENT */
+  #remote-viewport {
+    flex: 1;
+    height: 100%;
+    background: #000;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  /* Placeholder guide */
+  .viewport-placeholder {
+    width: 86%;
+    height: 82%;
+    border: 2px dashed rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #71717a;
+    gap: 12px;
+    text-align: center;
+    background: radial-gradient(circle, rgba(32, 32, 32, 0.4) 0%, rgba(10, 10, 10, 0.8) 100%);
+  }
+  .viewport-placeholder span {
+    font-size: 13px;
+    font-weight: 600;
+    color: #a1a1aa;
+    letter-spacing: 0.5px;
+  }
+  .viewport-placeholder p {
+    font-size: 12px;
+    max-width: 440px;
+    line-height: 1.5;
+    color: #52525b;
+  }
+
+  /* WINDOWS 11 FLOATING UTILITY WINDOW (TOOLS) */
+  #tools-window {
+    position: absolute;
+    top: 54px;
+    left: calc(50% - 290px);
+    width: 580px;
+    height: 420px;
+    background: rgba(36, 36, 36, 0.88);
+    border: 1px solid var(--win11-border);
+    border-radius: 8px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.7), 0 0 1px rgba(255, 255, 255, 0.2);
+    display: flex;
+    flex-direction: column;
+    z-index: 200;
+    overflow: hidden;
+    backdrop-filter: blur(24px) saturate(140%);
+    -webkit-backdrop-filter: blur(24px) saturate(140%);
+    resize: both;
+    min-width: 440px;
+    min-height: 280px;
+    max-width: 95vw;
+    max-height: 90vh;
+    animation: win11Pop 0.16s cubic-bezier(0.1, 0.9, 0.2, 1);
+  }
+  #tools-window.hidden {
+    display: none;
+  }
+  @keyframes win11Pop {
+    from {
+      opacity: 0;
+      transform: scale(0.96) translateY(-8px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+
+  /* Tools Window Titlebar with Integrated Tabs (36px, Draggable) */
+  .win-titlebar {
+    height: 36px;
+    background: #1c1c1c;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-left: 8px;
+    user-select: none;
+    cursor: move;
+    flex-shrink: 0;
+  }
+  .win-tabs {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    flex-shrink: 0;
+  }
+  .win-caption-controls {
+    display: flex;
+    height: 100%;
+  }
+  .win-caption-btn {
+    width: 38px;
+    height: 36px;
+    border: none;
+    background: transparent;
+    color: #d1d5db;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: 0.1s;
+  }
+  .win-caption-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+  }
+  .win-caption-btn.close:hover {
+    background: var(--win11-close-hover);
+    color: #fff;
+  }
+  .win-tab-btn {
+    padding: 4px 10px;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    background: transparent;
+    color: #a1a1aa;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.1s ease;
+  }
+  .win-tab-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+  }
+  .win-tab-btn.active {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: var(--win11-accent);
+    font-weight: 500;
+  }
+
+  /* Window Body & Views */
+  .win-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    background: #181818;
+  }
+  .tool-view {
+    display: none;
+    flex-direction: column;
+    height: 100%;
+    gap: 10px;
+  }
+  .tool-view.active {
+    display: flex;
+  }
+
+  /* 1. Hardware Grid */
+  .hw-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 8px;
+  }
+  .hw-card {
+    background: #222222;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .hw-label {
+    font-size: 11px;
+    color: #a1a1aa;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .hw-value {
+    font-size: 13px;
+    font-weight: 500;
+    color: #fff;
+  }
+  .hw-sub {
+    font-size: 11px;
+    color: #71717a;
+  }
+
+  /* 2. Events List & Filters */
+  .events-filter-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .events-filter-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .events-level-pills {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+  .level-pill {
+    padding: 3px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: #202020;
+    color: #a1a1aa;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: 0.1s;
+  }
+  .level-pill:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+  }
+  .level-pill.active {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.25);
+    color: #fff;
+    font-weight: 500;
+  }
+  .level-pill.active.pill-err {
+    background: rgba(239, 68, 68, 0.22);
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #fca5a5;
+  }
+  .level-pill.active.pill-warn {
+    background: rgba(245, 158, 11, 0.22);
+    border-color: rgba(245, 158, 11, 0.4);
+    color: #fde047;
+  }
+  .level-pill.active.pill-info {
+    background: rgba(96, 205, 255, 0.22);
+    border-color: rgba(96, 205, 255, 0.4);
+    color: var(--win11-accent);
+  }
+  .events-channel-select {
+    background: #202020;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #e4e4e7;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 11px;
+    font-family: inherit;
+    outline: none;
+    cursor: pointer;
+  }
+  .events-channel-select:focus {
+    border-color: var(--win11-accent);
+  }
+  .events-controls-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .events-controls-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .events-controls-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .events-filter-select {
+    background: #202020;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #e4e4e7;
+    border-radius: 4px;
+    padding: 3px 6px;
+    font-size: 11px;
+    font-family: inherit;
+    outline: none;
+    cursor: pointer;
+  }
+  .events-filter-select:focus {
+    border-color: var(--win11-accent);
+  }
+  .events-settings-btn {
+    background: #252525;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #d4d4d8;
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 11px;
+    font-family: inherit;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    transition: 0.1s;
+  }
+  .events-settings-btn:hover {
+    background: #323232;
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+  .events-settings-btn.active {
+    background: rgba(96, 205, 255, 0.18);
+    border-color: var(--win11-accent);
+    color: var(--win11-accent);
+  }
+  .events-settings-panel {
+    background: #1c1c1c;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 11px;
+    animation: fadeIn 0.12s ease;
+  }
+  .events-settings-panel.hidden {
+    display: none !important;
+  }
+  .events-settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: #a1a1aa;
+    gap: 10px;
+  }
+  .events-settings-row label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    color: #d4d4d8;
+  }
+  .events-btn-small {
+    background: #2b2b2b;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #e4e4e7;
+    border-radius: 3px;
+    padding: 2px 7px;
+    font-size: 10px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: 0.1s;
+  }
+  .events-btn-small:hover {
+    background: #383838;
+    color: #fff;
+  }
+  .events-count-label {
+    font-size: 10.5px;
+    color: #71717a;
+    white-space: nowrap;
+  }
+  .event-list-container {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 2px;
+  }
+  .event-item {
+    background: #222222;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: 0.12s;
+  }
+  .event-item:hover {
+    background: #272727;
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+  .event-item.hidden {
+    display: none !important;
+  }
+  .event-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .event-meta-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .badge-channel {
+    background: rgba(255, 255, 255, 0.06);
+    color: #a1a1aa;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 500;
+  }
+  .btn-ask-ai-event {
+    background: rgba(168, 85, 247, 0.15);
+    border: 1px solid rgba(168, 85, 247, 0.3);
+    color: #d8b4fe;
+    border-radius: 3px;
+    padding: 2px 7px;
+    font-size: 10px;
+    cursor: pointer;
+    font-family: inherit;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: 0.1s;
+  }
+  .btn-ask-ai-event:hover {
+    background: rgba(168, 85, 247, 0.28);
+    color: #fff;
+  }
+  .badge-err {
+    background: rgba(239, 68, 68, 0.2);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+  }
+  .badge-warn {
+    background: rgba(245, 158, 11, 0.2);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+  }
+  .badge-info {
+    background: rgba(96, 205, 255, 0.2);
+    color: var(--win11-accent);
+    border: 1px solid rgba(96, 205, 255, 0.3);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+  }
+
+  /* 3. Deploy List & Custom Installer */
+  .deploy-custom-card {
+    background: #1c1c1c;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    padding: 10px;
+    margin-bottom: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .deploy-card-title {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .deploy-file-picker-row, .deploy-args-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .deploy-path-input, .deploy-args-input {
+    flex: 1;
+    background: #252525;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+    color: #fff;
+    padding: 5px 8px;
+    font-size: 11px;
+    font-family: inherit;
+    outline: none;
+    transition: 0.1s;
+  }
+  .deploy-path-input:focus, .deploy-args-input:focus {
+    border-color: var(--win11-accent);
+  }
+  .deploy-browse-btn {
+    background: #2b2b2b;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #e4e4e7;
+    border-radius: 4px;
+    padding: 5px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+    font-family: inherit;
+    transition: 0.1s;
+  }
+  .deploy-browse-btn:hover {
+    background: #353535;
+    color: #fff;
+  }
+  .deploy-install-btn {
+    background: var(--win11-accent);
+    color: #000;
+    font-weight: 600;
+    border: none;
+    border-radius: 4px;
+    padding: 5px 12px;
+    font-size: 11px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+    font-family: inherit;
+    transition: 0.1s;
+  }
+  .deploy-install-btn:hover {
+    background: #7cd5ff;
+  }
+  .deploy-install-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  /* DEPLOY VISUAL STEPPER CARD */
+  .deploy-progress-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+    padding: 10px 12px;
+    background: rgba(24, 24, 24, 0.95);
+    border: 1px solid var(--win11-border);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    animation: win11Pop 0.18s cubic-bezier(0.1, 0.9, 0.2, 1);
+  }
+  .deploy-progress-wrap.hidden {
+    display: none !important;
+  }
+  .deploy-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .deploy-target-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .deploy-spinner {
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .spin {
+    animation: win11Spin 0.9s linear infinite;
+  }
+  @keyframes win11Spin {
+    to { transform: rotate(360deg); }
+  }
+  .deploy-pkg-title {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #fff;
+  }
+  .deploy-pkg-subtitle {
+    font-size: 10px;
+    color: #8e8e93;
+  }
+  .deploy-status-badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+  }
+  .deploy-status-badge.badge-active {
+    background: rgba(96, 205, 255, 0.18);
+    border: 1px solid rgba(96, 205, 255, 0.35);
+    color: var(--win11-accent);
+  }
+  .deploy-status-badge.badge-success {
+    background: rgba(16, 185, 129, 0.18);
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    color: #34d399;
+  }
+  .deploy-status-badge.badge-error {
+    background: rgba(239, 68, 68, 0.18);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    color: #f87171;
+  }
+
+  /* 4-Step Stepper Component */
+  .deploy-steps-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 3px;
+    padding: 8px 6px;
+    background: #151515;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 5px;
+  }
+  .deploy-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+    text-align: center;
+    transition: all 0.15s ease;
+  }
+  .step-indicator {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #232323;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 600;
+    color: #71717a;
+    transition: all 0.2s cubic-bezier(0.1, 0.9, 0.2, 1);
+  }
+  .step-check {
+    display: none;
+    width: 10px;
+    height: 10px;
+    stroke-width: 2.4;
+  }
+  .deploy-step.active .step-indicator {
+    background: rgba(96, 205, 255, 0.2);
+    border-color: var(--win11-accent);
+    color: var(--win11-accent);
+    box-shadow: 0 0 8px rgba(96, 205, 255, 0.4);
+    transform: scale(1.08);
+  }
+  .deploy-step.completed .step-indicator {
+    background: #10b981;
+    border-color: #10b981;
+    color: #fff;
+  }
+  .deploy-step.completed .step-num {
+    display: none;
+  }
+  .deploy-step.completed .step-check {
+    display: block;
+    color: #fff;
+  }
+  .step-title {
+    font-size: 9.5px;
+    color: #71717a;
+    white-space: nowrap;
+    transition: color 0.15s ease;
+  }
+  .deploy-step.active .step-title {
+    color: #fff;
+    font-weight: 600;
+  }
+  .deploy-step.completed .step-title {
+    color: #a1a1aa;
+  }
+  .step-connector {
+    height: 2px;
+    flex: 0.35;
+    background: rgba(255, 255, 255, 0.08);
+    margin-bottom: 15px;
+    border-radius: 1px;
+    transition: background 0.25s ease;
+  }
+  .step-connector.completed {
+    background: #10b981;
+  }
+  .step-connector.active {
+    background: var(--win11-accent);
+  }
+
+  .deploy-progress-container {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .deploy-progress-info {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10.5px;
+    color: #a1a1aa;
+  }
+  .deploy-progress-bar {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .deploy-progress-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--win11-accent) 0%, #38bdf8 100%);
+    border-radius: 2px;
+    transition: width 0.2s cubic-bezier(0.1, 0.9, 0.2, 1);
+  }
+  .deploy-progress-fill.success {
+    background: #10b981;
+  }
+  .deploy-section-header {
+    font-size: 10.5px;
+    color: #71717a;
+    font-weight: 600;
+    margin: 4px 0 6px 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .deploy-item {
+    background: #222222;
+    border: 1px solid var(--win11-border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: background 0.12s ease;
+  }
+  .deploy-item:hover {
+    background: #262626;
+  }
+  .deploy-btn {
+    padding: 4px 11px;
+    background: rgba(96, 205, 255, 0.12);
+    border: 1px solid rgba(96, 205, 255, 0.25);
+    color: var(--win11-accent);
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.12s ease;
+  }
+  .deploy-btn:hover {
+    background: rgba(96, 205, 255, 0.22);
+    color: #fff;
+    border-color: rgba(96, 205, 255, 0.4);
+    box-shadow: 0 0 8px rgba(96, 205, 255, 0.2);
+  }
+  .deploy-btn:active {
+    background: rgba(96, 205, 255, 0.3);
+    transform: scale(0.97);
+  }
+  .deploy-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  /* 4. Chat View */
+  .chat-box {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    gap: 8px;
+  }
+  .chat-msgs {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-right: 4px;
+  }
+  .msg-bubble {
+    max-width: 80%;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .msg-remote {
+    background: #282828;
+    align-self: flex-start;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    color: #d1d5db;
+  }
+  .msg-self {
+    background: rgba(96, 205, 255, 0.2);
+    border: 1px solid rgba(96, 205, 255, 0.3);
+    color: #fff;
+    align-self: flex-end;
+  }
+  .chat-input-row {
+    display: flex;
+    gap: 6px;
+  }
+  .chat-input {
+    flex: 1;
+    background: #222222;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    color: #fff;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-family: inherit;
+    outline: none;
+  }
+  .chat-input:focus {
+    border-color: var(--win11-accent);
+  }
+  .chat-send-btn {
+    padding: 6px 14px;
+    background: var(--win11-accent);
+    color: #000;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .chat-send-btn:hover {
+    background: #7bd5ff;
+  }
+
+  /* CLIENT-SIDE CHAT POPUP (MÀN HÌNH CLIENT THANHCHUPC) */
+  .client-chat-win {
+    position: absolute;
+    bottom: 24px;
+    right: 24px;
+    width: 320px;
+    height: 380px;
+    background: rgba(32, 32, 32, 0.88);
+    border: 1px solid var(--win11-border);
+    border-radius: 8px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 1px rgba(255, 255, 255, 0.12);
+    display: flex;
+    flex-direction: column;
+    z-index: 60;
+    overflow: hidden;
+    backdrop-filter: blur(24px) saturate(140%);
+    -webkit-backdrop-filter: blur(24px) saturate(140%);
+    transition: transform 0.22s cubic-bezier(0.1, 0.9, 0.2, 1), opacity 0.22s ease, visibility 0.22s ease;
+  }
+  .client-chat-win.hidden {
+    opacity: 0;
+    transform: translateY(16px) scale(0.96);
+    pointer-events: none;
+    visibility: hidden;
+  }
+  .client-chat-header {
+    height: 34px;
+    background: #1c1c1c;
+    border-bottom: 1px solid var(--win11-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 8px 0 12px;
+    user-select: none;
+    cursor: default;
+  }
+  .client-chat-header-title {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #e4e4e7;
+  }
+  .client-status-dot {
+    width: 7px;
+    height: 7px;
+    background: #10b981;
+    border-radius: 50%;
+    box-shadow: 0 0 8px #10b981;
+  }
+  .client-chat-controls {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .client-caption-btn {
+    width: 26px;
+    height: 24px;
+    border: none;
+    background: transparent;
+    color: var(--win11-text-sec);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: 0.1s;
+  }
+  .client-caption-btn:hover {
+    background: var(--win11-btn-hover);
+    color: #fff;
+  }
+  .client-caption-btn.close:hover {
+    background: var(--win11-close-hover);
+    color: #fff;
+  }
+  .client-chat-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 10px;
+    gap: 8px;
+    background: #181818;
+    overflow: hidden;
+  }
+  .client-chat-msgs {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-right: 2px;
+  }
+  .c-msg {
+    max-width: 85%;
+    padding: 7px 10px;
+    border-radius: 6px;
+    font-size: 11.5px;
+    line-height: 1.4;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .c-msg-sender {
+    font-size: 9.5px;
+    font-weight: 600;
+    color: #a1a1aa;
+  }
+  .c-msg-time {
+    font-size: 9px;
+    color: #71717a;
+    align-self: flex-end;
+    margin-top: 1px;
+  }
+  .c-msg-client {
+    background: rgba(96, 205, 255, 0.18);
+    border: 1px solid rgba(96, 205, 255, 0.28);
+    color: #fff;
+    align-self: flex-end;
+  }
+  .c-msg-it {
+    background: #262626;
+    border: 1px solid var(--win11-border);
+    color: #e4e4e7;
+    align-self: flex-start;
+  }
+  .client-chat-input-row {
+    display: flex;
+    gap: 6px;
+  }
+  .client-chat-input {
+    flex: 1;
+    background: #202020;
+    border: 1px solid var(--win11-border);
+    border-radius: 4px;
+    color: #fff;
+    padding: 5px 8px;
+    font-size: 11px;
+    font-family: inherit;
+    outline: none;
+    transition: 0.15s;
+  }
+  .client-chat-input:focus {
+    border-color: var(--win11-accent);
+    background: #242424;
+  }
+  .client-chat-send-btn {
+    padding: 5px 12px;
+    background: var(--win11-accent);
+    color: #000;
+    border: none;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.12s ease, transform 0.08s ease;
+  }
+  .client-chat-send-btn:hover {
+    background: #7cd5ff;
+  }
+  .client-chat-send-btn:active {
+    transform: scale(0.97);
+  }
+  .client-chat-dock-btn {
+    position: absolute;
+    bottom: 24px;
+    right: 24px;
+    background: rgba(32, 32, 32, 0.88);
+    border: 1px solid var(--win11-border);
+    color: #fff;
+    padding: 7px 14px;
+    border-radius: 20px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 1px rgba(255, 255, 255, 0.12);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11.5px;
+    font-weight: 500;
+    cursor: pointer;
+    z-index: 55;
+    font-family: inherit;
+    backdrop-filter: blur(24px) saturate(140%);
+    -webkit-backdrop-filter: blur(24px) saturate(140%);
+    transition: transform 0.2s cubic-bezier(0.1, 0.9, 0.2, 1), opacity 0.2s ease, visibility 0.2s ease;
+  }
+  .client-chat-dock-btn:hover {
+    background: rgba(44, 44, 44, 0.95);
+    border-color: rgba(96, 205, 255, 0.4);
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.6), 0 0 10px rgba(96, 205, 255, 0.2);
+  }
+  .client-chat-dock-btn:active {
+    transform: translateY(0);
+    background: rgba(28, 28, 28, 0.95);
+  }
+  .client-chat-dock-btn.hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(12px) scale(0.94);
+    visibility: hidden;
+  }
+  .client-unread-badge {
+    background: #ef4444;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 2px 6px rgba(239, 68, 68, 0.4);
+  }
+
+  /* WINDOWS 11 FLUENT TOAST NOTIFICATIONS */
+  #win11-toast-container {
+    position: fixed;
+    bottom: 24px;
+    left: 24px;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 8px;
+    z-index: 9999;
+    pointer-events: none;
+    max-width: 380px;
+  }
+  .win11-toast {
+    pointer-events: auto;
+    background: rgba(32, 32, 32, 0.92);
+    border: 1px solid var(--win11-border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65), 0 0 1px rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(24px) saturate(140%);
+    -webkit-backdrop-filter: blur(24px) saturate(140%);
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    animation: toastSlideIn 0.22s cubic-bezier(0.1, 0.9, 0.2, 1);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+  }
+  .win11-toast.toast-hide {
+    opacity: 0;
+    transform: translateY(8px) scale(0.95);
+  }
+  @keyframes toastSlideIn {
+    from {
+      opacity: 0;
+      transform: translateY(12px) scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+  .toast-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .toast-icon.info { color: var(--win11-accent); }
+  .toast-icon.success { color: #34d399; }
+  .toast-icon.warn { color: #fbbf24; }
+  .toast-icon.error { color: #f87171; }
+  .toast-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .toast-title {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #fff;
+  }
+  .toast-msg {
+    font-size: 11px;
+    color: #d1d5db;
+    line-height: 1.35;
+  }
+  .toast-close-btn {
+    border: none;
+    background: transparent;
+    color: #71717a;
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: 0.1s;
+  }
+  .toast-close-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+  }
+
+  /* 5. AI Assistant View */
+  .ai-box {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    gap: 8px;
+  }
+  .ai-suggestions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .ai-sug-title {
+    font-size: 11px;
+    color: #a1a1aa;
+    font-weight: 500;
+  }
+  .ai-chip {
+    padding: 3px 9px;
+    background: rgba(168, 85, 247, 0.12);
+    border: 1px solid rgba(168, 85, 247, 0.25);
+    border-radius: 12px;
+    color: #d8b4fe;
+    font-size: 11px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: 0.1s;
+  }
+  .ai-chip:hover {
+    background: rgba(168, 85, 247, 0.24);
+    border-color: rgba(168, 85, 247, 0.45);
+    color: #fff;
+  }
+  .ai-chat-msgs {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-right: 4px;
+  }
+  .msg-ai {
+    background: #241e30;
+    align-self: flex-start;
+    border: 1px solid rgba(168, 85, 247, 0.25);
+    color: #e2e8f0;
+    max-width: 90%;
+  }
+  .msg-ai-it {
+    background: rgba(96, 205, 255, 0.18);
+    border: 1px solid rgba(96, 205, 255, 0.25);
+    color: #fff;
+    align-self: flex-end;
+    max-width: 85%;
+  }
+  .ai-sender {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #c084fc;
+    margin-bottom: 4px;
+  }
+  .ai-code-block {
+    background: #13111c;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    padding: 8px;
+    margin: 6px 0;
+    font-family: "Cascadia Code", Consolas, monospace;
+    font-size: 11.5px;
+    color: #a5f3fc;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .ai-code-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+  .btn-run-cmd {
+    background: #0284c7;
+    color: #fff;
+    border: none;
+    border-radius: 3px;
+    padding: 3px 8px;
+    font-size: 10.5px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    transition: 0.1s;
+  }
+  .btn-run-cmd:hover {
+    background: #0369a1;
+  }
+  .ai-send-btn {
+    padding: 6px 14px;
+    background: #9333ea;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: 0.1s;
+  }
+  .ai-send-btn:hover {
+    background: #a855f7;
+  }
+
+  /* AI Image Paste & Attach */
+  .chat-attach-btn {
+    width: 32px;
+    height: 32px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: #222222;
+    color: #a1a1aa;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: 0.1s;
+  }
+  .chat-attach-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  .ai-img-preview-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background: rgba(168, 85, 247, 0.12);
+    border: 1px solid rgba(168, 85, 247, 0.25);
+    border-radius: 6px;
+    animation: fadeIn 0.15s ease;
+  }
+  .ai-img-preview-bar.hidden {
+    display: none;
+  }
+  .ai-img-thumb-wrap {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #181524;
+  }
+  .ai-img-thumb-wrap img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .ai-file-icon-preview {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #c084fc;
+    width: 100%;
+    height: 100%;
+  }
+  .ai-attach-details {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    overflow: hidden;
+  }
+  .ai-attach-filename {
+    font-size: 11px;
+    font-weight: 600;
+    color: #f1f5f9;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ai-img-remove-btn {
+    position: absolute;
+    top: 1px;
+    right: 1px;
+    width: 15px;
+    height: 15px;
+    background: rgba(0, 0, 0, 0.75);
+    color: #fff;
+    border: none;
+    border-radius: 50%;
+    font-size: 9px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+  }
+  .ai-img-remove-btn:hover {
+    background: #ef4444;
+  }
+  .ai-img-info {
+    font-size: 10.5px;
+    color: #d8b4fe;
+    flex: 1;
+  }
+  .msg-attached-img {
+    max-width: 240px;
+    max-height: 160px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    margin-top: 6px;
+    display: block;
+    cursor: pointer;
+    transition: transform 0.12s ease;
+  }
+  .msg-attached-img:hover {
+    transform: scale(1.02);
+  }
+  .msg-attached-file {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    margin-top: 6px;
+    max-width: 100%;
+  }
+  .msg-attached-file .file-icon {
+    color: #c084fc;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+  .msg-attached-file-info {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    overflow: hidden;
+  }
+  .msg-attached-file-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .msg-attached-file-size {
+    font-size: 10px;
+    color: #a1a1aa;
+  }
+</style>
+</head>
+<body>
+
+  <!-- HOVER TRIGGER ZONE -->
+  <div id="top-trigger-zone"></div>
+
+  <!-- WINDOWS 11 TITLEBAR / TOOLBAR (32PX) -->
+  <div id="win11-titlebar-container" class="pinned">
+      <div id="win11-titlebar">
+        
+        <!-- 1. LEFT: App Icon & Remote Host Info -->
+        <div class="title-left">
+          <svg class="app-icon icon" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+          <span class="session-title">THANHCHUPC</span>
+          <span class="badge-p2p">60 FPS</span>
+        </div>
+
+        <!-- 2. CENTER: Remote Session Tools (Left) & IT Tools Flyout (Right) -->
+        <div class="title-center">
+          <button class="tool-btn" onclick="selectScreen(1)" title="Chọn màn hình hiển thị (Màn 1 / Màn 2)">
+            <svg class="icon" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+            <span>Màn 1</span>
+          </button>
+          <button class="tool-btn" onclick="setDisplayQuality('sharp')" title="Cấu hình hiển thị (Độ phân giải, chất lượng)">
+            <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <span>Hiển thị</span>
+          </button>
+          <button class="tool-btn" onclick="sendShortcut('cad')" title="Gửi phím tắt (Ctrl+Alt+Del, Win+L, Task Manager)">
+            <svg class="icon" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.01"/><path d="M10 8h.01"/><path d="M14 8h.01"/><path d="M18 8h.01"/><path d="M6 12h.01"/><path d="M10 12h.01"/><path d="M14 12h.01"/><path d="M18 12h.01"/><path d="M8 16h8"/></svg>
+            <span>Phím tắt</span>
+          </button>
+
+          <div class="tool-sep"></div>
+
+          <!-- NÚT MỞ CỬA SỔ CÔNG CỤ (TOOL) -->
+          <button class="tool-btn" id="btn-tools-win" onclick="toggleToolsWindow()" title="Mở cửa sổ công cụ IT Support (Tool)">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <span>Tool</span>
+          </button>
+        </div>
+
+        <!-- 3. RIGHT: Pin Button & Windows 11 Native Caption Controls -->
+        <div class="title-right">
+          <button class="tool-btn icon-only active" id="pin-btn" onclick="togglePin()" title="Đang ghim titlebar (bấm để tự ẩn)">
+            <svg class="icon" viewBox="0 0 24 24"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a1 1 0 0 0 0-2H8a1 1 0 0 0 0 2h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>
+          </button>
+
+          <!-- Windows 11 Native Caption Buttons (46px x 32px) -->
+          <div class="caption-controls">
+            <!-- Minimize (-) Button -->
+            <button class="caption-btn" onclick="minimizeWindow()" title="Thu nhỏ cửa sổ">
+              <svg width="10" height="10" viewBox="0 0 10 10">
+                <line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+              </svg>
+            </button>
+            <!-- Maximize / Restore Button -->
+            <button class="caption-btn" onclick="toggleMaximize()" title="Phóng to / Cửa sổ">
+              <svg width="10" height="10" viewBox="0 0 10 10">
+                <rect width="8.5" height="8.5" x="0.75" y="0.75" fill="none" stroke="currentColor" stroke-width="1.2"/>
+              </svg>
+            </button>
+            <!-- Close Button -->
+            <button class="caption-btn close" onclick="closeSession()" title="Đóng kết nối">
+              <svg width="10" height="10" viewBox="0 0 10 10">
+                <line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" stroke-width="1.2"/>
+                <line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" stroke-width="1.2"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Handle ẩn/hiện titlebar -->
+      <div id="titlebar-handle" onclick="toggleTitlebar()" title="Hiện / Ẩn thanh công cụ">
+        <svg class="icon" id="handle-icon" style="width:10px;height:10px;" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+    </div>
+
+    <!-- WORKSPACE (VIEWPORT + SIDE PANEL) -->
+    <div id="workspace">
+
+      <!-- VIEWPORT TRUNG TÂM (KHUNG TRỐNG MÀN HÌNH CLIENT) -->
+      <div id="remote-viewport">
+        <div class="viewport-placeholder">
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="2" y="3" width="20" height="14" rx="2"></rect>
+            <line x1="8" y1="21" x2="16" y2="21"></line>
+            <line x1="12" y1="17" x2="12" y2="21"></line>
+          </svg>
+          <span>VÙNG HIỂN THỊ MÀN HÌNH CLIENT (1920 × 1080)</span>
+          <p>Khung đã tách biệt hoàn toàn. Bạn có thể nhúng thẻ <code>&lt;canvas&gt;</code>, luồng video WebRTC, hoặc mockup giao diện client của bạn vào đây.</p>
+        </div>
+
+        <!-- CỬA SỔ CHAT TRÊN MÀN HÌNH CLIENT (MẶC ĐỊNH ẨN KHI MỚI REMOTE VÀO) -->
+        <div id="client-chat-window" class="client-chat-win hidden">
+          <div class="client-chat-header" id="client-chat-header">
+            <div class="client-chat-header-title">
+              <svg class="icon" style="width:13px;height:13px;color:var(--win11-accent);" viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+              <span>DeskAgent Chat (Client)</span>
+              <span class="client-status-dot" title="Đang kết nối IT Support"></span>
+            </div>
+            <div class="client-chat-controls">
+              <button class="client-caption-btn" onclick="toggleClientChatMin()" title="Thu nhỏ">
+                <svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+              </button>
+              <button class="client-caption-btn close" onclick="closeClientChat()" title="Đóng chat">
+                <svg width="10" height="10" viewBox="0 0 10 10"><line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" stroke-width="1.2"/><line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" stroke-width="1.2"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="client-chat-body">
+            <div class="client-chat-msgs" id="client-msgs-list">
+              <div class="c-msg c-msg-client">
+                <span class="c-msg-sender">Client (Bạn)</span>
+                <div>Xin chào IT Support, máy em đang bị lỗi không in được file PDF từ sáng nay ạ.</div>
+                <span class="c-msg-time">10:40</span>
+              </div>
+              <div class="c-msg c-msg-it">
+                <span class="c-msg-sender">IT Support</span>
+                <div>Chào bạn, mình đang kết nối hỗ trợ kiểm tra dịch vụ Print Spooler trên máy bạn nhé.</div>
+                <span class="c-msg-time">10:41</span>
+              </div>
+            </div>
+            <div class="client-chat-input-row">
+              <input type="text" class="client-chat-input" id="client-input-field" placeholder="Gõ tin nhắn gửi IT Support..." onkeydown="if(event.key==='Enter') sendClientReplyMessage()">
+              <button class="client-chat-send-btn" onclick="sendClientReplyMessage()">Gửi</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Nút dock thu nhỏ trên client khi chat bị ẩn/thu nhỏ -->
+        <button id="client-chat-dock-btn" class="client-chat-dock-btn hidden" onclick="openClientChat()" title="Mở cửa sổ Chat với IT">
+          <svg class="icon" style="width:14px;height:14px;color:var(--win11-accent);" viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+          <span>Chat với IT Support</span>
+          <span class="client-unread-badge" id="client-unread-badge" style="display:none;">1</span>
+        </button>
+      </div>
+
+    <!-- CỬA SỔ NHỎ CÔNG CỤ (WINDOWS 11 FLOATING UTILITY WINDOW) -->
+    <div id="tools-window" class="hidden">
+      <!-- Titlebar with Integrated Tabs (Windows 11 Tabbed Titlebar) -->
+      <div class="win-titlebar" id="tools-win-titlebar">
+        <div class="win-tabs">
+          <svg class="icon" style="width:14px;height:14px;color:var(--win11-accent);margin:0 4px 0 2px;" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+          <button class="win-tab-btn active" id="tab-btn-events" onclick="switchToolsTab('events')">
+            <svg class="icon" style="width:13px;height:13px;" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            <span>Sự kiện</span>
+          </button>
+          <button class="win-tab-btn" id="tab-btn-deploy" onclick="switchToolsTab('deploy')">
+            <svg class="icon" style="width:13px;height:13px;" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+            <span>Deploy</span>
+          </button>
+          <button class="win-tab-btn" id="tab-btn-chat" onclick="switchToolsTab('chat')">
+            <svg class="icon" style="width:13px;height:13px;" viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+            <span>Chat</span>
+          </button>
+          <button class="win-tab-btn" id="tab-btn-assistant" onclick="switchToolsTab('assistant')">
+            <svg class="icon" style="width:13px;height:13px;color:#c084fc;" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z"/></svg>
+            <span>Trợ lý AI</span>
+          </button>
+        </div>
+        <div class="win-caption-controls">
+          <button class="win-caption-btn" onclick="toggleToolsWindow()" title="Thu nhỏ / Ẩn">
+            <svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          </button>
+          <button class="win-caption-btn close" onclick="toggleToolsWindow()" title="Đóng cửa sổ">
+            <svg width="10" height="10" viewBox="0 0 10 10"><line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" stroke-width="1.2"/><line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" stroke-width="1.2"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Window Body -->
+      <div class="win-body">
+        <!-- Sự kiện View (Event Viewer Lọc & Phân loại) -->
+        <div class="tool-view active" id="view-events">
+          <div class="events-filter-bar">
+            <!-- Hàng 1: Lọc theo Level & Kênh -->
+            <div class="events-filter-row">
+              <div class="events-level-pills">
+                <button class="level-pill active" data-level="ALL" onclick="setEventLevelFilter('ALL', this)">Tất cả</button>
+                <button class="level-pill pill-err" data-level="ERROR" onclick="setEventLevelFilter('ERROR', this)">Error</button>
+                <button class="level-pill pill-warn" data-level="WARN" onclick="setEventLevelFilter('WARN', this)">Warning</button>
+                <button class="level-pill pill-info" data-level="INFO" onclick="setEventLevelFilter('INFO', this)">Info</button>
+              </div>
+              <select class="events-channel-select" id="events-channel-select" onchange="filterEvents()" title="Chọn kênh nhật ký sự kiện">
+                <option value="ALL">Tất cả kênh (All Logs)</option>
+                <option value="System">System</option>
+                <option value="Application">Application</option>
+                <option value="Security">Security</option>
+              </select>
+            </div>
+            <!-- Hàng 2: Lọc thời gian, Số lượng & Thiết lập (Đã thay thế ô tìm kiếm theo yêu cầu) -->
+            <div class="events-controls-row">
+              <div class="events-controls-left">
+                <!-- Lọc theo khoảng thời gian -->
+                <select class="events-filter-select" id="events-time-select" onchange="filterEvents()" title="Lọc theo khoảng thời gian">
+                  <option value="ALL">Toàn bộ thời gian</option>
+                  <option value="1h">1 giờ qua</option>
+                  <option value="24h" selected>24 giờ qua</option>
+                  <option value="7d">7 ngày qua</option>
+                </select>
+                <!-- Lọc theo số lượng hiển thị -->
+                <select class="events-filter-select" id="events-limit-select" onchange="filterEvents()" title="Số lượng sự kiện hiển thị">
+                  <option value="20">20 sự kiện</option>
+                  <option value="50" selected>50 sự kiện</option>
+                  <option value="100">100 sự kiện</option>
+                  <option value="ALL">Tất cả</option>
+                </select>
+              </div>
+              <div class="events-controls-right">
+                <!-- Nút Thiết lập -->
+                <button class="events-settings-btn" id="btn-events-settings" onclick="toggleEventSettings()" title="Thiết lập Event Viewer">
+                  <svg class="icon" style="width:12px;height:12px;" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <span>Thiết lập</span>
+                </button>
+                <span class="events-count-label" id="events-count-label">6 sự kiện</span>
+              </div>
+            </div>
+
+            <!-- Bảng Thiết lập mở rộng (Settings Panel) -->
+            <div id="events-settings-panel" class="events-settings-panel hidden">
+              <div class="events-settings-row">
+                <label>
+                  <input type="checkbox" id="chk-auto-refresh" onchange="toggleAutoRefresh(this.checked)">
+                  <span>Tự động làm mới log định kỳ (mỗi 10s)</span>
+                </label>
+                <button class="events-btn-small" onclick="refreshEventsLog()">Làm mới ngay</button>
+              </div>
+              <div class="events-settings-row">
+                <label>
+                  <input type="checkbox" id="chk-only-errors" onchange="toggleOnlyErrors(this.checked)">
+                  <span>Ưu tiên ghim các sự kiện Error / Warning lên đầu</span>
+                </label>
+                <button class="events-btn-small" onclick="clearEventLogsView()">Xóa cache hiển thị</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Danh sách sự kiện có thể lọc -->
+          <div class="event-list-container" id="events-list-container" style="margin-top:8px;">
+            <!-- Event 1: System Error -->
+            <div class="event-item" data-level="ERROR" data-channel="System" data-time="1h">
+              <div class="event-header-row">
+                <div class="event-meta-left">
+                  <span class="badge-err">ERROR</span>
+                  <span class="badge-channel">System</span>
+                  <span style="color:#fff;font-weight:500;">Service Control Manager (ID 7001)</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <button class="btn-ask-ai-event" onclick="askAiAboutEvent(7001, 'Service Control Manager', 'The Print Spooler service terminated unexpectedly.')" title="Gửi lỗi này sang Trợ lý AI">
+                    <svg class="icon" style="width:10px;height:10px;" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z"/></svg>
+                    Hỏi AI
+                  </button>
+                  <span style="color:#71717a;font-size:11px;">10:42:15</span>
+                </div>
+              </div>
+              <div style="color:#a1a1aa;font-size:11px;line-height:1.4;">The Print Spooler service terminated unexpectedly. It has done this 1 time(s). Dịch vụ in ấn bị dừng đột ngột.</div>
+            </div>
+
+            <!-- Event 2: Application Error -->
+            <div class="event-item" data-level="ERROR" data-channel="Application" data-time="1h">
+              <div class="event-header-row">
+                <div class="event-meta-left">
+                  <span class="badge-err">ERROR</span>
+                  <span class="badge-channel">Application</span>
+                  <span style="color:#fff;font-weight:500;">Application Error (ID 1000)</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <button class="btn-ask-ai-event" onclick="askAiAboutEvent(1000, 'Application Error', 'Faulting application name: explorer.exe, exception code: 0xc0000005.')" title="Gửi lỗi này sang Trợ lý AI">
+                    <svg class="icon" style="width:10px;height:10px;" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z"/></svg>
+                    Hỏi AI
+                  </button>
+                  <span style="color:#71717a;font-size:11px;">10:14:02</span>
+                </div>
+              </div>
+              <div style="color:#a1a1aa;font-size:11px;line-height:1.4;">Faulting application name: explorer.exe, version: 10.0.22621.3296, faulting module name: ntdll.dll, exception code: 0xc0000005.</div>
+            </div>
+
+            <!-- Event 3: System Warning -->
+            <div class="event-item" data-level="WARN" data-channel="System" data-time="24h">
+              <div class="event-header-row">
+                <div class="event-meta-left">
+                  <span class="badge-warn">WARN</span>
+                  <span class="badge-channel">System</span>
+                  <span style="color:#fff;font-weight:500;">Disk Controller (ID 153)</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <button class="btn-ask-ai-event" onclick="askAiAboutEvent(153, 'Disk Controller', 'The IO operation at logical block address was retried on Disk 0.')" title="Gửi lỗi này sang Trợ lý AI">
+                    <svg class="icon" style="width:10px;height:10px;" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z"/></svg>
+                    Hỏi AI
+                  </button>
+                  <span style="color:#71717a;font-size:11px;">09:15:02</span>
+                </div>
+              </div>
+              <div style="color:#a1a1aa;font-size:11px;line-height:1.4;">The IO operation at logical block address 0x14f08c for Disk 0 (PDO name: \Device\0000003b) was retried.</div>
+            </div>
+
+            <!-- Event 4: Application Warning -->
+            <div class="event-item" data-level="WARN" data-channel="Application" data-time="24h">
+              <div class="event-header-row">
+                <div class="event-meta-left">
+                  <span class="badge-warn">WARN</span>
+                  <span class="badge-channel">Application</span>
+                  <span style="color:#fff;font-weight:500;">User Profile Service (ID 1530)</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <button class="btn-ask-ai-event" onclick="askAiAboutEvent(1530, 'User Profile Service', 'Windows detected your registry file is still in use by other applications.')" title="Gửi lỗi này sang Trợ lý AI">
+                    <svg class="icon" style="width:10px;height:10px;" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z"/></svg>
+                    Hỏi AI
+                  </button>
+                  <span style="color:#71717a;font-size:11px;">08:55:18</span>
+                </div>
+              </div>
+              <div style="color:#a1a1aa;font-size:11px;line-height:1.4;">Windows detected your registry file is still in use by other applications or services. The file will be unloaded now.</div>
+            </div>
+
+            <!-- Event 5: Security Info -->
+            <div class="event-item" data-level="INFO" data-channel="Security" data-time="24h">
+              <div class="event-header-row">
+                <div class="event-meta-left">
+                  <span class="badge-info">INFO</span>
+                  <span class="badge-channel">Security</span>
+                  <span style="color:#fff;font-weight:500;">Security-Auditing (ID 4624)</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span style="color:#71717a;font-size:11px;">08:31:00</span>
+                </div>
+              </div>
+              <div style="color:#a1a1aa;font-size:11px;line-height:1.4;">An account was successfully logged on. TargetUserName: thanhchu, LogonType: 10 (RemoteInteractive).</div>
+            </div>
+
+            <!-- Event 6: System Info -->
+            <div class="event-item" data-level="INFO" data-channel="System" data-time="24h">
+              <div class="event-header-row">
+                <div class="event-meta-left">
+                  <span class="badge-info">INFO</span>
+                  <span class="badge-channel">System</span>
+                  <span style="color:#fff;font-weight:500;">Winlogon (ID 7002)</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span style="color:#71717a;font-size:11px;">08:30:10</span>
+                </div>
+              </div>
+              <div style="color:#a1a1aa;font-size:11px;line-height:1.4;">User Logon Notification for Customer Support Session: Session ID 2 connected.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Deploy View (Cài đặt ứng dụng & file EXE từ máy IT) -->
+        <div class="tool-view" id="view-deploy">
+          <!-- Card chọn file EXE/MSI từ máy IT -->
+          <div class="deploy-custom-card">
+            <div class="deploy-card-title">
+              <svg class="icon" style="width:13px;height:13px;color:var(--win11-accent);" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <span>Cài đặt tệp EXE / MSI từ máy IT</span>
+            </div>
+
+            <!-- Chọn đường dẫn file trên máy IT -->
+            <div class="deploy-file-picker-row">
+              <input type="file" id="it-exe-file-input" accept=".exe,.msi" style="display:none" onchange="handleItExeFileSelected(event)">
+              <input type="text" class="deploy-path-input" id="it-exe-path" placeholder="Đường dẫn file trên máy IT (vd: C:\IT-Tools\setup.exe)..." value="D:\IT-Software\OfficeSetup.exe">
+              <button class="deploy-browse-btn" onclick="document.getElementById('it-exe-file-input').click()" title="Duyệt file .exe / .msi trên máy IT">
+                <svg class="icon" style="width:12px;height:12px;" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                <span>Chọn file</span>
+              </button>
+            </div>
+
+            <!-- Tham số dòng lệnh và nút kích hoạt -->
+            <div class="deploy-args-row">
+              <input type="text" class="deploy-args-input" id="it-exe-args" placeholder="Tham số chạy silent (vd: /S, /quiet, /VERYSILENT, /qn)..." value="/S /quiet">
+              <button class="deploy-install-btn" id="btn-deploy-custom" onclick="deployCustomExe()" title="Đẩy file sang client và thực thi cài đặt silent">
+                <svg class="icon" style="width:11px;height:11px;" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                <span>Cài đặt lên Client</span>
+              </button>
+            </div>
+
+            <!-- Tiến trình truyền tệp & thực thi cài đặt (Visual Card Stepper) -->
+            <div id="deploy-progress-wrap" class="deploy-progress-wrap hidden">
+              <div class="deploy-card-header">
+                <div class="deploy-target-info">
+                  <div class="deploy-spinner" id="deploy-spinner">
+                    <svg class="icon spin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.15)" stroke-width="2.5" fill="none"/><path d="M12 3a9 9 0 0 1 9 9" stroke="var(--win11-accent)" stroke-width="2.5" stroke-linecap="round" fill="none"/></svg>
+                  </div>
+                  <div>
+                    <div class="deploy-pkg-title" id="deploy-pkg-title">OfficeSetup.exe</div>
+                    <div class="deploy-pkg-subtitle" id="deploy-pkg-subtitle">Client: THANHCHUPC • Chế độ: Silent Install</div>
+                  </div>
+                </div>
+                <span class="deploy-status-badge badge-active" id="deploy-status-badge">Đang xử lý</span>
+              </div>
+
+              <!-- 4 Visual Steps -->
+              <div class="deploy-steps-container">
+                <div class="deploy-step active" id="deploy-step-1">
+                  <div class="step-indicator">
+                    <span class="step-num">1</span>
+                    <svg class="step-check icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <span class="step-title">1. Chuẩn bị gói</span>
+                </div>
+                <div class="step-connector" id="step-conn-1"></div>
+
+                <div class="deploy-step" id="deploy-step-2">
+                  <div class="step-indicator">
+                    <span class="step-num">2</span>
+                    <svg class="step-check icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <span class="step-title">2. Đang gửi sang client</span>
+                </div>
+                <div class="step-connector" id="step-conn-2"></div>
+
+                <div class="deploy-step" id="deploy-step-3">
+                  <div class="step-indicator">
+                    <span class="step-num">3</span>
+                    <svg class="step-check icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <span class="step-title">3. Đang cài đặt silent</span>
+                </div>
+                <div class="step-connector" id="step-conn-3"></div>
+
+                <div class="deploy-step" id="deploy-step-4">
+                  <div class="step-indicator">
+                    <span class="step-num">4</span>
+                    <svg class="step-check icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <span class="step-title">4. Hoàn tất</span>
+                </div>
+              </div>
+
+              <!-- Progress Bar & Details -->
+              <div class="deploy-progress-container">
+                <div class="deploy-progress-info">
+                  <span id="deploy-progress-text">Bước 1/4: Đang chuẩn bị gói cài đặt...</span>
+                  <span id="deploy-progress-percent">0%</span>
+                </div>
+                <div class="deploy-progress-bar">
+                  <div class="deploy-progress-fill" id="deploy-progress-fill"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Danh sách ứng dụng có sẵn trong kho -->
+          <div class="deploy-section-header">Kho ứng dụng có sẵn</div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <div class="deploy-item">
+              <div>
+                <div style="color:#fff;font-size:12px;font-weight:500;">Google Chrome (x64)</div>
+                <div style="color:#71717a;font-size:11px;">Trình duyệt web phổ biến - Bản mới nhất</div>
+              </div>
+              <button class="deploy-btn" onclick="deployApp('Google Chrome')">Cài đặt silent</button>
+            </div>
+            <div class="deploy-item">
+              <div>
+                <div style="color:#fff;font-size:12px;font-weight:500;">7-Zip 23.01 (x64)</div>
+                <div style="color:#71717a;font-size:11px;">Tiện ích nén và giải nén file dung lượng nhẹ</div>
+              </div>
+              <button class="deploy-btn" onclick="deployApp('7-Zip')">Cài đặt silent</button>
+            </div>
+            <div class="deploy-item">
+              <div>
+                <div style="color:#fff;font-size:12px;font-weight:500;">Visual Studio Code</div>
+                <div style="color:#71717a;font-size:11px;">Trình soạn thảo mã nguồn Microsoft</div>
+              </div>
+              <button class="deploy-btn" onclick="deployApp('VS Code')">Cài đặt silent</button>
+            </div>
+            <div class="deploy-item">
+              <div>
+                <div style="color:#fff;font-size:12px;font-weight:500;">DeskAgent Service Updater</div>
+                <div style="color:#71717a;font-size:11px;">Cập nhật bản mới dịch vụ nền DeskAgent trên máy client</div>
+              </div>
+              <button class="deploy-btn" onclick="deployApp('DeskAgent Updater')">Cập nhật ngay</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. Chat View -->
+        <div class="tool-view" id="view-chat">
+          <div class="chat-box">
+            <div class="chat-msgs" id="chat-msgs-list">
+              <div class="msg-bubble msg-remote">Xin chào IT Support, máy em đang bị lỗi không in được file PDF từ sáng nay ạ.</div>
+              <div class="msg-bubble msg-self">Chào bạn, mình đang kết nối hỗ trợ kiểm tra dịch vụ Print Spooler trên máy bạn nhé.</div>
+            </div>
+            <div class="chat-input-row">
+              <input type="text" class="chat-input" id="chat-input-field" placeholder="Nhập tin nhắn tới client..." onkeydown="if(event.key==='Enter') sendChatMessage()">
+              <button class="chat-send-btn" onclick="sendChatMessage()">Gửi</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. Trợ lý AI (IT Assistant) View -->
+        <div class="tool-view" id="view-assistant">
+          <div class="ai-box">
+            <!-- Khung tin nhắn AI -->
+            <div class="ai-chat-msgs" id="ai-msgs-list">
+              <div class="msg-bubble msg-ai">
+                <div class="ai-sender">
+                  <svg class="icon" style="width:12px;height:12px;color:#c084fc;" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z"/></svg>
+                  <span>DeskAgent AI Assistant</span>
+                </div>
+                <div>Xin chào kỹ thuật viên! Tôi đã phân tích cấu hình phần cứng và Event Logs của máy <strong>THANHCHUPC</strong>. Phát hiện cảnh báo <em>Print Spooler (ID 7001)</em> và <em>Disk IO (ID 153)</em>. Bạn muốn tôi chẩn đoán hay viết script PowerShell xử lý?</div>
+              </div>
+            </div>
+
+            <!-- Khung xem trước tệp văn bản / log hoặc ảnh đính kèm (Ctrl+V) -->
+            <div id="ai-img-preview-bar" class="ai-img-preview-bar hidden">
+              <div class="ai-img-thumb-wrap">
+                <img id="ai-img-preview" src="" alt="Screenshot" style="display:none;">
+                <div id="ai-file-icon-preview" class="ai-file-icon-preview" style="display:none;">
+                  <svg class="icon" style="width:20px;height:20px;" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                </div>
+                <button class="ai-img-remove-btn" onclick="removeAiAttachedImage()" title="Xóa đính kèm">✕</button>
+              </div>
+              <div class="ai-attach-details">
+                <span class="ai-attach-filename" id="ai-attach-filename">error.log</span>
+                <span class="ai-img-info" id="ai-attach-info">Đã đính kèm tệp phân tích</span>
+              </div>
+            </div>
+
+            <!-- Khung nhập câu hỏi cho AI -->
+            <div class="chat-input-row">
+              <input type="file" id="ai-file-input" accept="image/*,.txt,.log,.json,.csv,.ps1,.bat,.cmd,.xml,.ini" style="display:none" onchange="handleAiFileSelect(event)">
+              <button class="chat-attach-btn" onclick="document.getElementById('ai-file-input').click()" title="Đính kèm tệp văn bản / log (.log, .txt, .json, .ps1) hoặc ảnh chụp màn hình (hỗ trợ Ctrl+V dán ảnh)">
+                <svg class="icon" viewBox="0 0 24 24"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+              </button>
+              <input type="text" class="chat-input" id="ai-input-field" placeholder="Hỏi AI, đính kèm file log hoặc dán ảnh lỗi (Ctrl+V)..." onkeydown="if(event.key==='Enter') sendAiMessage()">
+              <button class="ai-send-btn" onclick="sendAiMessage()">Hỏi AI</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- WINDOWS 11 FLUENT TOAST CONTAINER -->
+  <div id="win11-toast-container"></div>
+
+<script>
+  let isPinned = true;
+  let isManuallyOpen = false;
+
+  function togglePin() {
+    isPinned = !isPinned;
+    const bar = document.getElementById('win11-titlebar-container');
+    const btn = document.getElementById('pin-btn');
+    const handleIcon = document.getElementById('handle-icon');
+    if (isPinned) {
+      bar.classList.add('pinned');
+      bar.classList.remove('open');
+      isManuallyOpen = false;
+      if (handleIcon) handleIcon.innerHTML = '<polyline points="6 9 12 15 18 9"/>';
+      btn.classList.add('active');
+      btn.title = "Đang ghim titlebar (bấm để tự ẩn)";
+    } else {
+      bar.classList.remove('pinned');
+      btn.classList.remove('active');
+      btn.title = "Titlebar tự ẩn (bấm để ghim)";
+    }
+  }
+
+  function toggleTitlebar() {
+    const bar = document.getElementById('win11-titlebar-container');
+    const handleIcon = document.getElementById('handle-icon');
+    isManuallyOpen = !isManuallyOpen;
+    if (isManuallyOpen) {
+      bar.classList.add('open');
+      if (handleIcon) handleIcon.innerHTML = '<polyline points="18 15 12 9 6 15"/>';
+    } else {
+      bar.classList.remove('open');
+      if (handleIcon) handleIcon.innerHTML = '<polyline points="6 9 12 15 18 9"/>';
+    }
+  }
+
+  /* WINDOWS 11 FLUENT TOAST NOTIFICATIONS */
+  function showToast(title, message, type = 'info', duration = 3500) {
+    let container = document.getElementById('win11-toast-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'win11-toast-container';
+      document.body.appendChild(container);
+    }
+    const toast = document.createElement('div');
+    toast.className = 'win11-toast';
+
+    let iconSvg = '';
+    if (type === 'success') {
+      iconSvg = '<svg class="toast-icon success" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="16 10 11 15 8 12"/></svg>';
+    } else if (type === 'warn') {
+      iconSvg = '<svg class="toast-icon warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+    } else if (type === 'error') {
+      iconSvg = '<svg class="toast-icon error" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>';
+    } else {
+      iconSvg = '<svg class="toast-icon info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
+    }
+
+    const safeTitle = typeof escapeHtml === 'function' ? escapeHtml(title) : title;
+    const safeMsg = typeof escapeHtml === 'function' ? escapeHtml(message) : message;
+
+    toast.innerHTML = `
+      ${iconSvg}
+      <div class="toast-content">
+        <div class="toast-title">${safeTitle}</div>
+        <div class="toast-msg">${safeMsg}</div>
+      </div>
+      <button class="toast-close-btn" onclick="this.parentElement.remove()" title="Đóng">
+        <svg width="10" height="10" viewBox="0 0 10 10"><line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" stroke-width="1.2"/><line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" stroke-width="1.2"/></svg>
+      </button>
+    `;
+
+    container.appendChild(toast);
+
+    setTimeout(() => {
+      toast.classList.add('toast-hide');
+      setTimeout(() => {
+        if (toast.parentElement) toast.remove();
+      }, 220);
+    }, duration);
+  }
+
+  // Chuyển hướng hoàn toàn alert() sang Toast Fluent nhẹ nhàng
+  window.alert = function(msg) {
+    showToast('Thông báo DeskAgent', String(msg), 'info');
+  };
+
+  function minimizeWindow() {
+    showToast("Cửa sổ từ xa", "Đã thu nhỏ cửa sổ remote session DeskAgent xuống taskbar.", "info");
+  }
+
+  function toggleMaximize() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {
+        showToast("Toàn màn hình", "Đã kích hoạt chế độ toàn màn hình remote session.", "info");
+      });
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  }
+
+  function closeSession() {
+    showToast("Ngắt kết nối", "Đã ngắt kết nối remote desktop an toàn với máy THANHCHUPC.", "warn");
+  }
+
+  let currentScreen = 1;
+  function selectScreen(num) {
+    currentScreen = (currentScreen === 1) ? 2 : 1;
+    const btnSpan = document.querySelector('.title-center .tool-btn:nth-of-type(1) span');
+    if (btnSpan) btnSpan.innerText = 'Màn ' + currentScreen;
+    showToast("Chuyển màn hình", `Đã chuyển sang hiển thị: Màn ${currentScreen} (1920×1080, 60 FPS).`, "info");
+  }
+
+  function setDisplayQuality(mode) {
+    showToast("Cấu hình hiển thị", "Chế độ sắc nét 60 FPS (1920×1080, Tự co giãn vừa khung).", "info");
+  }
+
+  function sendShortcut(type) {
+    showToast("Phím tắt hệ thống", "Đã gửi lệnh phím tắt [Ctrl + Alt + Delete] tới máy client THANHCHUPC.", "info");
+  }
+
+  /* TOOLS WINDOW DRAGGING & TAB LOGIC */
+  function toggleToolsWindow() {
+    const win = document.getElementById('tools-window');
+    const btn = document.getElementById('btn-tools-win');
+    const isHidden = win.classList.contains('hidden');
+    if (isHidden) {
+      win.classList.remove('hidden');
+      if (btn) btn.classList.add('active');
+    } else {
+      win.classList.add('hidden');
+      if (btn) btn.classList.remove('active');
+    }
+  }
+
+  function switchToolsTab(tab) {
+    document.querySelectorAll('.win-tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tool-view').forEach(v => v.classList.remove('active'));
+    const btn = document.getElementById('tab-btn-' + tab);
+    const view = document.getElementById('view-' + tab);
+    if (btn) btn.classList.add('active');
+    if (view) view.classList.add('active');
+
+    // Tự động mở cửa sổ chat trên client khi IT chuyển sang tab Chat
+    if (tab === 'chat') {
+      openClientChat();
+    }
+  }
+
+  /* STEPPER VÀ TIẾN TRÌNH DEPLOY 4 BƯỚC */
+  let isDeploying = false;
+
+  function setStepperStep(stepNum, status) {
+    const stepEl = document.getElementById('deploy-step-' + stepNum);
+    if (!stepEl) return;
+    stepEl.classList.remove('active', 'completed');
+    if (status === 'active') stepEl.classList.add('active');
+    if (status === 'completed') stepEl.classList.add('completed');
+  }
+
+  function setConnectorStatus(connNum, status) {
+    const connEl = document.getElementById('step-conn-' + connNum);
+    if (!connEl) return;
+    connEl.classList.remove('active', 'completed');
+    if (status === 'active') connEl.classList.add('active');
+    if (status === 'completed') connEl.classList.add('completed');
+  }
+
+  function startDeployWorkflow(pkgName, args, isPreset = false) {
+    if (isDeploying) {
+      showToast('Đang triển khai', 'Một tác vụ cài đặt đang chạy, vui lòng chờ trong giây lát.', 'warn');
+      return;
+    }
+
+    isDeploying = true;
+    const progressWrap = document.getElementById('deploy-progress-wrap');
+    const pkgTitle = document.getElementById('deploy-pkg-title');
+    const pkgSubtitle = document.getElementById('deploy-pkg-subtitle');
+    const statusBadge = document.getElementById('deploy-status-badge');
+    const deploySpinner = document.getElementById('deploy-spinner');
+    const progressText = document.getElementById('deploy-progress-text');
+    const progressPercent = document.getElementById('deploy-progress-percent');
+    const progressFill = document.getElementById('deploy-progress-fill');
+    const btnCustom = document.getElementById('btn-deploy-custom');
+    const deployBtns = document.querySelectorAll('.deploy-btn');
+
+    if (btnCustom) btnCustom.disabled = true;
+    deployBtns.forEach(b => b.disabled = true);
+
+    if (progressWrap) progressWrap.classList.remove('hidden');
+    if (pkgTitle) pkgTitle.innerText = pkgName;
+    if (pkgSubtitle) pkgSubtitle.innerText = `Client: THANHCHUPC • Chế độ: Silent (${args || '/quiet'})`;
+    if (statusBadge) {
+      statusBadge.className = 'deploy-status-badge badge-active';
+      statusBadge.innerText = 'Đang xử lý';
+    }
+    if (deploySpinner) {
+      deploySpinner.innerHTML = '<svg class="icon spin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.15)" stroke-width="2.5" fill="none"/><path d="M12 3a9 9 0 0 1 9 9" stroke="var(--win11-accent)" stroke-width="2.5" stroke-linecap="round" fill="none"/></svg>';
+    }
+
+    // Reset 4 bước
+    setStepperStep(1, 'active');
+    setStepperStep(2, '');
+    setStepperStep(3, '');
+    setStepperStep(4, '');
+    setConnectorStatus(1, '');
+    setConnectorStatus(2, '');
+    setConnectorStatus(3, '');
+
+    if (progressFill) {
+      progressFill.className = 'deploy-progress-fill';
+      progressFill.style.width = '10%';
+    }
+    if (progressPercent) progressPercent.innerText = '10%';
+    if (progressText) progressText.innerText = `Bước 1/4: Đang chuẩn bị gói ${pkgName} & kiểm tra chữ ký...`;
+
+    showToast('Bắt đầu triển khai', `Khởi tạo tiến trình truyền và cài đặt [${pkgName}] lên THANHCHUPC...`, 'info', 2500);
+
+    // Giai đoạn 1 -> 2: Chuẩn bị gói -> Đang gửi sang client
+    setTimeout(() => {
+      setStepperStep(1, 'completed');
+      setConnectorStatus(1, 'active');
+      setStepperStep(2, 'active');
+      if (progressFill) progressFill.style.width = '40%';
+      if (progressPercent) progressPercent.innerText = '40%';
+      if (progressText) progressText.innerText = `Bước 2/4: Đang truyền ${pkgName} sang THANHCHUPC qua P2P DataChannel...`;
+
+      // Giai đoạn 2 -> 3: Đang gửi sang client -> Đang cài đặt silent
+      setTimeout(() => {
+        setStepperStep(2, 'completed');
+        setConnectorStatus(1, 'completed');
+        setConnectorStatus(2, 'active');
+        setStepperStep(3, 'active');
+        if (progressFill) progressFill.style.width = '75%';
+        if (progressPercent) progressPercent.innerText = '75%';
+        if (progressText) progressText.innerText = `Bước 3/4: Đang thực thi cài đặt silent: ${pkgName} ${args}...`;
+
+        // Giai đoạn 3 -> 4: Đang cài đặt silent -> Hoàn tất
+        setTimeout(() => {
+          setStepperStep(3, 'completed');
+          setConnectorStatus(2, 'completed');
+          setConnectorStatus(3, 'completed');
+          setStepperStep(4, 'completed');
+          if (progressFill) {
+            progressFill.classList.add('success');
+            progressFill.style.width = '100%';
+          }
+          if (progressPercent) progressPercent.innerText = '100%';
+          if (progressText) progressText.innerText = `Bước 4/4: Hoàn tất cài đặt thành công ${pkgName}!`;
+          if (statusBadge) {
+            statusBadge.className = 'deploy-status-badge badge-success';
+            statusBadge.innerText = 'Hoàn tất';
+          }
+          if (deploySpinner) {
+            deploySpinner.innerHTML = '<svg class="icon" style="color:#10b981;width:18px;height:18px;" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
+          }
+
+          if (btnCustom) btnCustom.disabled = false;
+          deployBtns.forEach(b => b.disabled = false);
+          isDeploying = false;
+
+          showToast('Cài đặt thành công', `Đã cài đặt hoàn tất [${pkgName}] silent trên máy client THANHCHUPC!`, 'success', 4000);
+
+          setTimeout(() => {
+            if (!isDeploying && progressWrap) {
+              progressWrap.classList.add('hidden');
+              if (progressFill) {
+                progressFill.classList.remove('success');
+                progressFill.style.width = '0%';
+              }
+              if (deploySpinner) {
+                deploySpinner.innerHTML = '<svg class="icon spin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.15)" stroke-width="2.5" fill="none"/><path d="M12 3a9 9 0 0 1 9 9" stroke="var(--win11-accent)" stroke-width="2.5" stroke-linecap="round" fill="none"/></svg>';
+              }
+            }
+          }, 4500);
+        }, 1100);
+      }, 900);
+    }, 600);
+  }
+
+  function deployApp(name) {
+    const defaultArgs = {
+      'Google Chrome': '/silent /install',
+      '7-Zip': '/S',
+      'VS Code': '/VERYSILENT /NORESTART',
+      'DeskAgent Updater': '/quiet /update'
+    };
+    const args = defaultArgs[name] || '/S /quiet';
+    startDeployWorkflow(name, args, true);
+  }
+
+  /* CUSTOM IT EXE DEPLOY LOGIC */
+  function handleItExeFileSelected(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const pathInput = document.getElementById('it-exe-path');
+    if (pathInput) {
+      pathInput.value = `C:\\IT-Packages\\${file.name}`;
+    }
+  }
+
+  function deployCustomExe() {
+    const pathInput = document.getElementById('it-exe-path');
+    const path = pathInput ? pathInput.value.trim() : '';
+    const argsInput = document.getElementById('it-exe-args');
+    const args = (argsInput ? argsInput.value : '/S /quiet').trim();
+
+    if (!path) {
+      showToast('Chưa chọn tệp', 'Vui lòng chọn hoặc nhập đường dẫn file .exe / .msi trên máy IT!', 'warn');
+      if (pathInput) {
+        pathInput.focus();
+        pathInput.style.borderColor = 'var(--win11-accent)';
+        setTimeout(() => { pathInput.style.borderColor = ''; }, 2000);
+      }
+      return;
+    }
+
+    const fileName = path.split(/[/\\]/).pop() || 'installer.exe';
+    startDeployWorkflow(fileName, args, false);
+  }
+
+  /* WINDOWS EVENT VIEWER FILTER & AI INTEGRATION */
+  let currentEventLevel = 'ALL';
+  let isOnlyErrorsPinned = false;
+  let autoRefreshTimer = null;
+
+  function setEventLevelFilter(level, btn) {
+    currentEventLevel = level;
+    document.querySelectorAll('.level-pill').forEach(p => p.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    filterEvents();
+  }
+
+  function filterEvents() {
+    const channelSelect = document.getElementById('events-channel-select');
+    const channel = channelSelect ? channelSelect.value : 'ALL';
+    const timeSelect = document.getElementById('events-time-select');
+    const timeFilter = timeSelect ? timeSelect.value : 'ALL';
+    const limitSelect = document.getElementById('events-limit-select');
+    const limitVal = limitSelect ? limitSelect.value : '50';
+    const maxLimit = limitVal === 'ALL' ? Infinity : parseInt(limitVal, 10);
+
+    const items = Array.from(document.querySelectorAll('#events-list-container .event-item'));
+    let matchedItems = [];
+
+    items.forEach(item => {
+      const itemLevel = item.getAttribute('data-level');
+      const itemChannel = item.getAttribute('data-channel');
+      const itemTime = item.getAttribute('data-time') || '24h';
+
+      const matchLevel = (currentEventLevel === 'ALL' || itemLevel === currentEventLevel);
+      const matchChannel = (channel === 'ALL' || itemChannel === channel);
+      const matchTime = (timeFilter === 'ALL' || timeFilter === '7d' || (timeFilter === '24h') || (timeFilter === '1h' && itemTime === '1h'));
+
+      if (matchLevel && matchChannel && matchTime) {
+        matchedItems.push(item);
+      } else {
+        item.classList.add('hidden');
+      }
+    });
+
+    // Nếu bật ghim Error/Warning lên đầu
+    if (isOnlyErrorsPinned) {
+      matchedItems.sort((a, b) => {
+        const lvlA = a.getAttribute('data-level');
+        const lvlB = b.getAttribute('data-level');
+        const score = (l) => (l === 'ERROR' ? 2 : l === 'WARN' ? 1 : 0);
+        return score(lvlB) - score(lvlA);
+      });
+      const container = document.getElementById('events-list-container');
+      if (container) {
+        matchedItems.forEach(it => container.appendChild(it));
+      }
+    }
+
+    let visibleCount = 0;
+    matchedItems.forEach((item, index) => {
+      if (index < maxLimit) {
+        item.classList.remove('hidden');
+        visibleCount++;
+      } else {
+        item.classList.add('hidden');
+      }
+    });
+
+    const countLabel = document.getElementById('events-count-label');
+    if (countLabel) {
+      countLabel.innerText = visibleCount + ' sự kiện';
+    }
+  }
+
+  function toggleEventSettings() {
+    const panel = document.getElementById('events-settings-panel');
+    const btn = document.getElementById('btn-events-settings');
+    if (!panel) return;
+    const isHidden = panel.classList.contains('hidden');
+    if (isHidden) {
+      panel.classList.remove('hidden');
+      if (btn) btn.classList.add('active');
+    } else {
+      panel.classList.add('hidden');
+      if (btn) btn.classList.remove('active');
+    }
+  }
+
+  function toggleAutoRefresh(enabled) {
+    if (autoRefreshTimer) {
+      clearInterval(autoRefreshTimer);
+      autoRefreshTimer = null;
+    }
+    if (enabled) {
+      autoRefreshTimer = setInterval(() => {
+        filterEvents();
+      }, 10000);
+    }
+  }
+
+  function toggleOnlyErrors(enabled) {
+    isOnlyErrorsPinned = enabled;
+    filterEvents();
+  }
+
+  function refreshEventsLog() {
+    filterEvents();
+    const btn = document.getElementById('btn-events-settings');
+    if (btn) {
+      const origText = btn.innerHTML;
+      btn.innerHTML = '<span>✓ Đã cập nhật</span>';
+      setTimeout(() => { btn.innerHTML = origText; }, 1500);
+    }
+  }
+
+  function clearEventLogsView() {
+    const items = document.querySelectorAll('#events-list-container .event-item');
+    items.forEach(it => it.classList.add('hidden'));
+    const countLabel = document.getElementById('events-count-label');
+    if (countLabel) {
+      countLabel.innerText = '0 sự kiện';
+    }
+  }
+
+  function askAiAboutEvent(id, source, desc) {
+    switchToolsTab('assistant');
+    const input = document.getElementById('ai-input-field');
+    if (input) {
+      input.value = `Phân tích và cho script xử lý Event ID ${id} (${source}): ${desc}`;
+    }
+    sendAiMessage();
+  }
+
+  /* BI-DIRECTIONAL CHAT SYNC (IT TOOL CHAT <-> CLIENT POPUP CHAT) */
+  function getCurrentTimeString() {
+    const now = new Date();
+    const h = String(now.getHours()).padStart(2, '0');
+    const m = String(now.getMinutes()).padStart(2, '0');
+    return `${h}:${m}`;
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function sendChatMessage() {
+    const input = document.getElementById('chat-input-field');
+    const text = input ? input.value.trim() : '';
+    if (!text) return;
+    const timeStr = getCurrentTimeString();
+
+    // 1. Thêm tin nhắn vào cửa sổ Chat của IT Support (Tool Window)
+    const itList = document.getElementById('chat-msgs-list');
+    if (itList) {
+      const bubble = document.createElement('div');
+      bubble.className = 'msg-bubble msg-self';
+      bubble.innerText = text;
+      itList.appendChild(bubble);
+      itList.scrollTop = itList.scrollHeight;
+    }
+    input.value = '';
+
+    // 2. Mở cửa sổ chat trên client (nếu đang ẩn) và đồng bộ tin nhắn IT tới client
+    openClientChat();
+    const clientList = document.getElementById('client-msgs-list');
+    if (clientList) {
+      const cMsg = document.createElement('div');
+      cMsg.className = 'c-msg c-msg-it';
+      cMsg.innerHTML = `
+        <span class="c-msg-sender">IT Support</span>
+        <div>${escapeHtml(text)}</div>
+        <span class="c-msg-time">${timeStr}</span>
+      `;
+      clientList.appendChild(cMsg);
+      clientList.scrollTop = clientList.scrollHeight;
+    }
+  }
+
+  function sendClientReplyMessage() {
+    const input = document.getElementById('client-input-field');
+    const text = input ? input.value.trim() : '';
+    if (!text) return;
+    const timeStr = getCurrentTimeString();
+
+    // 1. Thêm vào cửa sổ chat phía Client
+    const clientList = document.getElementById('client-msgs-list');
+    if (clientList) {
+      const cMsg = document.createElement('div');
+      cMsg.className = 'c-msg c-msg-client';
+      cMsg.innerHTML = `
+        <span class="c-msg-sender">Client (Bạn)</span>
+        <div>${escapeHtml(text)}</div>
+        <span class="c-msg-time">${timeStr}</span>
+      `;
+      clientList.appendChild(cMsg);
+      clientList.scrollTop = clientList.scrollHeight;
+    }
+    input.value = '';
+
+    // 2. Đồng bộ hiển thị tin nhắn tới kỹ thuật viên IT trong Tool Window
+    const itList = document.getElementById('chat-msgs-list');
+    if (itList) {
+      const bubble = document.createElement('div');
+      bubble.className = 'msg-bubble msg-remote';
+      bubble.innerText = text;
+      itList.appendChild(bubble);
+      itList.scrollTop = itList.scrollHeight;
+    }
+  }
+
+  function openClientChat() {
+    const win = document.getElementById('client-chat-window');
+    const dockBtn = document.getElementById('client-chat-dock-btn');
+    const badge = document.getElementById('client-unread-badge');
+    if (win) win.classList.remove('hidden');
+    if (dockBtn) dockBtn.classList.add('hidden');
+    if (badge) badge.style.display = 'none';
+  }
+
+  function closeClientChat() {
+    const win = document.getElementById('client-chat-window');
+    const dockBtn = document.getElementById('client-chat-dock-btn');
+    if (win) win.classList.add('hidden');
+    if (dockBtn) dockBtn.classList.add('hidden');
+  }
+
+  function toggleClientChatMin() {
+    const win = document.getElementById('client-chat-window');
+    const dockBtn = document.getElementById('client-chat-dock-btn');
+    if (win) win.classList.add('hidden');
+    if (dockBtn) dockBtn.classList.remove('hidden');
+  }
+
+  /* Kéo thả cửa sổ Chat trên màn hình Client */
+  (function initDraggableClientChat() {
+    const header = document.getElementById('client-chat-header');
+    const win = document.getElementById('client-chat-window');
+    const viewport = document.getElementById('remote-viewport');
+    if (!header || !win || !viewport) return;
+
+    let isDragging = false;
+    let startX = 0, startY = 0;
+    let initLeft = 0, initTop = 0;
+
+    header.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.client-caption-btn')) return;
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = win.getBoundingClientRect();
+      const vRect = viewport.getBoundingClientRect();
+      initLeft = rect.left - vRect.left;
+      initTop = rect.top - vRect.top;
+      win.style.right = 'auto';
+      win.style.bottom = 'auto';
+      win.style.left = initLeft + 'px';
+      win.style.top = initTop + 'px';
+      document.body.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      const vRect = viewport.getBoundingClientRect();
+      const maxLeft = Math.max(0, vRect.width - win.offsetWidth);
+      const maxTop = Math.max(0, vRect.height - win.offsetHeight);
+      const newLeft = Math.max(0, Math.min(maxLeft, initLeft + dx));
+      const newTop = Math.max(0, Math.min(maxTop, initTop + dy));
+      win.style.left = newLeft + 'px';
+      win.style.top = newTop + 'px';
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        document.body.style.userSelect = '';
+      }
+    });
+  })();
+
+  /* AI ASSISTANT CHAT, FILE ATTACHMENT & IMAGE PASTE LOGIC */
+  let aiAttachment = null; // { type: 'image' | 'text', name: string, size: string, dataUrl?: string, content?: string }
+
+  function formatFileSize(bytes) {
+    if (!bytes && bytes !== 0) return '0 B';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  function askAiPrompt(text) {
+    const input = document.getElementById('ai-input-field');
+    if (input) input.value = text;
+    sendAiMessage();
+  }
+
+  function setAiAttachment(attachment) {
+    aiAttachment = attachment;
+    const bar = document.getElementById('ai-img-preview-bar');
+    const img = document.getElementById('ai-img-preview');
+    const fileIcon = document.getElementById('ai-file-icon-preview');
+    const filenameEl = document.getElementById('ai-attach-filename');
+    const infoEl = document.getElementById('ai-attach-info');
+
+    if (!bar) return;
+
+    if (attachment.type === 'image') {
+      if (img) {
+        img.src = attachment.dataUrl;
+        img.style.display = 'block';
+      }
+      if (fileIcon) fileIcon.style.display = 'none';
+      if (filenameEl) filenameEl.innerText = attachment.name || 'Ảnh chụp lỗi';
+      if (infoEl) infoEl.innerText = `${attachment.size || ''} • Sẵn sàng quét OCR & phân tích ảnh`;
+    } else {
+      if (img) {
+        img.style.display = 'none';
+        img.src = '';
+      }
+      if (fileIcon) fileIcon.style.display = 'flex';
+      if (filenameEl) filenameEl.innerText = attachment.name || 'document.log';
+      if (infoEl) infoEl.innerText = `${attachment.size || ''} • Sẵn sàng phân tích log & trích xuất mã lỗi`;
+    }
+    bar.classList.remove('hidden');
+  }
+
+  function setAiAttachedImage(dataUrl) {
+    setAiAttachment({
+      type: 'image',
+      name: 'screenshot_' + new Date().toTimeString().split(' ')[0].replace(/:/g, '') + '.png',
+      size: 'Ảnh clipboard',
+      dataUrl: dataUrl
+    });
+  }
+
+  function removeAiAttachedImage() {
+    aiAttachment = null;
+    const bar = document.getElementById('ai-img-preview-bar');
+    const img = document.getElementById('ai-img-preview');
+    const fileIcon = document.getElementById('ai-file-icon-preview');
+    if (img) {
+      img.src = '';
+      img.style.display = 'none';
+    }
+    if (fileIcon) fileIcon.style.display = 'none';
+    if (bar) bar.classList.add('hidden');
+  }
+  const removeAiAttachment = removeAiAttachedImage;
+
+  function handleAiFileSelect(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+
+    const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(file.name);
+    const sizeStr = formatFileSize(file.size);
+
+    if (isImage) {
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        setAiAttachment({
+          type: 'image',
+          name: file.name,
+          size: sizeStr,
+          dataUrl: evt.target.result
+        });
+        showToast("Đã đính kèm ảnh", `${file.name} (${sizeStr})`, "info", 2200);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        setAiAttachment({
+          type: 'text',
+          name: file.name,
+          size: sizeStr,
+          content: evt.target.result
+        });
+        showToast("Đã đính kèm tệp văn bản/log", `${file.name} (${sizeStr})`, "info", 2200);
+      };
+      reader.readAsText(file);
+    }
+    e.target.value = '';
+  }
+
+  function handleAiPaste(e) {
+    if (!e.clipboardData || !e.clipboardData.items) return;
+    const items = e.clipboardData.items;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        e.preventDefault();
+        const blob = items[i].getAsFile();
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+          const timestamp = new Date().toTimeString().split(' ')[0].replace(/:/g, '');
+          setAiAttachment({
+            type: 'image',
+            name: `screenshot_${timestamp}.png`,
+            size: formatFileSize(blob.size),
+            dataUrl: evt.target.result
+          });
+          showToast("Đã dán ảnh", "Đã nhận ảnh chụp màn hình từ clipboard (Ctrl+V)", "info", 2500);
+        };
+        reader.readAsDataURL(blob);
+        break;
+      }
+    }
+  }
+
+  function sendAiMessage() {
+    const input = document.getElementById('ai-input-field');
+    const text = input ? input.value.trim() : '';
+    const hasAttachment = !!aiAttachment;
+    const currentAttachment = aiAttachment;
+
+    if (!text && !hasAttachment) return;
+
+    const list = document.getElementById('ai-msgs-list');
+
+    // 1. Thêm tin nhắn của kỹ thuật viên IT
+    const itBubble = document.createElement('div');
+    itBubble.className = 'msg-bubble msg-ai-it';
+
+    let itHtml = '';
+    if (text) {
+      itHtml += `<div>${escapeHtml(text)}</div>`;
+    }
+    if (hasAttachment) {
+      if (currentAttachment.type === 'image') {
+        itHtml += `<img src="${currentAttachment.dataUrl}" class="msg-attached-img" alt="Attached screenshot" title="Bấm để xem ảnh gốc" onclick="window.open(this.src)">`;
+      } else {
+        itHtml += `
+          <div class="msg-attached-file">
+            <svg class="icon file-icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            <div class="msg-attached-file-info">
+              <span class="msg-attached-file-name">${escapeHtml(currentAttachment.name)}</span>
+              <span class="msg-attached-file-size">${currentAttachment.size} • Tệp log / văn bản</span>
+            </div>
+          </div>
+        `;
+      }
+    }
+    itBubble.innerHTML = itHtml;
+    list.appendChild(itBubble);
+    if (input) input.value = '';
+    removeAiAttachedImage();
+    list.scrollTop = list.scrollHeight;
+
+    // 2. Phản hồi phân tích từ AI Assistant
+    setTimeout(() => {
+      const aiBubble = document.createElement('div');
+      aiBubble.className = 'msg-bubble msg-ai';
+
+      let aiContent = '';
+      const lower = text.toLowerCase();
+
+      if (currentAttachment && currentAttachment.type === 'text') {
+        const fileName = currentAttachment.name || 'log_file.txt';
+        aiContent = `
+          <div class="ai-sender">
+            <svg class="icon" style="width:12px;height:12px;color:#c084fc;" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z"/></svg>
+            <span>DeskAgent AI Log Analyzer</span>
+          </div>
+          <div><strong>Đã đọc và phân tích tệp <code>${escapeHtml(fileName)}</code> (${currentAttachment.size}):</strong></div>
+          <div style="font-size:11.5px;color:#cbd5e1;margin-top:4px;">
+            • Tìm thấy <strong>3 cảnh báo và ngoại lệ</strong> liên quan đến xung đột tiến trình và I/O lock.<br>
+            • Mã lỗi phát hiện: <code>0x80070005 (Access Denied)</code> và <code>SERVICE_CRASH_UNEXPECTED</code>.<br>
+            • Đề xuất kịch bản PowerShell tự động giải phóng lock và khởi động lại dịch vụ:
+          </div>
+          <div class="ai-code-block">
+            <span># Tự động khắc phục dựa trên nội dung tệp ${escapeHtml(fileName)}</span>
+            <span>Stop-Process -Name "PrintSpoolerHost" -Force -ErrorAction SilentlyContinue</span>
+            <span>Reset-ServiceLocks -Scope System -ClearTemp</span>
+            <span>Restart-Service -Name Spooler -Force</span>
+            <div class="ai-code-actions">
+              <button class="btn-run-cmd" onclick="executeAiCommand('Khắc phục sự cố theo Log', 'Restart-Service -Name Spooler -Force')">▶ Chạy script xử lý trên client</button>
+            </div>
+          </div>
+          <div style="font-size:11px;color:#94a3b8;">Đã trích xuất các dòng cảnh báo quan trọng vào bộ đệm chẩn đoán của phiên remote.</div>
+        `;
+      } else if (currentAttachment && currentAttachment.type === 'image') {
+        aiContent = `
+          <div class="ai-sender">
+            <svg class="icon" style="width:12px;height:12px;color:#c084fc;" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z"/></svg>
+            <span>DeskAgent AI Vision</span>
+          </div>
+          <div><strong>Đã nhận diện ảnh chụp màn hình client:</strong> Quét OCR phát hiện hộp thoại thông báo lỗi phần mềm / hệ thống. Đề xuất quy trình xử lý:</div>
+          <div class="ai-code-block">
+            <span># 1. Quét kiểm tra tệp hệ thống bị hỏng</span>
+            <span>sfc /scannow</span>
+            <span># 2. Khôi phục image Windows bằng DISM</span>
+            <span>DISM /Online /Cleanup-Image /RestoreHealth</span>
+            <div class="ai-code-actions">
+              <button class="btn-run-cmd" onclick="executeAiCommand('Quét sửa lỗi SFC', 'sfc /scannow')">▶ Chạy quét SFC trên client</button>
+            </div>
+          </div>
+          <div style="font-size:11px;color:#94a3b8;">Bạn có thể nhập thêm câu hỏi chi tiết về thông báo trong ảnh nếu cần khoanh vùng mã lỗi.</div>
+        `;
+      } else if (lower.includes('spooler') || lower.includes('in') || lower.includes('7001')) {
+        aiContent = `
+          <div class="ai-sender">
+            <svg class="icon" style="width:12px;height:12px;color:#c084fc;" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z"/></svg>
+            <span>DeskAgent AI Assistant</span>
+          </div>
+          <div><strong>Chẩn đoán:</strong> Dịch vụ Print Spooler bị crash do file tạm bị hỏng kẹt trong hàng đợi tại <code>C:\\Windows\\System32\\spool\\PRINTERS</code>.</div>
+          <div class="ai-code-block">
+            <span>Stop-Service -Name Spooler -Force</span>
+            <span>Remove-Item -Path "C:\\Windows\\System32\\spool\\PRINTERS\\*" -Force</span>
+            <span>Start-Service -Name Spooler</span>
+            <div class="ai-code-actions">
+              <button class="btn-run-cmd" onclick="executeAiCommand('Fix Print Spooler', 'net stop spooler && del /Q /F %systemroot%\\\\System32\\\\Spool\\\\Printers\\\\* && net start spooler')">▶ Chạy lệnh trên client</button>
+            </div>
+          </div>
+          <div style="font-size:11px;color:#94a3b8;">Lệnh sẽ được gửi tới daemon DeskAgent trên THANHCHUPC chạy ngầm với quyền SYSTEM.</div>
+        `;
+      } else if (lower.includes('disk') || lower.includes('ổ đĩa') || lower.includes('153')) {
+        aiContent = `
+          <div class="ai-sender">
+            <svg class="icon" style="width:12px;height:12px;color:#c084fc;" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z"/></svg>
+            <span>DeskAgent AI Assistant</span>
+          </div>
+          <div><strong>Chẩn đoán:</strong> Lỗi Disk IO 153 là timeout đọc ghi sector. Khuyến nghị quét bề mặt và kiểm tra tình trạng S.M.A.R.T ổ cứng:</div>
+          <div class="ai-code-block">
+            <span>chkdsk C: /scan</span>
+            <span>Get-PhysicalDisk | Select-Object FriendlyName, HealthStatus, OperationalStatus</span>
+            <div class="ai-code-actions">
+              <button class="btn-run-cmd" onclick="executeAiCommand('Quét ổ đĩa', 'chkdsk C: /scan')">▶ Quét ổ đĩa C: (Read-only)</button>
+            </div>
+          </div>
+        `;
+      } else if (lower.includes('1000') || lower.includes('explorer') || lower.includes('ntdll')) {
+        aiContent = `
+          <div class="ai-sender">
+            <svg class="icon" style="width:12px;height:12px;color:#c084fc;" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z"/></svg>
+            <span>DeskAgent AI Assistant</span>
+          </div>
+          <div><strong>Chẩn đoán:</strong> Event ID 1000 (Application Error - explorer.exe crash do mã lỗi <code>0xc0000005 ACCESS_VIOLATION</code> tại ntdll.dll). Đề xuất khởi động lại tiến trình Explorer và kiểm tra DLL conflict:</div>
+          <div class="ai-code-block">
+            <span>Stop-Process -Name explorer -Force; Start-Process explorer</span>
+            <span>sfc /scannow</span>
+            <div class="ai-code-actions">
+              <button class="btn-run-cmd" onclick="executeAiCommand('Restart Explorer', 'taskkill /f /im explorer.exe && start explorer.exe')">▶ Restart Explorer ngay</button>
+            </div>
+          </div>
+        `;
+      } else if (lower.includes('1530') || lower.includes('registry') || lower.includes('profile')) {
+        aiContent = `
+          <div class="ai-sender">
+            <svg class="icon" style="width:12px;height:12px;color:#c084fc;" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z"/></svg>
+            <span>DeskAgent AI Assistant</span>
+          </div>
+          <div><strong>Chẩn đoán:</strong> Event ID 1530 (User Profile Service). Registry hive người dùng bị ứng dụng nền kẹt khóa handle khi đăng xuất. Windows đã tự động unload registry an toàn, không gây mất dữ liệu.</div>
+        `;
+      } else if (lower.includes('dọn') || lower.includes('rác') || lower.includes('temp') || lower.includes('cache')) {
+        aiContent = `
+          <div class="ai-sender">
+            <svg class="icon" style="width:12px;height:12px;color:#c084fc;" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z"/></svg>
+            <span>DeskAgent AI Assistant</span>
+          </div>
+          <div><strong>Đề xuất:</strong> Script dọn dẹp thư mục tạm người dùng và recycle bin:</div>
+          <div class="ai-code-block">
+            <span>Remove-Item -Path "$env:TEMP\\*" -Recurse -Force -ErrorAction SilentlyContinue</span>
+            <span>Clear-RecycleBin -Force -ErrorAction SilentlyContinue</span>
+            <div class="ai-code-actions">
+              <button class="btn-run-cmd" onclick="executeAiCommand('Dọn rác Temp', 'del /q/f/s %TEMP%\\\\*')">▶ Dọn dẹp ngay</button>
+            </div>
+          </div>
+        `;
+      } else {
+        aiContent = `
+          <div class="ai-sender">
+            <svg class="icon" style="width:12px;height:12px;color:#c084fc;" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z"/></svg>
+            <span>DeskAgent AI Assistant</span>
+          </div>
+          <div>Đã phân tích yêu cầu <em>"${text}"</em> đối với client THANHCHUPC. Bạn có thể kiểm tra thêm thông số trong tab <strong>Phần cứng</strong> hoặc tra cứu mã lỗi trong tab <strong>Sự kiện</strong> để AI khoanh vùng chính xác hơn.</div>
+        `;
+      }
+
+      aiBubble.innerHTML = aiContent;
+      list.appendChild(aiBubble);
+      list.scrollTop = list.scrollHeight;
+    }, 450);
+  }
+
+  // Khởi tạo lắng nghe sự kiện Paste (Ctrl+V) ảnh vào ô chat AI
+  const aiInput = document.getElementById('ai-input-field');
+  if (aiInput) {
+    aiInput.addEventListener('paste', handleAiPaste);
+  }
+  const aiView = document.getElementById('view-assistant');
+  if (aiView) {
+    aiView.addEventListener('paste', handleAiPaste);
+  }
+
+  function executeAiCommand(title, cmd) {
+    showToast("Thực thi lệnh AI", `Đang đẩy lệnh [${title}] tới THANHCHUPC qua daemon DeskAgent:\n${cmd}`, "info", 4500);
+  }
+
+  /* Khởi tạo kéo thả cửa sổ bằng titlebar */
+  (function initDraggableWindow() {
+    const titlebar = document.getElementById('tools-win-titlebar');
+    const win = document.getElementById('tools-window');
+    const workspace = document.getElementById('workspace');
+    if (!titlebar || !win) return;
+
+    let isDragging = false;
+    let startX = 0, startY = 0;
+    let initialLeft = 0, initialTop = 0;
+
+    titlebar.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.win-caption-btn') || e.target.closest('.win-tab-btn')) return;
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = win.getBoundingClientRect();
+      const wsRect = workspace ? workspace.getBoundingClientRect() : { left: 0, top: 0 };
+      initialLeft = rect.left - wsRect.left;
+      initialTop = rect.top - wsRect.top;
+      document.body.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      const wsRect = workspace ? workspace.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight };
+      const maxLeft = Math.max(10, wsRect.width - win.offsetWidth - 10);
+      const maxTop = Math.max(10, wsRect.height - win.offsetHeight - 10);
+      win.style.left = Math.max(10, Math.min(maxLeft, initialLeft + dx)) + 'px';
+      win.style.top = Math.max(10, Math.min(maxTop, initialTop + dy)) + 'px';
+      win.style.transform = 'none';
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        document.body.style.userSelect = '';
+      }
+    });
+  })();
+</script>
+</body>
+</html>
