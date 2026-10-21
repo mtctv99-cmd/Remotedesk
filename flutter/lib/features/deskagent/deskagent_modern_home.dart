@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -41,6 +42,8 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
   final AllPeersLoader _peersLoader = AllPeersLoader();
 
   Timer? _statusTimer;
+  bool _statusRefreshing = false;
+  bool _deviceIdLoaded = false;
 
   @override
   void initState() {
@@ -64,9 +67,63 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
       } catch (_) {}
     });
 
-    _statusTimer = Timer.periodic(const Duration(seconds: 2), (_) {
-      if (mounted) setState(() {});
+    _statusTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      _refreshStatus();
     });
+    _refreshStatus();
+  }
+
+  /// Refresh the online badge of the device card.
+  ///
+  /// [Note]
+  /// The home card renders the device ID and the online badge, but this
+  /// page never mounts `_OnlineStatusWidgetState`, the only other writer
+  /// of `stateGlobal.svcStatus` and the only other caller of
+  /// `serverModel.fetchID`.
+  Future<void> _refreshStatus() async {
+    if (!mounted || _statusRefreshing) {
+      return;
+    }
+    _statusRefreshing = true;
+    try {
+      final status = await _readConnectStatus();
+      if (status == null) {
+        return;
+      }
+      final statusNum = status['status_num'];
+      stateGlobal.svcStatus.value = statusNum == 1
+          ? SvcStatus.ready
+          : statusNum == 0
+              ? SvcStatus.connecting
+              : SvcStatus.notReady;
+      // The device ID only exists once the service is up, and it does not
+      // change afterwards, so it is read once instead of on every poll.
+      if (stateGlobal.svcStatus.value == SvcStatus.ready && !_deviceIdLoaded) {
+        _deviceIdLoaded = true;
+        await gFFI.serverModel.fetchID();
+      }
+      if (mounted) {
+        setState(() {});
+      }
+    } finally {
+      _statusRefreshing = false;
+    }
+  }
+
+  /// The connect status reported by the core, or null when the core
+  /// answered with something that cannot be read.
+  Future<Map<String, dynamic>?> _readConnectStatus() async {
+    try {
+      final raw = await bind.mainGetConnectStatus();
+      if (raw.isEmpty) {
+        return null;
+      }
+      final decoded = jsonDecode(raw);
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } catch (e) {
+      debugPrint('failed to read the connect status: $e');
+      return null;
+    }
   }
 
   @override
