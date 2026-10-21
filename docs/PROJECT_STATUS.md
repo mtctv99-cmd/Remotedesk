@@ -190,3 +190,70 @@ docker compose up -d --build deskagent-manager
 > **Client có token cũ nhưng Manager đã bị reset DB:** client sẽ bị 409. Dùng
 > `POST /api/admin/clients/{id}/reset-token` để mở lại, client đăng ký lại ở lượt
 > tick kế tiếp (tối đa 1h do backoff).
+
+---
+
+## 8. Kết quả deploy lại client (2026-10-21)
+
+### 8.1 Repo đã trôi xa so với bản đang chạy trên server
+
+Khi triển khai lại, phát hiện điều ngược lại với đánh giá ban đầu:
+
+| Thành phần | Repo (trước khi đồng bộ) | Đang chạy trên `.129` |
+|---|---|---|
+| Manager | 16 KB `db.rs`, 18 KB `routes.rs`, **không có auth** | 39 KB `db.rs`, 88 KB `routes.rs`, **có** `/api/auth/login` + rate limiter + device token + `admin_tokens`/`device_tokens` |
+| Control plane | **không có** | **có đầy đủ** (`auth.rs`, `enroll.rs`, `relay.rs`, `signaling.rs`), đang chạy port 34116–34118 |
+| Test | 8 test | **31 test** (manager), **12 test** (control plane) |
+
+Nghĩa là các tuyên bố *"Manager tests 31/31"* và *"control-plane tests 12/12"* của biên bản
+audit gốc **đúng** — mã nguồn tồn tại và đã chạy, chỉ là **chưa nằm trong git**.
+Lỗi là của **quy trình**, không phải của mã nguồn.
+
+→ Đã đưa cả hai crate về repo (commit `911321fe2`), kèm `Cargo.lock` riêng.
+
+### 8.2 Client trên `.130` đã chạy từ một source đã mất
+
+Bản client đang chạy ở `.130` có các log dir `v2-kx` và `v2-media-relay`, và config có
+`deskagent-deploy-pubkey` — nhưng `v2_client.rs`, `media_transport.rs`, `data_channel.rs`
+**không có** trong git, không có trên server, không có trong workspace.
+**Source đó đã mất.** Bản deploy lại lấy từ repo nên **không có** các tính năng đó.
+
+| Tính năng | Bản cũ (mất source) | Bản từ repo (đang chạy) |
+|---|---|---|
+| `v2-kx`, `v2-media-relay` | có | **không** |
+| Xác minh chữ ký job (`deploy_pubkey`) | có (option trong config) | **không** |
+| `machine_id` + device token + DPAPI | không | có |
+| Đăng ký với Manager | **hỏng** (gọi 127.0.0.1 → 401) | chạy |
+
+→ **Cần phục hồi source của bản cũ**, nếu không thì phải viết lại hai tính năng v2.
+
+### 8.3 Ba lỗi tương thích đã sửa trong client
+
+| Lỗi | Triệu chứng | Sửa |
+|---|---|---|
+| Manager URL | daemon gọi `127.0.0.1:8080` → 401, không upload được gì | fallback sang option `api-server` (Manager và API cùng cổng 8080) |
+| Định danh client | Manager gộp row theo `machine_id`, client không gửi → 401 | gửi `machine_id` (Windows MachineGuid) + `version` |
+| Shape payload | `events` gửi dạng string → 422; `inventory` gửi thô → 422 | `{"events":[{source,text,created_at}]}` và `{"json":"<text>"}` |
+| Row id | Manager trả `client_id` canonical, client vẫn dùng id local → 403 | dùng id mà Manager trả về |
+
+### 8.4 Trạng thái sau deploy
+
+```
+CLIENTS
+  66eed01e  DESKTOP-P9DV98L  last_seen=10-21 06:58  machine_id=e6e46d33  token OK
+  7ec3c5b2  THANHCHUPC       last_seen=10-21 06:58  machine_id=a5fab7e9  token OK
+INVENTORY   66eed01e  updated=10-21 06:52      7ec3c5b2  updated=10-21 06:57
+EVENTS      200 dòng mới, 164 thuộc hôm nay
+```
+
+Backup của bản cũ: `C:\Program Files\DeskAgent.bak` trên `.130`,
+`%LOCALAPPDATA%\deskagent.bak-<timestamp>` trên host.
+
+### 8.5 Việc còn lại trên máy
+
+- Task `\DeskAgentClean` trên `.130` vẫn trỏ port **chết** (`:34199`, `:18081` — nhánh Go
+  không còn chạy) và dùng cờ của nhánh Go trên binary Rust. Nên sửa thành:
+  `deskagent.exe -nogui` hoặc bỏ hẳn task.
+- Host vẫn có **3 binary nhánh Go** trong `C:\Program Files\DeskAgent` (`damanager.exe`,
+  `daserver.exe`, `deskagent.exe` của Go) cạnh client Rust ở `%LOCALAPPDATA%\deskagent\`.
+- `.129` không có client nào cài (chỉ server + control plane) — đúng như thiết kế.

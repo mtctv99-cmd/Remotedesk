@@ -84,8 +84,23 @@ Mỗi dòng dưới đây chạy được tại thư mục gốc repo `DeskAgent
 | 12 | "Manager tests 31/31 PASS" | `grep -c '#\[test\]' manager/src/*.rs` | **8** |
 | 13 | "Authenticode Valid cho installer và binary" | `grep -rn 'signtool' scripts/` | **không có** công cụ ký trong repo |
 | 14 | "`flutter-build.yml` đã đổi brand" | `grep -c rustdesk .github/workflows/flutter-build.yml` | **217** hit |
-| 15 | "Manager: per-device token (fail-closed)", "chữ ký job bao gồm `package_path`", "trust anchor `deskagent-deploy-pubkey`" | `grep -rn 'device_token\|ed25519\|sign\|verify\|PRIVKEY' manager/src/` | **đã hiện thực 2026-10-21**: `manager/src/auth.rs` có admin token + device token, `register_client` cấp token, hash SHA-256 lưu trong DB. **Còn thiếu**: ký job và trust anchor deploy |
-| 16 | "Admin console API được bảo vệ" | `grep -n 'fn admin_routes' -A 12 manager/src/routes.rs` | **đã hiện thực 2026-10-21**: `admin_routes()` nay có `require_admin`; `POST /api/admin/jobs` không token → 401 (kiểm chứng end-to-end, mục 4.0) |
+| 15 | "Manager: per-device token (fail-closed)", "chữ ký job bao gồm `package_path`", "trust anchor `deskagent-deploy-pubkey`" | `grep -rn 'device_token\|ed25519\|sign\|verify\|PRIVKEY' manager/src/` | **ĐÃ SỬA 2026-10-21**: `manager/src/auth.rs` có admin token (fail-closed) + device token theo client; `register_client` cấp token `dt_...`, chỉ lưu hash SHA-256. **Còn thiếu**: ký job và trust anchor deploy |
+| 16 | "Admin console API được bảo vệ" | `grep -n 'fn admin_routes' -A 12 manager/src/routes.rs` | **ĐÃ SỬA 2026-10-21**: `admin_routes()` có `require_admin`; `POST /api/admin/jobs` không token → 401 (kiểm chứng end-to-end, mục 4.0) |
+
+### 4.1 Đính chính: các claim về Manager và control plane **đúng**
+
+Hai claim bị ghi "không có" hoá ra **đúng**: mã nguồn của chúng tồn tại và **đang chạy
+trên server**, chỉ là chưa nằm trong git:
+
+| Claim của biên bản gốc | Kiểm chứng lại | Kết quả |
+|---|---|---|
+| "Manager tests 31/31 PASS" | `cargo test --locked --manifest-path manager/Cargo.toml` | **31 passed / 0 failed** ✔ |
+| "Control-plane tests 12/12 PASS" | `cargo test --locked --manifest-path control-plane/Cargo.toml` | **12 passed / 0 failed** ✔ |
+| "Manager: auth admin + per-device token (fail-closed)" | `manager/src/auth.rs` | Có: `/api/auth/login` + rate limiter 10 lần/300s, password yếu bị từ chối, `admin_tokens` + `device_tokens` ✔ |
+| "Control plane: v2 signaling + blind relay + enrollment" | `control-plane/src/` | Có: `auth.rs`, `enroll.rs`, `relay.rs`, `signaling.rs` ✔ |
+
+→ Lỗi là của **quy trình** (mã nguồn đang chạy không có trong version control), không phải
+của mã nguồn. Đã đưa cả hai crate về repo ngày 2026-10-21 (commit `911321fe2`).
 
 ### 4.0 🔴 Lỗ hổng phát hiện trong lúc đối chiếu — **ĐÃ ĐÓNG 2026-10-21**
 
