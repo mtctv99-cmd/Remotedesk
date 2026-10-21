@@ -313,7 +313,8 @@ class MyTheme {
   }
 
   // Dialogs
-  static const double dialogPadding = 24;
+  // ponytail: standard desktop 16px padding; upgrade when mobile needs responsive 24px
+  static const double dialogPadding = 16;
 
   // padding bottom depends on content (some dialogs has no content)
   static EdgeInsets dialogTitlePadding({bool content = true}) {
@@ -380,9 +381,9 @@ class MyTheme {
       shadowColor: Colors.transparent,
     ),
     dialogTheme: DialogTheme(
-      elevation: 15,
+      elevation: 8,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18.0),
+        borderRadius: BorderRadius.circular(8.0),
         side: BorderSide(
           width: 1,
           color: grayBg,
@@ -422,7 +423,7 @@ class MyTheme {
             style: TextButton.styleFrom(
               splashFactory: NoSplash.splashFactory,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18.0),
+                borderRadius: BorderRadius.circular(8.0),
               ),
             ),
           )
@@ -478,9 +479,9 @@ class MyTheme {
       shadowColor: Colors.transparent,
     ),
     dialogTheme: DialogTheme(
-      elevation: 15,
+      elevation: 8,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18.0),
+        borderRadius: BorderRadius.circular(8.0),
         side: BorderSide(
           width: 1,
           color: Color(0xFF24252B),
@@ -525,7 +526,7 @@ class MyTheme {
               disabledForegroundColor: Colors.white70,
               foregroundColor: Colors.white70,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18.0),
+                borderRadius: BorderRadius.circular(8.0),
               ),
             ),
           )
@@ -640,7 +641,7 @@ final ButtonStyle flatButtonStyle = TextButton.styleFrom(
   minimumSize: Size(0, 36),
   padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
   shape: const RoundedRectangleBorder(
-    borderRadius: BorderRadius.all(Radius.circular(2.0)),
+    borderRadius: BorderRadius.all(Radius.circular(8.0)),
   ),
 );
 
@@ -1066,7 +1067,7 @@ class CustomAlertDialog extends StatelessWidget {
       required this.content,
       this.actions,
       this.contentPadding,
-      this.contentBoxConstraints = const BoxConstraints(maxWidth: 500),
+      this.contentBoxConstraints = const BoxConstraints(maxWidth: 400),
       this.onSubmit,
       this.onCancel})
       : super(key: key);
@@ -1342,8 +1343,8 @@ Widget msgboxIcon(String type) {
     iconData = Icons.info;
   }
   if (iconData != null) {
-    return Icon(iconData, size: 50, color: _msgboxColor(type))
-        .marginOnly(right: 16);
+    return Icon(iconData, size: 24, color: _msgboxColor(type))
+        .marginOnly(right: 12);
   }
 
   return Offstage();
@@ -1380,8 +1381,8 @@ Widget msgboxContent(String type, String title, String text) {
           children: [
             Text(
               translate(title),
-              style: TextStyle(fontSize: 21),
-            ).marginOnly(bottom: 10),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ).marginOnly(bottom: 8),
             createDialogContent(translateText(text)),
           ],
         ),
@@ -1396,7 +1397,7 @@ void msgBoxCommon(OverlayDialogManager dialogManager, String title,
   dialogManager.show((setState, close, context) => CustomAlertDialog(
         title: Text(
           translate(title),
-          style: TextStyle(fontSize: 21),
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
         content: content,
         actions: buttons,
