@@ -257,3 +257,67 @@ Backup của bản cũ: `C:\Program Files\DeskAgent.bak` trên `.130`,
 - Host vẫn có **3 binary nhánh Go** trong `C:\Program Files\DeskAgent` (`damanager.exe`,
   `daserver.exe`, `deskagent.exe` của Go) cạnh client Rust ở `%LOCALAPPDATA%\deskagent\`.
 - `.129` không có client nào cài (chỉ server + control plane) — đúng như thiết kế.
+
+---
+
+## 9. Server rebuild và package client trên console (2026-10-21)
+
+### 9.1 Image rebuild từ source trong repo
+
+Cả hai image được build lại trên `.129` từ source đã đưa về repo:
+
+```
+deskagent-manager:latest      Image deskagent-manager:latest Built
+deskagent-control-plane:latest Image deskagent-control-plane:latest Built
+deskagent-control   Up   0.0.0.0:34116-34117, 127.0.0.1:34118
+deskagent-manager   Up   0.0.0.0:8080
+```
+
+**Mấu chốt khi build trên server:** `crates.io` **timeout** từ `.129`
+(`Timeout was reached (failed to download any data for libsqlite3-sys v0.28.0
+within 30s)`) → build fail. Lớp cache của Docker chỉ dùng được khi nội dung
+build context **giống hệt** lần build trước. Hai file thừa nằm nhầm trong
+`manager/` (`DeskAgent-Windows-x64.zip`, `deskagent-1.5.0-install.exe`, trùng với
+`manager-data/`) làm context khác đi → cache miss → phải tải lại toàn bộ crate.
+
+→ **Đã xoá 2 file thừa** → COPY trùng khớp → cache hit → build xong không cần mạng.
+
+Lưu ý cho lần sau: `manager/` và `control-plane/` phải sạch, chỉ chứa source.
+
+### 9.2 Package client trên admin console
+
+Console phục vụ **file mới nhất** trong data directory khớp `deskagent-*-install.exe`
+hoặc `*.zip`. Package mới đã đặt vào `manager-data/`:
+
+```
+GET /download/client  ->  HTTP 200
+  content-type: application/zip
+  content-disposition: attachment; filename="DeskAgent-Windows-x64.zip"
+  content-length: 32139845
+```
+
+Package gồm client build + `install-client.ps1` (installer zero-config) + `README.txt`.
+Script tái lập: `scripts/make-client-package.ps1`.
+
+### 9.3 Trạng thái sau rebuild
+
+| Hạng mục | Kết quả |
+|---|---|
+| Admin login | `POST /api/auth/login` → 200 + session token |
+| Admin API không token | 401 |
+| Danh sách client | 200, cả 2 máy đều có `last_seen` mới |
+| Job deploy | job `j7ea3d9a…` chạy trên client → `success`, exit code 0 |
+| Console download | 200, package mới 32 MB |
+
+### 9.4 Việc còn lại
+
+- **Push lên GitHub** — repo `mtctv99-cmd/Remotedesk` đã tạo nhưng **còn rỗng**,
+  và SSH key của máy **chưa** được đăng ký ở GitHub. Cần một trong hai:
+  dán key ở https://github.com/settings/keys, hoặc đưa token cho `gh`.
+  Script: `scripts/publish-github.ps1 -GitHubUser mtctv99-cmd`.
+- Task `\DeskAgentClean` trên `.130` vẫn trỏ port chết (`:34199`, `:18081`) của
+  nhánh Go — sửa thành `deskagent.exe -nogui` hoặc bỏ task.
+- Host còn 3 binary nhánh Go trong `C:\Program Files\DeskAgent` cạnh client Rust ở
+  `%LOCALAPPDATA%\deskagent\`.
+- Mật khẩu admin Manager đã chuyển khỏi git vào `.env` trên server
+  (`chmod 600`), compose từ chối start nếu thiếu.
