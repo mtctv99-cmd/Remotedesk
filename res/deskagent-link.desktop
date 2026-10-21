@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=DeskAgent
+NoDisplay=true
+MimeType=x-scheme-handler/deskagent;
+TryExec=deskagent
+Exec=deskagent %u
+Icon=deskagent
+Terminal=false
+Type=Application
+StartupNotify=false
+StartupWMClass=deskagent
