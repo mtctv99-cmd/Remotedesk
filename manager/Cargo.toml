@@ -5,7 +5,7 @@ edition = "2021"
 rust-version = "1.75"
 description = "DeskAgent manager: client registry, job dispatch, AI chat proxy and admin console"
 
-# Standalone crate: the empty [workspace] detaches it from the rustdesk
+# Standalone crate: the empty [workspace] detaches it from the parent
 # workspace rooted at ../Cargo.toml (whose members only list libs/*, so a
 # crate nested here would otherwise be rejected at build time).
 [workspace]
@@ -16,8 +16,12 @@ tokio = { version = "1", features = ["full"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# Hash the device tokens so the clear text never reaches the database.
-sha2 = "0.10"
 # Outbound LLM calls (OpenAI-compatible). Not in the original dep list;
 # added per plan risk #4 because the AI proxy needs an HTTP client.
 ureq = { version = "2.9", features = ["json"] }
+ring = "0.17"
+base64 = "0.22"
+
+[dev-dependencies]
+# Router::oneshot for handler tests (routes::tests).
+tower = { version = "0.4", features = ["util"] }

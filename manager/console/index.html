@@ -3,27 +3,28 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="color-scheme" content="dark" />
+<meta name="color-scheme" content="light" />
 <title>DeskAgent Manager — Admin Console</title>
 <style>
-/* ---------- design tokens: dark gray #111827 base, teal #14b8a6 accent ---------- */
+/* ---------- design tokens: white & pink theme ---------- */
 :root {
-  color-scheme: dark;
-  --bg: #111827;          /* app background (gray-900) */
-  --bg-deep: #0b1120;     /* sidebar, code blocks */
-  --panel: #1f2937;       /* panels (gray-800) */
-  --line: #374151;        /* borders (gray-700) */
-  --line-soft: #2b364b;
-  --text: #f3f4f6;        /* gray-100 */
-  --dim: #9ca3af;         /* gray-400 */
-  --dim-2: #6b7280;       /* gray-500 */
-  --accent: #14b8a6;      /* teal-500 */
-  --accent-hi: #2dd4bf;   /* teal-400 */
-  --accent-bg: rgba(20, 184, 166, 0.12);
-  --red: #f87171;
-  --amber: #fbbf24;
-  --blue: #60a5fa;
-  --violet: #a78bfa;
+  color-scheme: light;
+  --bg: #fff5f8;          /* soft pastel white-pink app background */
+  --bg-deep: #ffffff;     /* crisp white sidebar, code blocks, inputs */
+  --panel: #ffffff;       /* clean white card panels */
+  --line: #ffd4e0;        /* soft pastel pink borders */
+  --line-soft: #ffeef3;   /* subtle delicate pink dividers */
+  --text: #2d1822;        /* deep rich charcoal plum (maximum legibility) */
+  --dim: #794d63;         /* warm muted rose */
+  --dim-2: #a87991;       /* lighter muted text */
+  --accent: #f43f5e;      /* rose pink (rose-500) */
+  --accent-hi: #e11d48;   /* deep vibrant rose (rose-600) */
+  --accent-bg: rgba(244, 63, 94, 0.08); /* soft pink highlight */
+  --red: #e11d48;
+  --amber: #d97706;
+  --blue: #2563eb;
+  --violet: #9333ea;
+  --teal: #0d9488;
   --radius: 10px;
   --mono: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
 }
@@ -38,7 +39,8 @@ body {
   overflow: hidden;
 }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb { background: #334155; border-radius: 8px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb { background: #fbcfe8; border-radius: 8px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover { background: #f472b6; }
 ::-webkit-scrollbar-track { background: transparent; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .hidden { display: none !important; }
@@ -50,19 +52,19 @@ code { font-family: var(--mono); color: var(--accent-hi); font-size: 12px; word-
 #sidebar {
   width: 232px; flex: 0 0 232px;
   background: var(--bg-deep);
-  border-right: 1px solid var(--line-soft);
+  border-right: 1px solid var(--line);
   display: flex; flex-direction: column;
   padding: 14px 10px;
 }
 .brand { display: flex; align-items: center; gap: 10px; padding: 6px 10px 16px; }
-.brand .mark {
+.mark {
   width: 34px; height: 34px; border-radius: 9px; flex: 0 0 34px;
-  background: linear-gradient(135deg, #14b8a6, #0f766e);
+  background: linear-gradient(135deg, #fb7185, #f43f5e);
   display: flex; align-items: center; justify-content: center;
-  color: #04211d; font-weight: 800; font-size: 15px;
-  box-shadow: 0 0 0 1px rgba(20, 184, 166, 0.35), 0 4px 14px rgba(20, 184, 166, 0.25);
+  color: #ffffff; font-weight: 800; font-size: 15px;
+  box-shadow: 0 0 0 1px rgba(244, 63, 94, 0.35), 0 4px 14px rgba(244, 63, 94, 0.25);
 }
-.brand .name { font-weight: 700; font-size: 15px; letter-spacing: 0.01em; }
+.brand .name { font-weight: 700; font-size: 15px; letter-spacing: 0.01em; color: var(--text); }
 .brand .sub { font-size: 11px; color: var(--dim-2); }
 .nav-item {
   display: flex; align-items: center; gap: 11px;
@@ -71,15 +73,17 @@ code { font-family: var(--mono); color: var(--accent-hi); font-size: 12px; word-
   font: inherit; font-weight: 500;
   padding: 10px 12px; border-radius: 8px;
   cursor: pointer; position: relative; margin-bottom: 2px;
+  transition: background 0.15s, color 0.15s;
 }
 .nav-item svg { flex: 0 0 18px; width: 18px; height: 18px; }
-.nav-item:hover { color: var(--text); background: rgba(255, 255, 255, 0.04); }
-.nav-item.active { color: var(--accent-hi); background: var(--accent-bg); }
+.nav-item:hover { color: var(--text); background: rgba(244, 63, 94, 0.05); }
+.nav-item.active { color: var(--accent); background: var(--accent-bg); font-weight: 600; }
 .nav-item.active::before {
   content: ""; position: absolute; left: 0; top: 9px; bottom: 9px;
   width: 3px; border-radius: 3px; background: var(--accent);
 }
-.nav-footer { margin-top: auto; padding: 10px 12px; font-size: 11px; color: var(--dim-2); border-top: 1px solid var(--line-soft); }
+.nav-item[data-view="settings"] { margin-top: auto; }
+.nav-footer { margin-top: 6px; padding: 10px 12px; font-size: 11px; color: var(--dim-2); border-top: 1px solid var(--line-soft); }
 
 /* ---------- main column ---------- */
 #main { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
@@ -95,47 +99,36 @@ code { font-family: var(--mono); color: var(--accent-hi); font-size: 12px; word-
 header.topbar {
   display: flex; align-items: center; justify-content: space-between;
   padding: 14px 22px; border-bottom: 1px solid var(--line-soft);
-  background: rgba(17, 24, 39, 0.85); backdrop-filter: blur(4px);
+  background: rgba(255, 255, 255, 0.88); backdrop-filter: blur(4px);
 }
-header.topbar h1 { font-size: 17px; margin: 0; font-weight: 650; }
+header.topbar h1 { font-size: 17px; margin: 0; font-weight: 650; color: var(--text); }
 .conn {
   display: inline-flex; align-items: center; gap: 8px;
   font-size: 12.5px; font-weight: 600; color: var(--dim);
   border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px;
-  background: var(--bg-deep);
+  background: #ffffff;
 }
 .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 9px; background: var(--dim-2); }
-.dot.on { background: var(--accent-hi); box-shadow: 0 0 6px rgba(45, 212, 191, 0.8); }
-.dot.off { background: var(--red); box-shadow: 0 0 6px rgba(248, 113, 113, 0.7); }
+.dot.on { background: var(--accent); box-shadow: 0 0 6px rgba(244, 63, 94, 0.7); }
+.dot.off { background: var(--red); box-shadow: 0 0 6px rgba(225, 29, 72, 0.6); }
 .dot.pulse { animation: pulsing 1.2s ease-in-out infinite; }
 @keyframes pulsing { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
-.conn.ok { color: var(--accent-hi); border-color: rgba(20, 184, 166, 0.4); }
-.conn.bad { color: var(--red); border-color: rgba(248, 113, 113, 0.4); }
-#token-box { display: inline-flex; align-items: center; gap: 6px; }
-#token-box input {
-  width: 190px; font-size: 12.5px; padding: 5px 10px;
-  border: 1px solid var(--line); border-radius: 8px;
-  background: var(--bg-deep); color: var(--fg);
-}
-#token-box input:focus { outline: 1px solid var(--accent-hi); }
-#token-box button {
-  font-size: 12px; font-weight: 600; padding: 5px 12px; cursor: pointer;
-  border: 1px solid var(--line); border-radius: 8px;
-  background: var(--bg-deep); color: var(--dim);
-}
-#token-box button:hover { color: var(--fg); border-color: var(--accent-hi); }
+.conn.ok { color: var(--accent); border-color: rgba(244, 63, 94, 0.35); }
+.conn.bad { color: var(--red); border-color: rgba(225, 29, 72, 0.35); }
 
 main.content { flex: 1; overflow-y: auto; padding: 20px 22px 34px; }
 .view { max-width: 1360px; margin: 0 auto; }
 
 /* ---------- panels ---------- */
 .panel {
-  background: var(--panel); border: 1px solid var(--line-soft);
+  background: var(--panel); border: 1px solid var(--line);
   border-radius: var(--radius); overflow: hidden; margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(244, 63, 94, 0.04);
 }
 .panel-head {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 12px 16px; border-bottom: 1px solid var(--line-soft);
+  background: #fffbfe;
 }
 .panel-head h2 { font-size: 13px; margin: 0; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); font-weight: 700; }
 .panel-head h2 .muted { text-transform: none; letter-spacing: 0; font-weight: 500; }
@@ -143,42 +136,52 @@ main.content { flex: 1; overflow-y: auto; padding: 20px 22px 34px; }
 .panel-body { padding: 14px 16px; }
 .split { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; align-items: start; }
 .split.conv-split { grid-template-columns: minmax(280px, 360px) minmax(0, 1fr); }
+#clients-split { display: block; }
+#clients-split.split, #clients-split:has(#client-detail:not(.hidden)) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: 16px;
+  align-items: start;
+}
 
 /* ---------- buttons / inputs ---------- */
 .btn {
   display: inline-flex; align-items: center; gap: 7px;
   font: inherit; font-size: 13px; font-weight: 600;
   border-radius: 8px; padding: 7px 14px; cursor: pointer;
-  border: 1px solid var(--line); background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); background: #ffffff; color: var(--text);
+  transition: all 0.15s;
 }
 .btn svg { width: 15px; height: 15px; }
-.btn:hover { border-color: var(--dim-2); }
+.btn:hover { border-color: var(--accent); background: #fff5f8; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #04211d; }
-.btn.primary:hover:not(:disabled) { background: var(--accent-hi); }
-.btn.danger { background: rgba(248, 113, 113, 0.12); border-color: rgba(248, 113, 113, 0.45); color: var(--red); }
-.btn.danger:hover:not(:disabled) { background: rgba(248, 113, 113, 0.2); }
+.btn.small { padding: 3px 8px; font-size: 11.5px; gap: 4px; border-radius: 6px; }
+.btn.primary { background: linear-gradient(135deg, #fb7185, #f43f5e); border-color: var(--accent); color: #ffffff; box-shadow: 0 2px 6px rgba(244, 63, 94, 0.25); }
+.btn.primary:hover:not(:disabled) { background: linear-gradient(135deg, #f43f5e, #e11d48); }
+.btn.danger { background: rgba(225, 29, 72, 0.08); border-color: rgba(225, 29, 72, 0.35); color: var(--red); }
+.btn.danger:hover:not(:disabled) { background: rgba(225, 29, 72, 0.15); }
 .btn.ghost { background: transparent; }
 .btn.loading svg { display: none; }
 .btn.loading::before {
   content: ""; width: 13px; height: 13px; border-radius: 50%;
-  border: 2px solid rgba(148, 163, 184, 0.35); border-top-color: currentColor;
+  border: 2px solid rgba(244, 63, 94, 0.35); border-top-color: currentColor;
   animation: rot 0.7s linear infinite;
 }
 @keyframes rot { to { transform: rotate(360deg); } }
 .spin {
   display: inline-block; width: 15px; height: 15px; border-radius: 50%;
-  border: 2px solid rgba(148, 163, 184, 0.3); border-top-color: var(--accent-hi);
+  border: 2px solid rgba(244, 63, 94, 0.25); border-top-color: var(--accent);
   animation: rot 0.7s linear infinite; vertical-align: -3px; margin-right: 8px;
 }
 label { display: block; font-size: 12px; font-weight: 600; color: var(--dim); margin: 0 0 5px; }
 input, textarea, select {
   width: 100%; font: inherit; font-size: 13.5px;
-  background: var(--bg-deep); color: var(--text);
+  background: #ffffff; color: var(--text);
   border: 1px solid var(--line); border-radius: 8px; padding: 8px 11px;
 }
 input::placeholder, textarea::placeholder { color: var(--dim-2); }
-input:focus, textarea:focus, select:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.15); }
+input:focus, textarea:focus, select:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.15); }
+input:disabled, textarea:disabled, select:disabled { background: #fff8fa; color: var(--dim-2); cursor: not-allowed; opacity: 0.75; }
 textarea { resize: vertical; min-height: 64px; }
 .search { position: relative; flex: 0 1 320px; }
 .search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; color: var(--dim-2); }
@@ -190,15 +193,16 @@ textarea { resize: vertical; min-height: 64px; }
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--line-soft); font-size: 13px; vertical-align: top; word-break: break-word; }
-th { color: var(--dim-2); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; white-space: nowrap; }
+th { color: var(--dim); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; white-space: nowrap; background: #fffcfd; }
 tbody tr:last-child td { border-bottom: none; }
 tr.clickable { cursor: pointer; }
-tr.clickable:hover { background: rgba(255, 255, 255, 0.03); }
+tr.clickable:hover { background: rgba(244, 63, 94, 0.04); }
 tr.sel, tr.sel:hover { background: var(--accent-bg); box-shadow: inset 3px 0 0 var(--accent); }
-td .strong { font-weight: 600; }
-tr.ev-err { background: rgba(248, 113, 113, 0.07); box-shadow: inset 3px 0 0 var(--red); }
-tr.ev-err td { color: #fca5a5; }
+td .strong { font-weight: 600; color: var(--text); }
+tr.ev-err { background: rgba(225, 29, 72, 0.05); box-shadow: inset 3px 0 0 var(--red); }
+tr.ev-err td { color: #be123c; }
 .out summary { cursor: pointer; color: var(--dim); font-size: 12px; user-select: none; }
+.out summary:hover { color: var(--accent); }
 .out pre { margin: 6px 0 0; }
 
 /* ---------- badges ---------- */
@@ -206,34 +210,37 @@ tr.ev-err td { color: #fca5a5; }
   display: inline-block; padding: 1.5px 9px; border-radius: 999px;
   font-size: 11px; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap;
 }
-.badge.teal   { background: rgba(20, 184, 166, 0.16); color: var(--accent-hi); }
-.badge.violet { background: rgba(167, 139, 250, 0.16); color: var(--violet); }
-.badge.amber  { background: rgba(251, 191, 36, 0.15); color: var(--amber); }
-.badge.red    { background: rgba(248, 113, 113, 0.15); color: var(--red); }
-.badge.blue   { background: rgba(96, 165, 250, 0.15); color: var(--blue); }
-.badge.gray   { background: rgba(156, 163, 175, 0.14); color: var(--dim); }
+.badge.rose { background: rgba(244, 63, 94, 0.12); color: var(--accent); }
+.badge.teal, .badge.green { background: rgba(13, 148, 136, 0.12); color: var(--teal); }
+.badge.violet { background: rgba(147, 51, 234, 0.12); color: var(--violet); }
+.badge.amber, .badge.warn { background: rgba(217, 119, 6, 0.12); color: var(--amber); }
+.badge.red    { background: rgba(225, 29, 72, 0.12); color: var(--red); }
+.badge.blue   { background: rgba(37, 99, 235, 0.12); color: var(--blue); }
+.badge.gray   { background: rgba(121, 77, 99, 0.12); color: var(--dim); }
 
 /* ---------- overview ---------- */
 .stat-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
 .stat-card {
   text-align: left; font: inherit; color: var(--text);
-  background: var(--panel); border: 1px solid var(--line-soft);
+  background: var(--panel); border: 1px solid var(--line);
   border-radius: var(--radius); padding: 16px 18px; cursor: pointer;
-  transition: border-color 0.15s, transform 0.15s;
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+  box-shadow: 0 2px 8px rgba(244, 63, 94, 0.04);
 }
-.stat-card:hover { border-color: rgba(20, 184, 166, 0.55); transform: translateY(-2px); }
+.stat-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 4px 16px rgba(244, 63, 94, 0.12); }
 .stat-head { display: flex; align-items: center; gap: 8px; color: var(--dim); font-size: 12.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
 .stat-head svg { width: 16px; height: 16px; color: var(--accent); }
-.stat-num { font-size: 34px; font-weight: 750; line-height: 1.2; margin: 8px 0 2px; color: var(--accent-hi); }
+.stat-num { font-size: 34px; font-weight: 750; line-height: 1.2; margin: 8px 0 2px; color: var(--accent); }
 .stat-num .of { font-size: 16px; color: var(--dim); font-weight: 600; }
 .stat-sub { font-size: 12px; color: var(--dim-2); }
 
 /* ---------- clients detail ---------- */
-.detail-meta { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 10px 16px; font-size: 12.5px; color: var(--dim); border-bottom: 1px solid var(--line-soft); background: rgba(0, 0, 0, 0.12); }
+.detail-meta { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 10px 16px; font-size: 12.5px; color: var(--dim); border-bottom: 1px solid var(--line-soft); background: #fff5f8; }
 pre.code {
-  background: var(--bg-deep); border: 1px solid var(--line-soft); border-radius: 8px;
+  background: #fff8fa; border: 1px solid var(--line); border-radius: 8px;
   padding: 12px; overflow: auto; max-height: 340px;
   font: 12px/1.5 var(--mono); margin: 0; white-space: pre-wrap; word-break: break-word;
+  color: var(--text);
 }
 h3.sect { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); margin: 16px 0 8px; font-weight: 700; }
 h3.sect:first-child { margin-top: 0; }
@@ -242,49 +249,51 @@ h3.sect:first-child { margin-top: 0; }
 .conv-list { padding: 10px; }
 .conv-item {
   border: 1px solid var(--line-soft); border-radius: 9px;
-  padding: 10px 12px; margin-bottom: 8px; cursor: pointer; background: rgba(0, 0, 0, 0.14);
+  padding: 10px 12px; margin-bottom: 8px; cursor: pointer; background: #ffffff;
+  transition: all 0.15s;
 }
-.conv-item:hover { border-color: var(--accent); }
+.conv-item:last-child { margin-bottom: 0; }
+.conv-item:hover { border-color: var(--accent); background: #fff5f8; }
 .conv-item.sel { border-color: var(--accent); background: var(--accent-bg); }
 .conv-top { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
 .conv-top code { font-size: 11.5px; }
 .conv-sub { font-size: 12px; color: var(--dim-2); margin-top: 4px; word-break: break-all; }
 .thread {
   height: 420px; overflow-y: auto; padding: 14px 16px;
-  background: var(--bg-deep); border-bottom: 1px solid var(--line-soft);
+  background: #fff9fb; border-bottom: 1px solid var(--line-soft);
   display: flex; flex-direction: column; gap: 10px;
 }
 .msg { max-width: 78%; }
 .msg .who { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--dim-2); margin-bottom: 3px; }
 .msg .bubble {
   display: inline-block; padding: 7px 11px; border-radius: 10px;
-  background: var(--panel); border: 1px solid var(--line-soft);
+  background: #ffffff; border: 1px solid var(--line);
   white-space: pre-wrap; word-break: break-word; font-size: 13.5px;
 }
 .msg.admin { align-self: flex-end; text-align: right; }
 .msg.admin .who { justify-content: flex-end; }
-.msg.admin .bubble { background: rgba(20, 184, 166, 0.13); border-color: rgba(20, 184, 166, 0.4); }
-.msg.bot .bubble { background: rgba(167, 139, 250, 0.09); border-color: rgba(167, 139, 250, 0.3); }
-.msg.user .bubble { background: rgba(251, 191, 36, 0.07); border-color: rgba(251, 191, 36, 0.25); }
-.composer { padding: 12px 16px; display: flex; gap: 10px; align-items: flex-end; }
+.msg.admin .bubble { background: #ffe4e9; border-color: #fbcfe8; color: #4c0519; }
+.msg.bot .bubble { background: #fae8ff; border-color: #f0abfc; color: #581c87; }
+.msg.user .bubble { background: #ffffff; border-color: #ffd4e0; color: #2d1822; }
+.composer { padding: 12px 16px; display: flex; gap: 10px; align-items: flex-end; background: #ffffff; }
 .composer textarea { flex: 1; min-height: 56px; }
 .composer .btn { flex: 0 0 auto; }
 
 /* ---------- empty state ---------- */
 .empty { padding: 26px 16px; text-align: center; color: var(--dim-2); font-size: 13px; }
-.empty svg { width: 26px; height: 26px; opacity: 0.5; display: block; margin: 0 auto 8px; }
+.empty svg { width: 26px; height: 26px; opacity: 0.5; display: block; margin: 0 auto 8px; color: var(--accent); }
 
 /* ---------- toasts ---------- */
 #toasts { position: fixed; right: 18px; bottom: 18px; z-index: 200; display: flex; flex-direction: column; gap: 8px; max-width: 380px; }
 .toast {
-  background: #0f1a2e; border: 1px solid var(--line); border-radius: 9px;
-  padding: 10px 14px 10px 12px; font-size: 13px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  background: #ffffff; border: 1px solid var(--line); border-radius: 9px;
+  padding: 10px 14px 10px 12px; font-size: 13px; box-shadow: 0 8px 24px rgba(244, 63, 94, 0.15);
   display: flex; align-items: flex-start; gap: 9px; cursor: pointer;
-  animation: toastin 0.18s ease-out; word-break: break-word;
+  animation: toastin 0.18s ease-out; word-break: break-word; color: var(--text);
 }
 .toast::before { content: ""; width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex: 0 0 8px; }
-.toast.error::before { background: var(--red); box-shadow: 0 0 6px rgba(248, 113, 113, 0.8); }
-.toast.success::before { background: var(--accent-hi); box-shadow: 0 0 6px rgba(45, 212, 191, 0.8); }
+.toast.error::before { background: var(--red); box-shadow: 0 0 6px rgba(225, 29, 72, 0.6); }
+.toast.success::before { background: var(--accent); box-shadow: 0 0 6px rgba(244, 63, 94, 0.6); }
 .toast.info::before { background: var(--blue); }
 .toast.out { opacity: 0; transform: translateY(6px); transition: opacity 0.22s, transform 0.22s; }
 @keyframes toastin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -292,26 +301,36 @@ h3.sect:first-child { margin-top: 0; }
 /* ---------- modal ---------- */
 #modal-overlay {
   position: fixed; inset: 0; z-index: 300;
-  background: rgba(3, 7, 18, 0.66); backdrop-filter: blur(2px);
+  background: rgba(45, 24, 34, 0.45); backdrop-filter: blur(2px);
   display: flex; align-items: center; justify-content: center; padding: 20px;
 }
 #modal {
   width: 480px; max-width: 100%;
-  background: var(--panel); border: 1px solid var(--line);
-  border-radius: 12px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  background: #ffffff; border: 1px solid var(--line);
+  border-radius: 12px; box-shadow: 0 20px 60px rgba(244, 63, 94, 0.18);
   padding: 18px 20px;
 }
-#modal h3 { margin: 0 0 10px; font-size: 15px; }
+#modal h3 { margin: 0 0 10px; font-size: 15px; color: var(--text); }
 #modal-body div { font-size: 13.5px; color: var(--dim); margin: 4px 0; word-break: break-word; }
 #modal-body div b { color: var(--text); font-weight: 600; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 
 @media (max-width: 1080px) {
-  .split, .split.conv-split { grid-template-columns: 1fr; }
+  .split, .split.conv-split, #clients-split.split, #clients-split:has(#client-detail:not(.hidden)) { grid-template-columns: 1fr; }
   .stat-grid { grid-template-columns: 1fr; }
-  #sidebar { width: 64px; flex-basis: 64px; padding: 14px 8px; }
-  .brand .name, .brand .sub, .nav-item span, .nav-footer { display: none; }
+  #sidebar { width: 64px; flex-basis: 64px; padding: 14px 6px; }
+  .brand .name, .brand .sub, .nav-item span { display: none; }
+  .nav-footer #user-display, .nav-footer .logout-text { display: none; }
+  .nav-footer { padding: 8px 4px; display: flex; justify-content: center; }
+  .nav-footer > div { justify-content: center !important; }
   .nav-item { justify-content: center; }
+}
+
+@media (max-width: 640px) {
+  .form-grid { grid-template-columns: 1fr; }
+  #view-settings > div { grid-template-columns: 1fr !important; }
+  main.content { padding: 14px 10px 24px; }
+  header.topbar { padding: 10px 14px; }
 }
 </style>
 </head>
@@ -342,7 +361,19 @@ h3.sect:first-child { margin-top: 0; }
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>
     <span>Job deploy</span>
   </button>
-  <div class="nav-footer">DeskAgent · fork RustDesk nội bộ</div>
+  <button class="nav-item" data-view="settings" title="Cài đặt">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    <span>Cài đặt</span>
+  </button>
+  <div class="nav-footer">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <span id="user-display" style="font-weight:600; color:var(--text); font-size:12px;">admin</span>
+      <button id="btn-logout" class="btn small" style="padding:2px 8px; font-size:11px;" title="Đăng xuất">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:11px; height:11px; margin-right:2px;"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        <span class="logout-text">Đăng xuất</span>
+      </button>
+    </div>
+  </div>
 </aside>
 
 <!-- ================= main ================= -->
@@ -350,13 +381,15 @@ h3.sect:first-child { margin-top: 0; }
   <div id="loadbar"></div>
   <header class="topbar">
     <h1 id="page-title">Tổng quan</h1>
-    <div id="token-box">
-      <input id="admin-token" type="password" placeholder="Admin token" autocomplete="off" spellcheck="false">
-      <button id="token-save" type="button">Dùng</button>
-    </div>
-    <div id="conn-pill" class="conn">
-      <span id="conn-dot" class="dot pulse"></span>
-      <span id="conn-text">Đang kết nối…</span>
+    <div style="display:flex; align-items:center; gap:12px;">
+      <a href="/download/client" download class="btn primary" id="btn-topbar-download" title="Tải bộ cài đặt DeskAgent Windows" style="display:inline-flex; align-items:center; gap:6px; text-decoration:none; padding:5px 12px; font-size:12.5px; font-weight:600;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px; height:13px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span>Tải Client (.zip)</span>
+      </a>
+      <div id="conn-pill" class="conn">
+        <span id="conn-dot" class="dot pulse"></span>
+        <span id="conn-text">Đang kết nối…</span>
+      </div>
     </div>
   </header>
 
@@ -392,13 +425,13 @@ h3.sect:first-child { margin-top: 0; }
       </div>
       <div class="panel">
         <div class="panel-head"><h2>Trạng thái hệ thống</h2></div>
-        <div class="panel-body muted small" id="overview-updated">Chưa có dữ liệu — đợi chu kỳ làm mới đầu tiên.</div>
+        <div class="panel-body muted small" id="overview-updated">—</div>
       </div>
     </section>
 
     <!-- ============ clients ============ -->
     <section id="view-clients" class="view hidden">
-      <div class="split" id="clients-split">
+      <div id="clients-split">
         <div class="panel">
           <div class="panel-head">
             <h2>Danh sách máy khách</h2>
@@ -407,6 +440,14 @@ h3.sect:first-child { margin-top: 0; }
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
                 <input id="client-search" type="search" placeholder="Tìm theo id, hostname, OS…" autocomplete="off" />
               </div>
+              <button class="btn ghost" id="btn-clients-scan" title="Tự động quét tìm máy khách qua tất cả VLAN / Subnet">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/></svg>
+                Quét LAN / VLAN
+              </button>
+              <button class="btn primary" id="btn-clients-upgrade-all" title="Nâng cấp tất cả máy khách lên bản DeskAgent mới nhất">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Nâng cấp tất cả
+              </button>
               <button class="btn ghost" id="btn-clients-refresh">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg>
                 Làm mới
@@ -415,7 +456,7 @@ h3.sect:first-child { margin-top: 0; }
           </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th></th><th>ID</th><th>Hostname</th><th>OS</th><th>Arch</th><th>Last seen</th></tr></thead>
+              <thead><tr><th style="width:28px"></th><th>ID</th><th>Hostname</th><th>Hệ điều hành</th><th>Kiến trúc</th><th>Hoạt động gần nhất</th><th style="text-align:right">Thao tác</th></tr></thead>
               <tbody id="client-rows"></tbody>
             </table>
           </div>
@@ -430,6 +471,12 @@ h3.sect:first-child { margin-top: 0; }
             </button>
           </div>
           <div class="detail-meta" id="detail-meta"></div>
+          <div style="padding: 0 16px 14px;">
+            <button class="btn primary" id="btn-detail-upgrade" style="width:100%; display:flex; align-items:center; justify-content:center; gap:6px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:14px;height:14px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Cập nhật DeskAgent bản mới
+            </button>
+          </div>
           <div class="panel-body">
             <h3 class="sect">Inventory <span class="muted" id="inv-updated"></span></h3>
             <pre id="inv-pre" class="code">—</pre>
@@ -473,16 +520,16 @@ h3.sect:first-child { margin-top: 0; }
             </div>
           </div>
           <div class="thread" id="thread-box">
-            <div class="empty">Chọn một hội thoại ở bên trái để xem nội dung.</div>
+            <div class="empty">Chưa chọn hội thoại.</div>
           </div>
           <div class="composer">
-            <textarea id="reply-text" placeholder="Trả lời với tư cách admin… (Ctrl+Enter để gửi)" disabled></textarea>
+            <textarea id="reply-text" placeholder="Nhập tin nhắn…" disabled></textarea>
             <button class="btn primary" id="btn-send" disabled>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>
               Gửi
             </button>
           </div>
-          <div class="panel-body muted small" id="composer-hint" style="padding-top:0">Chọn một hội thoại để trả lời.</div>
+          <div class="panel-body muted small" id="composer-hint" style="padding-top:0; display:none;"></div>
         </div>
       </div>
     </section>
@@ -492,6 +539,12 @@ h3.sect:first-child { margin-top: 0; }
       <div class="panel">
         <div class="panel-head"><h2>Tạo job deploy</h2></div>
         <div class="panel-body">
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:14px; flex-wrap:wrap;">
+            <span class="muted" style="font-size:12px;">Mẫu thao tác nhanh:</span>
+            <button type="button" class="btn ghost small" id="btn-preset-upgrade" style="padding:4px 10px; font-size:12px; border-color:var(--accent); color:var(--accent);">
+              ⚡ Nạp lệnh Cập nhật DeskAgent mới nhất
+            </button>
+          </div>
           <div class="form-grid">
             <div>
               <label for="job-client">Máy khách đích</label>
@@ -500,16 +553,16 @@ h3.sect:first-child { margin-top: 0; }
               </select>
             </div>
             <div>
-              <label for="job-cmd">Lệnh cài đặt im lặng (silent command)</label>
+              <label for="job-cmd">Lệnh thực thi</label>
               <input id="job-cmd" placeholder="msiexec /i pkg.msi /qn" autocomplete="off" />
             </div>
             <div>
-              <label for="job-url">Package URL (tuỳ chọn)</label>
-              <input id="job-url" placeholder="https://example.com/pkg.msi" autocomplete="off" />
+              <label for="job-url">Package URL</label>
+              <input id="job-url" placeholder="URL gói cài đặt (vd: https://server/pkg.msi)" autocomplete="off" />
             </div>
             <div>
-              <label for="job-path">Package path local (tuỳ chọn)</label>
-              <input id="job-path" placeholder="C:\path\to\pkg.msi" autocomplete="off" />
+              <label for="job-path">Local path</label>
+              <input id="job-path" placeholder="Đường dẫn trên máy client (vd: C:\Setup\pkg.msi)" autocomplete="off" />
             </div>
           </div>
           <div style="margin-top:14px">
@@ -517,9 +570,6 @@ h3.sect:first-child { margin-top: 0; }
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5v14"/></svg>
               Tạo job
             </button>
-          </div>
-          <div class="muted small" style="margin-top:10px">
-            Chọn "Tất cả máy khách (all)" sẽ tạo một job riêng cho từng máy đã đăng ký. Lệnh sẽ được client thực thi qua <code>cmd /C</code> — hãy kiểm tra kỹ trước khi tạo.
           </div>
         </div>
       </div>
@@ -542,7 +592,182 @@ h3.sect:first-child { margin-top: 0; }
       </div>
     </section>
 
+    <!-- ============ settings ============ -->
+    <section id="view-settings" class="view hidden">
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:18px; align-items:start;">
+        
+        <!-- Panel 1: AI Model Configuration -->
+        <div class="panel">
+          <div class="panel-head" style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px; height:18px; color:var(--accent);"><path d="M12 2a8 8 0 0 0-8 8c0 3.37 2.08 6.25 5 7.42V20a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-2.58c2.92-1.17 5-4.05 5-7.42a8 8 0 0 0-8-8z"/><line x1="9.5" y1="9" x2="9.51" y2="9"/><line x1="14.5" y1="9" x2="14.51" y2="9"/><path d="M10 13a3 3 0 0 0 4 0"/></svg>
+              <h2>Mô hình AI Support</h2>
+            </div>
+            <span id="ai-status-badge" class="badge">Đang kiểm tra…</span>
+          </div>
+          <div class="panel-body" style="display:flex; flex-direction:column; gap:14px;">
+            <div>
+              <label for="setting-ai-url" style="display:block; margin-bottom:5px; font-weight:600; font-size:12.5px;">API URL Endpoint</label>
+              <input id="setting-ai-url" type="text" placeholder="https://api.openai.com/v1" style="width:100%;" />
+            </div>
+
+            <div>
+              <label for="setting-ai-key" style="display:block; margin-bottom:5px; font-weight:600; font-size:12.5px;">API Key</label>
+              <input id="setting-ai-key" type="password" placeholder="Nhập API Key" autocomplete="off" style="width:100%;" />
+              <div id="setting-ai-key-hint" class="muted small" style="margin-top:3px; display:none;"></div>
+            </div>
+
+            <div>
+              <label for="setting-ai-model" style="display:block; margin-bottom:5px; font-weight:600; font-size:12.5px;">Model ID</label>
+              <input id="setting-ai-model" type="text" placeholder="gpt-4o, gemini-2.5-flash, deepseek-chat..." style="width:100%;" />
+            </div>
+
+            <div>
+              <label for="setting-ai-prompt" style="display:block; margin-bottom:5px; font-weight:600; font-size:12.5px;">System Prompt</label>
+              <textarea id="setting-ai-prompt" rows="3" placeholder="Chỉ dẫn hệ thống cho AI..." style="width:100%; resize:vertical; font-family:inherit;"></textarea>
+            </div>
+
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:4px;">
+              <button id="btn-save-ai" class="btn primary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px; height:14px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                Lưu cấu hình AI
+              </button>
+              <button id="btn-test-ai" class="btn ghost">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px; height:14px;"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Thử kết nối
+              </button>
+            </div>
+
+            <div id="ai-test-box" class="hidden" style="margin-top:8px; padding:10px 14px; border-radius:8px; font-size:12.5px; border:1px solid var(--line);"></div>
+          </div>
+        </div>
+
+        <!-- Panel 2: Remote Configuration & Tuning -->
+        <div class="panel">
+          <div class="panel-head" style="display:flex; align-items:center; gap:8px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px; height:18px; color:var(--accent);"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            <h2>Cấu hình Remote</h2>
+          </div>
+          <div class="panel-body" style="display:flex; flex-direction:column; gap:14px;">
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+              <div>
+                <label for="setting-rendezvous" style="display:block; margin-bottom:5px; font-weight:600; font-size:12.5px;">Rendezvous Server</label>
+                <input id="setting-rendezvous" type="text" placeholder="rendezvous.domain.com" style="width:100%;" />
+              </div>
+              <div>
+                <label for="setting-relay" style="display:block; margin-bottom:5px; font-weight:600; font-size:12.5px;">Relay Server</label>
+                <input id="setting-relay" type="text" placeholder="rendezvous.domain.com:21117" style="width:100%;" />
+              </div>
+            </div>
+
+            <div>
+              <label for="setting-server-key" style="display:block; margin-bottom:5px; font-weight:600; font-size:12.5px;">Server Public Key</label>
+              <input id="setting-server-key" type="text" placeholder="Khóa công khai máy chủ" style="width:100%; font-family:var(--mono);" />
+            </div>
+
+            <div>
+              <label for="setting-deploy-pubkey" style="display:block; margin-bottom:5px; font-weight:600; font-size:12.5px;">Deploy Public Key (ký job triển khai)</label>
+              <input id="setting-deploy-pubkey" type="text" placeholder="base64 Ed25519 pubkey để client xác minh deploy job" style="width:100%; font-family:var(--mono);" />
+              <div class="muted small" style="margin-top:3px;">Trust anchor độc lập với Server Public Key. Client chỉ nhận qua HTTPS sync hoặc kênh out-of-band (env DESKAGENT_DEPLOY_PUBKEY / file key); để trống sẽ dùng khóa tự sinh lúc khởi động.</div>
+            </div>
+
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+              <div>
+                <label for="setting-fps" style="display:block; margin-bottom:5px; font-weight:600; font-size:12.5px;">Tốc độ khung hình (FPS)</label>
+                <select id="setting-fps" style="width:100%;">
+                  <option value="30">30 FPS</option>
+                  <option value="60">60 FPS</option>
+                  <option value="120">120 FPS</option>
+                </select>
+              </div>
+              <div>
+                <label for="setting-quality" style="display:block; margin-bottom:5px; font-weight:600; font-size:12.5px;">Chất lượng hình ảnh</label>
+                <select id="setting-quality" style="width:100%;">
+                  <option value="low">Thấp</option>
+                  <option value="balanced">Cân bằng</option>
+                  <option value="best">Cao nhất</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+              <div>
+                <label for="setting-codec" style="display:block; margin-bottom:5px; font-weight:600; font-size:12.5px;">Bộ giải mã (Codec)</label>
+                <select id="setting-codec" style="width:100%;">
+                  <option value="auto">Tự động (Auto)</option>
+                  <option value="h264">H.264</option>
+                  <option value="h265">H.265</option>
+                  <option value="vp9">VP9</option>
+                </select>
+              </div>
+              <div>
+                <label for="setting-direct-server" style="display:block; margin-bottom:5px; font-weight:600; font-size:12.5px;">Direct LAN P2P</label>
+                <select id="setting-direct-server" style="width:100%;">
+                  <option value="Y">Bật</option>
+                  <option value="N">Tắt</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+              <div>
+                <label for="setting-lan-discovery" style="display:block; margin-bottom:5px; font-weight:600; font-size:12.5px;">LAN Discovery</label>
+                <select id="setting-lan-discovery" style="width:100%;">
+                  <option value="Y">Bật</option>
+                  <option value="N">Tắt</option>
+                </select>
+              </div>
+              <div>
+                <label for="setting-allow-wan" style="display:block; margin-bottom:5px; font-weight:600; font-size:12.5px;">Phạm vi kết nối (WAN / LAN)</label>
+                <select id="setting-allow-wan" style="width:100%;">
+                  <option value="N">Chỉ cho phép mạng LAN (Chặn WAN)</option>
+                  <option value="Y">Cho phép cả WAN (Qua Relay)</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label for="setting-vlan-subnets" style="display:block; margin-bottom:5px; font-weight:600; font-size:12.5px;">Các dải mạng VLAN (Cross-VLAN Subnets)</label>
+              <input id="setting-vlan-subnets" type="text" placeholder="vd: 192.168.1.0/24, 10.10.20.0/24" style="width:100%; font-family:var(--mono);" />
+              <div class="muted small" style="margin-top:3px;">Danh sách CIDR cách nhau bằng dấu phẩy để hệ thống tự động quét và khám phá thiết bị giữa các VLAN.</div>
+            </div>
+
+            <div style="margin-top:4px;">
+              <button id="btn-save-remote" class="btn primary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px; height:14px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                Lưu cấu hình Remote
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
   </main>
+</div>
+
+<!-- ================= login overlay ================= -->
+<div id="login-overlay" class="hidden" style="position:fixed; inset:0; z-index:999; background:var(--bg); display:flex; align-items:center; justify-content:center; padding:20px;">
+  <div style="width:380px; max-width:100%; background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:32px 28px; box-shadow:0 16px 40px rgba(244,63,94,0.15);">
+    <div style="display:flex; flex-direction:column; align-items:center; text-align:center; margin-bottom:24px;">
+      <div class="mark" style="width:52px; height:52px; font-size:22px; border-radius:14px; margin-bottom:14px;">DA</div>
+      <h2 style="margin:0 0 6px; font-size:20px; font-weight:700; color:var(--text);">DeskAgent Manager</h2>
+      <div style="font-size:13px; color:var(--dim);">Đăng nhập quản trị</div>
+    </div>
+    <form id="login-form">
+      <div style="margin-bottom:14px;">
+        <label for="login-username" style="display:block; margin-bottom:6px; font-size:12.5px; font-weight:600; color:var(--text);">Tài khoản</label>
+        <input id="login-username" type="text" autocomplete="username" placeholder="Nhập tài khoản" required style="width:100%;" />
+      </div>
+      <div style="margin-bottom:18px;">
+        <label for="login-password" style="display:block; margin-bottom:6px; font-size:12.5px; font-weight:600; color:var(--text);">Mật khẩu</label>
+        <input id="login-password" type="password" autocomplete="current-password" placeholder="Nhập mật khẩu" required style="width:100%;" />
+      </div>
+      <div id="login-error" class="hidden" style="margin-bottom:14px; padding:10px 12px; background:rgba(225,29,72,0.08); border:1px solid rgba(225,29,72,0.3); border-radius:8px; font-size:12.5px; color:var(--red);"></div>
+      <button id="login-submit" type="submit" class="btn primary" style="width:100%; justify-content:center; padding:10px; font-size:14px;">Đăng nhập</button>
+    </form>
+  </div>
 </div>
 
 <!-- toasts + confirm modal -->
@@ -579,11 +804,11 @@ h3.sect:first-child { margin-top: 0; }
 
 // ---------- constants ----------
 
-// A client counts as "online" when it registered within this window.
-// NOTE: the backend only refreshes last_seen on (re)registration (the agent
-// registers once, then only uploads inventory every 10 minutes), so this is
-// a heuristic — tune the constant if registration cadence changes.
-var ONLINE_WINDOW_SECS = 1800; // 30 minutes
+// A client counts as "online" when its last_seen is within this window.
+// The backend refreshes last_seen on every job poll (30s heartbeat) and on
+// re-register/inventory upload; this must match the 600s window used by
+// /api/client/:id/peers on the server.
+var ONLINE_WINDOW_SECS = 600; // 10 minutes
 
 var OVERVIEW_INTERVAL_MS = 5000;  // overview refresh + connection heartbeat
 var THREAD_INTERVAL_MS = 3000;    // thread message poll
@@ -710,22 +935,26 @@ function ApiError(status, body) {
 // throws; callers must catch and surface via toast — never swallow.
 async function api(path, opts) {
   busy(true);
+  opts = opts || {};
+  opts.headers = opts.headers || {};
+  var token = localStorage.getItem('deskagent_token');
+  if (token && !opts.headers['Authorization']) {
+    opts.headers['Authorization'] = 'Bearer ' + token;
+  }
   try {
     var res;
-    var request = opts || {};
-    var token = adminToken();
-    if (token) {
-      request.headers = request.headers || {};
-      request.headers['X-Admin-Token'] = token;
-    }
     try {
-      res = await fetch(path, request);
+      res = await fetch(path, opts);
     } catch (e) {
       setConn(false);
       throw ApiError(0, 'không thể kết nối tới Manager');
     }
     var text = await res.text();
     setConn(true); // any HTTP response means the server is reachable
+    if (res.status === 401 && path !== '/api/auth/login') {
+      showLoginModal(true);
+      throw ApiError(401, text.slice(0, 200) || 'Phiên đăng nhập hết hạn hoặc chưa đăng nhập');
+    }
     if (!res.ok) throw ApiError(res.status, text.slice(0, 200));
     if (!text) return null;
     try { return JSON.parse(text); } catch (e) { return text; }
@@ -806,6 +1035,7 @@ var VIEWS = {
     enter: function () {
       loadClients();
       if (state.selectedClient) loadClientDetail(state.selectedClient);
+      else closeClientDetail();
     },
   },
   conversations: { title: 'Hội thoại', enter: function () { loadConversations(); } },
@@ -813,13 +1043,18 @@ var VIEWS = {
     title: 'Job deploy',
     enter: function () { fillClientSelect(); loadJobs(); },
   },
+  settings: {
+    title: 'Cài đặt hệ thống',
+    enter: function () { loadSettings(); },
+  },
 };
 
 function switchView(name) {
   if (!VIEWS[name]) return;
   state.view = name;
-  ['overview', 'clients', 'conversations', 'jobs'].forEach(function (v) {
-    $('view-' + v).classList.toggle('hidden', v !== name);
+  ['overview', 'clients', 'conversations', 'jobs', 'settings'].forEach(function (v) {
+    var el = $('view-' + v);
+    if (el) el.classList.toggle('hidden', v !== name);
   });
   document.querySelectorAll('.nav-item').forEach(function (b) {
     b.classList.toggle('active', b.getAttribute('data-view') === name);
@@ -921,20 +1156,68 @@ function renderClients() {
     var on = isOnline(c);
     return '<tr class="clickable' + (state.selectedClient === c.id ? ' sel' : '') + '" data-id="' + esc(c.id) + '">' +
       '<td><span class="dot ' + (on ? 'on' : 'off') + '" title="' + (on ? 'Online' : 'Ngoài cửa sổ online') + '"></span></td>' +
-      '<td><code title="' + esc(c.id) + '">' + esc(c.id) + '</code></td>' +
+      '<td><code title="' + esc(c.id) + '" style="cursor:help;">' + esc(shortId(c.id)) + '</code></td>' +
       '<td class="strong">' + esc(c.hostname || '—') + '</td>' +
       '<td>' + esc(((c.os || '') + ' ' + (c.os_version || '')).trim() || '—') + '</td>' +
       '<td>' + esc(c.arch || '—') + '</td>' +
       '<td title="' + esc(fmtTime(c.last_seen)) + '">' + esc(fmtRel(c.last_seen)) + '</td>' +
+      '<td style="text-align:right">' +
+        '<button class="btn small ghost btn-upgrade-client" data-id="' + esc(c.id) + '" data-name="' + esc(c.hostname || c.id) + '" style="padding:2px 8px; font-size:11.5px; border-color:var(--line); margin-right:6px; color:var(--accent);" title="Đẩy job cập nhật DeskAgent cho máy này">Nâng cấp</button>' +
+        '<button class="btn small ghost btn-delete-client" data-id="' + esc(c.id) + '" data-name="' + esc(c.hostname || c.id) + '" style="padding:2px 8px; font-size:11.5px; border-color:var(--line); margin-right:6px; color:var(--danger,#e5484d);" title="Xóa máy khách này khỏi Manager (kèm inventory, sự kiện, job)">Xóa</button>' +
+        '<button class="btn small ghost" style="padding:2px 8px; font-size:11.5px; border-color:var(--line);" title="Xem cấu hình và nhật ký sự kiện">Chi tiết &rarr;</button>' +
+      '</td>' +
       '</tr>';
   }).join('');
+}
+
+// Xóa một máy khách: DELETE /api/admin/clients/:id (manager xóa kèm token,
+// inventory, events, jobs). Luôn hỏi xác nhận trước khi gọi.
+async function deleteClient(clientId, clientName) {
+  var ok = await confirmDialog({
+    title: 'Xóa máy khách ' + (clientName || shortId(clientId)) + '?',
+    lines: [
+      ['Mục tiêu', clientName || clientId],
+      ['ID', clientId],
+      ['Hành động', 'Xóa vĩnh viễn máy khách cùng token, inventory, sự kiện và job của nó khỏi Manager.'],
+    ],
+    okLabel: 'Xóa vĩnh viễn',
+    danger: true,
+  });
+  if (!ok) return;
+  try {
+    await api('/api/admin/clients/' + encodeURIComponent(clientId), { method: 'DELETE' });
+    toast('success', 'Đã xóa máy khách ' + shortId(clientId) + '.');
+    if (state.selectedClient === clientId) closeClientDetail();
+    await loadClients();
+    refreshOverview();
+  } catch (e) {
+    toastErr(e, 'Xóa máy khách');
+  }
+}
+
+async function scanLanClients() {  var btn = $('btn-clients-scan');
+  btn.classList.add('loading');
+  btn.disabled = true;
+  toast('info', 'Đang quét tìm thiết bị DeskAgent qua tất cả VLAN / Subnet...');
+  try {
+    var res = await api('/api/admin/scan-vlans', jsonInit('POST', {}));
+    var scanned = res && res.scanned_ips ? res.scanned_ips : 0;
+    var found = res && res.found_responsive ? res.found_responsive : 0;
+    await loadClients();
+    toast('success', 'Quét liên VLAN hoàn tất (đã dò ' + scanned + ' IP, phát hiện ' + found + ' máy phản hồi).');
+  } catch (e) {
+    toastErr(e, 'Quét mạng liên VLAN');
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+  }
 }
 
 async function loadClients() {
   var btn = $('btn-clients-refresh');
   btn.classList.add('loading');
   btn.disabled = true;
-  if (!$('client-rows').children.length) $('client-rows').innerHTML = skeletonRows(6);
+  if (!$('client-rows').children.length) $('client-rows').innerHTML = skeletonRows(7);
   try {
     var clients = await api('/api/admin/clients');
     state.clients = clients || [];
@@ -966,6 +1249,7 @@ function clientDetailMeta(c) {
 async function loadClientDetail(id) {
   var c = state.clients.find(function (x) { return x.id === id; });
   state.selectedClient = id;
+  $('clients-split').classList.add('split');
   $('client-detail').classList.remove('hidden');
   // Keep table highlight in sync without a full reload.
   document.querySelectorAll('#client-rows tr').forEach(function (tr) {
@@ -1039,6 +1323,7 @@ async function loadClientDetail(id) {
 
 function closeClientDetail() {
   state.selectedClient = null;
+  $('clients-split').classList.remove('split');
   $('client-detail').classList.add('hidden');
   document.querySelectorAll('#client-rows tr').forEach(function (tr) { tr.classList.remove('sel'); });
 }
@@ -1329,6 +1614,212 @@ async function createJob() {
   }
 }
 
+// Upgrade job command. [Note] Handles BOTH package kinds served by
+// /download/client: a `deskagent-*-install.exe` self-extracting installer is
+// launched directly (it unpacks and starts the app itself), while a `.zip`
+// falls through to the Expand-Archive flow below. The file is picked by
+// LastWriteTime among DeskAgent release files — must stay in sync with the
+// manager's download_client glob.
+var DESKAGENT_UPGRADE_CMD = 'powershell -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -Command "$c=@(Get-ChildItem -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1); if (-not $c) { exit 1 }; if ($c.Extension -ne \'.exe\' -and $c.Extension -ne \'.zip\') { $newPath = Join-Path $c.DirectoryName ($c.Name + \'.exe\'); Rename-Item -LiteralPath $c.FullName -NewName $newPath -Force; $c = Get-Item $newPath }; if ($c.Extension -eq \'.exe\') { Start-Process -FilePath $c.FullName -ArgumentList \'--silent-install\' -WindowStyle Hidden; exit 0 }; $td=[System.IO.Path]::Combine($env:TEMP, \'DeskAgent_Update\'); if (Test-Path $td) { Remove-Item $td -Recurse -Force }; Expand-Archive -Path $c.FullName -DestinationPath $td -Force; Get-ChildItem -Path $td -Recurse | Unblock-File -ErrorAction SilentlyContinue; $cur=(Get-Process deskagent -ErrorAction SilentlyContinue | Select-Object -First 1).Path; $dest=if ($cur) { Split-Path $cur } else { [System.IO.Path]::Combine($env:LOCALAPPDATA, \'DeskAgent\') }; if (-not (Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force }; $bat=[System.IO.Path]::Combine($env:TEMP, \'deskagent_updater.cmd\'); $q=[char]34; $lines=@(\'@echo off\',\'timeout /t 3 /nobreak >nul\',\'taskkill /F /IM deskagent.exe >nul 2>&1\',\'timeout /t 1 /nobreak >nul\',\':retry\',(\'xcopy /E /Y /I /H /R \' + $q + $td + \'*\' + $q + \' \' + $q + $dest + \'\\\' + $q + \' >nul 2>&1\'),\'if errorlevel 1 (\',\'    timeout /t 1 /nobreak >nul\',\'    goto retry\',\')\',(\'cd /d \' + $q + $dest + $q),(\'start \' + $q + $q + \' \' + $q + $dest + \'\\deskagent.exe\' + $q),\'exit\'); [System.IO.File]::WriteAllLines($bat, $lines); Start-Process -FilePath $bat -WindowStyle Hidden; exit 0"';
+
+function getDeskAgentPackageUrl() {
+  return window.location.origin + '/download/client';
+}
+
+async function triggerUpgradeClient(clientId, clientName) {
+  var isAll = clientId === 'all';
+  var targets = isAll ? state.clients.map(function (c) { return c.id; }) : [clientId];
+  if (isAll && !targets.length) {
+    toast('error', 'Không có máy khách nào để cập nhật.');
+    return;
+  }
+
+  var ok = await confirmDialog({
+    title: isAll ? 'Cập nhật TẤT CẢ máy khách?' : 'Cập nhật máy khách ' + (clientName || shortId(clientId)) + '?',
+    lines: [
+      ['Mục tiêu', isAll ? 'Tất cả ' + targets.length + ' máy khách' : (clientName || clientId)],
+      ['Gói cài đặt', getDeskAgentPackageUrl()],
+      ['Hành động', 'Client sẽ tự động tải bản DeskAgent mới nhất từ Manager, giải nén và khởi động lại dịch vụ.'],
+    ],
+    okLabel: 'Nâng cấp ngay',
+  });
+  if (!ok) return;
+
+  var pkgUrl = getDeskAgentPackageUrl();
+  var created = 0, failed = 0;
+  for (var i = 0; i < targets.length; i++) {
+    try {
+      await postJob(targets[i], pkgUrl, null, DESKAGENT_UPGRADE_CMD);
+      created++;
+    } catch (e) {
+      failed++;
+      toastErr(e, 'Nâng cấp ' + shortId(targets[i]));
+    }
+  }
+
+  if (failed === 0) {
+    toast('success', isAll ? 'Đã phát lệnh cập nhật tới ' + created + ' máy khách!' : 'Đã gửi lệnh cập nhật thành công!');
+  } else {
+    toast('warning', 'Gửi lệnh hoàn tất: ' + created + ' thành công, ' + failed + ' thất bại.');
+  }
+  loadJobs();
+}
+
+// ---------- settings ----------
+
+async function loadSettings() {
+  try {
+    var s = await api('/api/admin/settings');
+    if (!s) return;
+
+    // AI settings
+    $('setting-ai-url').value = s.ai_url || '';
+    $('setting-ai-model').value = s.ai_model || '';
+    $('setting-ai-prompt').value = s.ai_prompt || '';
+
+    var keyInput = $('setting-ai-key');
+    if (s.ai_has_key) {
+      keyInput.value = '';
+      keyInput.placeholder = '(Đã lưu key — để trống nếu không đổi)';
+    } else {
+      keyInput.placeholder = 'Nhập API Key';
+    }
+
+    var badge = $('ai-status-badge');
+    if (badge) {
+      if (s.ai_configured) {
+        badge.className = 'badge rose';
+        badge.textContent = 'Hoạt động: ' + esc(s.ai_model);
+      } else {
+        badge.className = 'badge amber';
+        badge.textContent = 'Chưa cấu hình';
+      }
+    }
+
+    // Remote settings. An unconfigured setting shows an EMPTY input with a
+    // placeholder hint — no dev fallback dumped into `value`, otherwise one
+    // accidental "Save" persists the fallback as if it were real config.
+    $('setting-rendezvous').value = s.rendezvous_server || '';
+    $('setting-relay').value = s.relay_server || '';
+    $('setting-server-key').value = s.server_key || '';
+    $('setting-deploy-pubkey').value = s.deploy_pubkey || '';
+    $('setting-fps').value = s.custom_fps || '60';
+    $('setting-quality').value = s.image_quality || 'balanced';
+    $('setting-codec').value = s.codec_preference || 'auto';
+    $('setting-direct-server').value = s.direct_server || 'Y';
+    $('setting-lan-discovery').value = s.enable_lan_discovery || 'Y';
+    $('setting-allow-wan').value = s.allow_wan || 'N';
+    $('setting-vlan-subnets').value = s.vlan_subnets || '';
+  } catch (e) {
+    toastErr(e, 'Tải cài đặt');
+  }
+}
+
+async function saveAiSettings() {
+  var url = $('setting-ai-url').value.trim();
+  var key = $('setting-ai-key').value.trim();
+  var model = $('setting-ai-model').value.trim();
+  var prompt = $('setting-ai-prompt').value.trim();
+
+  var payload = {
+    ai_url: url,
+    ai_model: model,
+    ai_prompt: prompt,
+  };
+  if (key) {
+    payload.ai_key = key;
+  }
+
+  var btn = $('btn-save-ai');
+  btn.disabled = true;
+  try {
+    await api('/api/admin/settings', jsonInit('POST', payload));
+    toast('success', 'Đã lưu cấu hình AI thành công.');
+    await loadSettings();
+  } catch (e) {
+    toastErr(e, 'Lưu cấu hình AI');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function testAiConnection() {
+  var url = $('setting-ai-url').value.trim();
+  var key = $('setting-ai-key').value.trim();
+  var model = $('setting-ai-model').value.trim();
+  var prompt = $('setting-ai-prompt').value.trim();
+
+  var box = $('ai-test-box');
+  box.className = '';
+  box.style.display = 'block';
+  box.style.borderColor = 'var(--line)';
+  box.style.background = '#fff8fa';
+  box.style.color = 'var(--dim)';
+  box.textContent = 'Đang gửi test ping tới AI endpoint…';
+  box.classList.remove('hidden');
+
+  var btn = $('btn-test-ai');
+  btn.disabled = true;
+
+  try {
+    var res = await api('/api/admin/settings/test-ai', jsonInit('POST', {
+      url: url || null,
+      key: key || null,
+      model: model || null,
+      prompt: prompt || null,
+    }));
+    if (res && res.ok) {
+      box.style.borderColor = 'rgba(13,148,136,0.4)';
+      box.style.background = 'rgba(13,148,136,0.06)';
+      box.style.color = 'var(--teal)';
+      box.textContent = 'Kết nối thành công! Phản hồi từ model: ' + res.reply;
+      toast('success', 'Test AI thành công!');
+    } else {
+      box.style.borderColor = 'rgba(225,29,72,0.4)';
+      box.style.background = 'rgba(225,29,72,0.06)';
+      box.style.color = 'var(--red)';
+      box.textContent = 'Kết nối thất bại: ' + (res && res.error ? res.error : 'Không có phản hồi');
+      toast('error', 'Test AI thất bại.');
+    }
+  } catch (e) {
+    box.style.borderColor = 'rgba(244,63,94,0.4)';
+    box.style.background = 'rgba(244,63,94,0.06)';
+    box.style.color = 'var(--red)';
+    box.textContent = 'Lỗi gửi yêu cầu: ' + (e && e.message ? e.message : String(e));
+    toastErr(e, 'Test AI');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function saveRemoteSettings() {
+  var payload = {
+    rendezvous_server: $('setting-rendezvous').value.trim(),
+    relay_server: $('setting-relay').value.trim(),
+    server_key: $('setting-server-key').value.trim(),
+    deploy_pubkey: $('setting-deploy-pubkey').value.trim(),
+    custom_fps: $('setting-fps').value,
+    image_quality: $('setting-quality').value,
+    codec_preference: $('setting-codec').value,
+    direct_server: $('setting-direct-server').value,
+    enable_lan_discovery: $('setting-lan-discovery').value,
+    allow_wan: $('setting-allow-wan').value,
+    vlan_subnets: $('setting-vlan-subnets').value.trim(),
+  };
+
+  var btn = $('btn-save-remote');
+  btn.disabled = true;
+  try {
+    await api('/api/admin/settings', jsonInit('POST', payload));
+    toast('success', 'Đã lưu cấu hình Remote và cập nhật tham số mặc định.');
+    await loadSettings();
+  } catch (e) {
+    toastErr(e, 'Lưu cấu hình Remote');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ---------- wiring ----------
 
 document.querySelectorAll('.nav-item').forEach(function (b) {
@@ -1340,6 +1831,20 @@ document.querySelectorAll('.stat-card').forEach(function (b) {
 
 // Client table: event delegation so no inline onclick with interpolated ids.
 $('client-rows').addEventListener('click', function (e) {
+  var upBtn = e.target.closest('.btn-upgrade-client');
+  if (upBtn) {
+    e.stopPropagation();
+    var cid = upBtn.getAttribute('data-id');
+    var cname = upBtn.getAttribute('data-name');
+    triggerUpgradeClient(cid, cname);
+    return;
+  }
+  var delBtn = e.target.closest('.btn-delete-client');
+  if (delBtn) {
+    e.stopPropagation();
+    deleteClient(delBtn.getAttribute('data-id'), delBtn.getAttribute('data-name'));
+    return;
+  }
   var tr = e.target.closest('tr[data-id]');
   if (tr) loadClientDetail(tr.getAttribute('data-id'));
 });
@@ -1347,8 +1852,17 @@ $('client-search').addEventListener('input', function (e) {
   state.clientQuery = e.target.value;
   renderClients();
 });
+$('btn-clients-scan').addEventListener('click', scanLanClients);
+$('btn-clients-upgrade-all').addEventListener('click', function () {
+  triggerUpgradeClient('all', 'Tất cả máy khách');
+});
 $('btn-clients-refresh').addEventListener('click', loadClients);
 $('btn-detail-close').addEventListener('click', closeClientDetail);
+$('btn-detail-upgrade').addEventListener('click', function () {
+  if (state.selectedClient) {
+    triggerUpgradeClient(state.selectedClient, $('detail-name').textContent);
+  }
+});
 
 // Conversation list: delegated clicks.
 $('conv-list').addEventListener('click', function (e) {
@@ -1366,6 +1880,17 @@ $('reply-text').addEventListener('keydown', function (e) {
 // Jobs.
 $('btn-jobs-refresh').addEventListener('click', loadJobs);
 $('btn-job-create').addEventListener('click', createJob);
+$('btn-preset-upgrade').addEventListener('click', function () {
+  $('job-url').value = getDeskAgentPackageUrl();
+  $('job-path').value = '';
+  $('job-cmd').value = DESKAGENT_UPGRADE_CMD;
+  toast('info', 'Đã nạp mẫu lệnh cập nhật DeskAgent mới nhất.');
+});
+
+// Settings.
+$('btn-save-ai').addEventListener('click', saveAiSettings);
+$('btn-test-ai').addEventListener('click', testAiConnection);
+$('btn-save-remote').addEventListener('click', saveRemoteSettings);
 
 // Modal.
 $('modal-ok').addEventListener('click', function () { closeModal(true); });
@@ -1377,41 +1902,122 @@ document.addEventListener('keydown', function (e) {
   if (e.key === 'Escape') closeModal(false);
 });
 
-// Background loops: overview doubles as the connection heartbeat; the thread
-// poll only runs while the conversations view is open with a thread selected.
-setInterval(function () { refreshOverview(); }, OVERVIEW_INTERVAL_MS);
-setInterval(function () {
-  if (state.view === 'conversations' && state.activeConv) refreshThread();
-}, THREAD_INTERVAL_MS);
-
-// Admin token: kept in the session storage of the tab, so it dies with the
-// tab and never lands in a file on disk.
-var ADMIN_TOKEN_KEY = 'deskagent.adminToken';
-
-function adminToken() {
-  try { return sessionStorage.getItem(ADMIN_TOKEN_KEY) || ''; } catch (e) { return ''; }
+// Auth & session handling.
+function showLoginModal(show) {
+  var overlay = $('login-overlay');
+  if (show) {
+    overlay.classList.remove('hidden');
+    $('login-error').classList.add('hidden');
+    $('login-username').focus();
+  } else {
+    overlay.classList.add('hidden');
+  }
 }
 
-function setAdminToken(value) {
+async function handleLogin(e) {
+  if (e) e.preventDefault();
+  var u = $('login-username').value.trim();
+  var p = $('login-password').value;
+  var errEl = $('login-error');
+  var btn = $('login-submit');
+
+  if (!u || !p) {
+    errEl.textContent = 'Vui lòng nhập tài khoản và mật khẩu.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  errEl.classList.add('hidden');
+  btn.disabled = true;
+  btn.textContent = 'Đang đăng nhập…';
+
   try {
-    if (value) sessionStorage.setItem(ADMIN_TOKEN_KEY, value);
-    else sessionStorage.removeItem(ADMIN_TOKEN_KEY);
-  } catch (e) { /* private mode: the token stays for this page only */ }
+    var res = await api('/api/auth/login', jsonInit('POST', { username: u, password: p }));
+    if (res && res.token) {
+      localStorage.setItem('deskagent_token', res.token);
+      localStorage.setItem('deskagent_username', res.username || u);
+      $('user-display').textContent = res.username || u;
+      showLoginModal(false);
+      toast('success', 'Đăng nhập thành công.');
+      startApp();
+    } else {
+      errEl.textContent = 'Đăng nhập thất bại.';
+      errEl.classList.remove('hidden');
+    }
+  } catch (err) {
+    errEl.textContent = err.message ? err.message.replace(/^HTTP \d+ — /, '') : 'Sai tài khoản hoặc mật khẩu';
+    errEl.classList.remove('hidden');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Đăng nhập';
+  }
 }
 
-$('admin-token').value = adminToken();
-$('token-save').addEventListener('click', function () {
-  setAdminToken($('admin-token').value.trim());
-  $('admin-token').value = '';
-  refreshOverview();
-});
-$('admin-token').addEventListener('keydown', function (e) {
-  if (e.key === 'Enter') $('token-save').click();
-});
+async function handleLogout() {
+  try {
+    await api('/api/auth/logout', { method: 'POST' });
+  } catch (e) {
+    // Ignore error
+  }
+  localStorage.removeItem('deskagent_token');
+  localStorage.removeItem('deskagent_username');
+  showLoginModal(true);
+  toast('info', 'Đã đăng xuất.');
+}
+
+$('login-form').addEventListener('submit', handleLogin);
+$('btn-logout').addEventListener('click', handleLogout);
+
+var appStarted = false;
+function startApp() {
+  if (appStarted) {
+    refreshOverview();
+    return;
+  }
+  appStarted = true;
+  setConn('checking');
+  switchView('overview');
+
+  setInterval(function () {
+    if (!localStorage.getItem('deskagent_token')) return;
+    refreshOverview();
+  }, OVERVIEW_INTERVAL_MS);
+
+  setInterval(function () {
+    if (!localStorage.getItem('deskagent_token')) return;
+    if (state.view === 'conversations' && state.activeConv) refreshThread();
+  }, THREAD_INTERVAL_MS);
+}
+
+async function checkAuthAndBoot() {
+  var token = localStorage.getItem('deskagent_token');
+  var savedUser = localStorage.getItem('deskagent_username') || 'admin';
+  $('user-display').textContent = savedUser;
+
+  if (!token) {
+    showLoginModal(true);
+    return;
+  }
+
+  try {
+    var res = await api('/api/auth/me');
+    if (res && res.authenticated) {
+      if (res.username) {
+        $('user-display').textContent = res.username;
+        localStorage.setItem('deskagent_username', res.username);
+      }
+      showLoginModal(false);
+      startApp();
+    } else {
+      showLoginModal(true);
+    }
+  } catch (e) {
+    showLoginModal(true);
+  }
+}
 
 // Boot.
-setConn('checking');
-switchView('overview');
+checkAuthAndBoot();
 </script>
 </body>
 </html>

@@ -63,8 +63,9 @@ flutter/web/
 manager.db
 manager.db-shm
 manager.db-wal
-# Rust build output of the Manager.
+# Rust build output of the Manager and of the control plane.
 manager/target/
+control-plane/target/
 # Local tool state of the review assistant.
 .mimosa/
 # Python bytecode of the helper scripts.
