@@ -61,7 +61,8 @@ Nhánh Rust hiện **chưa đạt** (thiếu 28 điểm; 3 chiều ở mức 4/1
 | Flutter test | `flutter test` | **132/132 passed** |
 | Flutter analyze | `dart analyze <file>` | không lỗi (chỉ `deprecated_member_use` có sẵn) |
 | SBOM | `jq '.components \| length' docs/SBOM.json` | **1.037** |
-| Manager build | `cargo check --manifest-path manager/Cargo.toml` | Manager Rust, 8 unit test |
+| Manager build | `cargo check --locked --manifest-path manager/Cargo.toml` | PASS — lock đã được track (commit `dfb146f61`) |
+| Manager test | `cargo test --locked --manifest-path manager/Cargo.toml` | **8 passed / 0 failed** |
 | Token Manager | test DPAPI round-trip | PASS trên Windows |
 
 ---
