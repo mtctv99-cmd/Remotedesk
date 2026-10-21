@@ -507,9 +507,11 @@ fn upload_inventory(agent: &ureq::Agent, base: &Url, client_id: &str, token: &st
         }
     };
     let url = join_path(base, &format!("api/client/{}/inventory", client_id));
+    // The manager stores the inventory as the text of a "json" field.
+    let body = serde_json::json!({ "json": inv }).to_string();
     if let Err(e) = with_token(agent.post(&url), token)
         .set("Content-Type", "application/json")
-        .send_string(&inv)
+        .send_string(&body)
     {
         if is_auth_rejection(&e) {
             NEEDS_REGISTRATION.store(true, Ordering::Relaxed);
