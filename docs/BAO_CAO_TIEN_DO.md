@@ -1,10 +1,10 @@
 # BÁO CÁO TIẾN ĐỘ DỰ ÁN — DESKAGENT (ĐỒNG BỘ TOÀN DIỆN 13/10)
 
 > **Cập nhật báo cáo:** 2026-10-13 15:30 +07:00 (Nghiệm thu thực tế LAN VM, phân định pháp lý và lộ trình thương mại).  
-> **Cập nhật điểm số:** 2026-10-21 — con số "38/100" bên dưới đã lỗi thời. Điểm chuẩn hoá hiện hành của nhánh Rust là **57/100**; xem `docs/PROJECT_STATUS.md` (nguồn điểm số duy nhất).  
+> **Cập nhật điểm số:** 2026-10-21 — con số "38/100" bên dưới đã lỗi thời. Điểm chuẩn hoá hiện hành của nhánh Rust là **54/100**; xem `docs/PROJECT_STATUS.md` (nguồn điểm số duy nhất).  
 > **Trạng thái pháp lý & Kiến trúc:**
 > - **Nhánh Clean Engine (`deskagent-clean` Go stdlib):** **100% ĐỘC LẬP BẢN QUYỀN** — 0 dependency ngoài, không dính AGPLv3, sở hữu trí tuệ 100%. Phù hợp đóng gói thương mại SaaS đóng mã.
-> - **Nhánh Desktop Client (RustDesk fork Flutter):** **AGPLv3** — Thừa hưởng mã nguồn RustDesk. Bắt buộc mở mã nguồn theo điều khoản AGPLv3 nếu phân phối ra công chúng. Hiện đạt **57/100 Strict-DoD** (2026-10-21) — xem `docs/PROJECT_STATUS.md` và `docs/INDEPENDENT_AUDIT_REPORT_2026-10-09.md` (bản DRAFT).  
+> - **Nhánh Desktop Client (RustDesk fork Flutter):** **AGPLv3** — Thừa hưởng mã nguồn RustDesk. Bắt buộc mở mã nguồn theo điều khoản AGPLv3 nếu phân phối ra công chúng. Hiện đạt **54/100 Strict-DoD** (2026-10-21) — xem `docs/PROJECT_STATUS.md` và `docs/INDEPENDENT_AUDIT_REPORT_2026-10-09.md` (bản DRAFT).  
 > **Tiến độ kỹ thuật mạng LAN:** **100 / 100** trên môi trường thử nghiệm thực tế (Host Win11, Ubuntu .129, Win10 VM .130) — đây là kết quả của **nhánh Go**, không áp dụng cho nhánh Rust.
 
 ---

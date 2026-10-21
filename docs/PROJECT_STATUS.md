@@ -33,7 +33,7 @@ DeskAgent gồm **hai sản phẩm độc lập**, mục tiêu thương mại h�
 
 | Nhánh | Điểm Strict-DoD | Ngày chốt | Nguồn |
 |---|---|---|---|
-| **Rust (`DeskAgent/`)** | **57 / 100** | 2026-10-21 | `docs/INDEPENDENT_AUDIT_REPORT_2026-10-09.md` (bản DRAFT) |
+| **Rust (`DeskAgent/`)** | **54/100** | 2026-10-21 | `docs/INDEPENDENT_AUDIT_REPORT_2026-10-09.md` (bản DRAFT) |
 | **Go (`deskagent-clean/`)** | **không chấm theo Strict-DoD** | — | `deskagent-clean/AUDIT_P0_P4.md` (P0–P4 nghiệm thu thực tế trên VM) |
 
 **Ngưỡng đạt** theo `docs/STRICT_DOD_RUBRIC.md`: ≥ 85/100, không chiều nào < 5/10,
@@ -48,7 +48,7 @@ Nhánh Rust hiện **chưa đạt** (thiếu 28 điểm; 3 chiều ở mức 4/1
 | 2026-10-07 | 38/100 | `docs/SESSION_PROGRESS_2026-10-07.md` |
 | 2026-10-08 | ~55/100 | `docs/SESSION_PROGRESS_2026-10-08.md` (ước lượng, không có bảng điểm chi tiết) |
 | 2026-10-09 | ~~100/100~~ | `docs/INDEPENDENT_AUDIT_REPORT_2026-10-09.md` — **đã bị bác bỏ**, xem mục 4 của bản DRAFT |
-| **2026-10-21** | **57/100** | **Hiện hành.** Đối chiếu từng claim với cây mã nguồn thật |
+| **2026-10-21** | **54/100** | **Hiện hành.** Đối chiếu từng claim với cây mã nguồn thật |
 
 ---
 
@@ -101,3 +101,72 @@ Nhánh Rust hiện **chưa đạt** (thiếu 28 điểm; 3 chiều ở mức 4/1
 2. Đổi điểm → ghi ngày và mục 2.1, không xoá dòng cũ.
 3. Mọi claim mới phải kèm lệnh kiểm chứng lặp lại được.
 4. Không ghi "đã hoàn thành" cho thứ chưa tồn tại trong cây mã nguồn.
+
+---
+
+## 7. 🔴 Lỗ hổng bảo mật đã biết — chưa sửa
+
+> Phát hiện 2026-10-21 trong lúc đối chiếu claim của tài liệu với mã nguồn.
+> **Xếp cao hơn mọi việc kể trên.**
+
+### 7.1 Manager không có bất kỳ cơ chế xác thực nào → RCE qua mạng LAN
+
+**Chuỗi tấn công:**
+
+1. Manager bind `0.0.0.0:8080` mặc định (`manager/src/main.rs:42`,
+   `DESKAGENT_MANAGER_BIND`) và `deploy/docker-compose.yml:44` map `8080:8080`.
+   Comment trong compose tự thừa nhận: *"CHUA co auth - chi LAN/VPN!"*.
+2. `manager/src/routes.rs` — `admin_routes()` **không có middleware xác thực**:
+   `POST /api/admin/jobs` nhận `JobIn { client_id, package_url, package_path, silent_cmd }`
+   và ghi thẳng vào DB.
+3. Client (`src/deskagent/deploy.rs`) poll `GET /api/client/{id}/jobs` mỗi 30 giây và
+   **thực thi `silent_cmd`** — theo tài liệu là dưới quyền SYSTEM.
+
+**Khai thác (không cần credential):**
+
+```bash
+curl -X POST http://<manager-host>:8080/api/admin/jobs \
+  -H 'Content-Type: application/json' \
+  -d '{"client_id":"<id>","name":"poc","silent_cmd":"calc.exe"}'
+```
+
+Kết quả: lệnh chạy trên mọi client đang poll Manager.
+
+**Các endpoint khác cũng không có auth:**
+
+| Endpoint | Tác động |
+|---|---|
+| `GET /api/admin/clients` | rò toàn bộ inventory máy khách |
+| `GET /api/admin/clients/:id/inventory` | rò chi tiết hệ thống |
+| `POST /api/client/{id}/inventory` | ghi dữ liệu giả vào bất kỳ client nào |
+| `GET /api/client/{id}/jobs` | đọc job của bất kỳ client nào |
+| `POST /api/conversations` | chèn hội thoại vào luồng AI chat |
+
+### 7.2 Model "device token" chưa được Manager hiện thực
+
+`POST /api/client/register` trả `{"ok": true}` và **không phát hành `device_token`**.
+Client Rust đã hỗ trợ gửi `X-Device-Token` (commit `4ae37e46f`) nhưng phía Manager
+chưa kiểm tra header đó. Tài liệu mô tả *"per-device token (fail-closed)"* là mô tả
+trạng thái mong muốn, không phải trạng thái hiện tại.
+
+### 7.3 Job không được ký
+
+`src/deskagent/deploy.rs` không có mã xác minh chữ ký (không `ed25519`, không `verify`).
+Tài liệu nói *"chữ ký job bao gồm `package_path`"* và *"trust anchor deploy riêng
+`deskagent-deploy-pubkey`"* — cả hai **không có trong mã nguồn**.
+Kể cả khi thêm admin token, một MITM trên đường mạng vẫn có thể chèn job nếu
+Manager chạy qua HTTP thay vì HTTPS.
+
+### 7.4 Việc cần làm
+
+| Ưu tiên | Hạng mục |
+|---|---|
+| **P0** | Admin token cho `admin_routes()` — lấy từ env `DESKAGENT_MANAGER_ADMIN_TOKEN`, **fail-closed** khi env thiếu, đặt trên mọi route `/api/admin/*` |
+| **P0** | Phát hành `device_token` lúc `register_client`, lưu hash trong DB, kiểm tra `X-Device-Token` trên `/api/client/*` |
+| **P0** | `DESKAGENT_MANAGER_BIND` mặc định `127.0.0.1` thay vì `0.0.0.0` |
+| P1 | Ký Ed25519 cho job + trust anchor `deskagent-deploy-pubkey` |
+| P1 | Bắt buộc HTTPS cho Manager khi nó không còn bind loopback |
+
+> **Lưu ý về triển khai:** chuyển sang fail-closed sẽ làm fleet hiện tại ngừng
+> đăng ký cho tới khi toán tử đặt env. Cần phối hợp với việc deploy lại image
+> Manager trên VM .129 (image đang chạy đã cũ sẵn).

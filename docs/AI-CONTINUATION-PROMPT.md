@@ -21,7 +21,7 @@ Bạn tiếp tục dự án **DeskAgent** — gồm **hai sản phẩm độc l�
 > giữ attribution "Based on RustDesk (AGPL-3.0)". Chỉ `deskagent-clean` là của bạn hoàn toàn.
 > Chi tiết: `docs/OWNERSHIP.md`, `docs/PROJECT_STATUS.md`.
 
-**Điểm số chuẩn hoá hiện hành: Rust = 57/100 (2026-10-21).** Đọc
+**Điểm số chuẩn hoá hiện hành: Rust = 54/100 (2026-10-21).** Đọc
 `docs/PROJECT_STATUS.md` — đó là nguồn duy nhất, đừng tự ghi con số khác.
 
 ---
@@ -68,6 +68,12 @@ Bạn tiếp tục dự án **DeskAgent** — gồm **hai sản phẩm độc l�
 - **Manager** (`manager/` — axum + rusqlite + ureq): auth admin + per-device token (fail-closed),
   SSRF guard AI proxy, server key bắt buộc qua env `DESKAGENT_SERVER_PRIVKEY`,
   trust anchor deploy riêng `deskagent-deploy-pubkey`, chữ ký job gồm `package_path`.
+  > **Đoạn trên mô tả trạng thái MONG MUỐN, không phải trạng thái hiện tại.**
+  > Đối chiếu mã nguồn 2026-10-21: `admin_routes()` **không có middleware xác thực**,
+  > `register_client` trả `{"ok":true}` và **không phát hành `device_token`**, không có
+  > `DESKAGENT_SERVER_PRIVKEY`, không có ký job, không có trust anchor deploy.
+  > Hệ quả: `POST /api/admin/jobs` không cần credential, Manager bind `0.0.0.0:8080`,
+  > client thực thi `silent_cmd` ⇒ **RCE qua LAN**. Xem `docs/PROJECT_STATUS.md` §7 — P0.
 - **Token thiết bị của Manager** được bọc DPAPI trên Windows, quyền 0600 ngoài Windows
   (`src/deskagent/secret.rs`). Manager dùng option riêng `deskagent-manager-url` —
   **không** dùng `api-server` (đó là host API, không phải Manager).
@@ -120,6 +126,14 @@ Bạn tiếp tục dự án **DeskAgent** — gồm **hai sản phẩm độc l�
 
 ## 4. Công việc ưu tiên tiếp theo
 
+0. **[P0 — BẢO MẬT] Đóng đường RCE qua Manager.** `admin_routes()` không có xác thực
+   và Manager bind `0.0.0.0:8080`. Thêm admin token lấy từ env
+   `DESKAGENT_MANAGER_ADMIN_TOKEN`, fail-closed khi env thiếu, đặt trên mọi route
+   `/api/admin/*`; phát hành `device_token` lúc `register_client` và kiểm tra
+   `X-Device-Token` trên `/api/client/*`; đổi `DESKAGENT_MANAGER_BIND` mặc định thành
+   `127.0.0.1`. Chi tiết + khai thác: `docs/PROJECT_STATUS.md` §7.
+   *Phối hợp:* chuyển fail-closed sẽ làm fleet hiện tại ngừng đăng ký cho tới khi đặt env,
+   nên deploy lại image Manager trên VM .129 cùng lúc.
 1. **Vendor 50 git dep `rustdesk-org`** → crates.io nếu version khớp, ngược lại copy từ
    cargo git cache vào `vendor/<tên>/` rồi đổi sang path dep. Giữ nguyên revision.
    Gate: `cargo check --locked --lib --features flutter` pass. Đây là việc rẻ nhất và mở

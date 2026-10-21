@@ -38,15 +38,15 @@
 | 2 | **Runtime & Core Services** | **5/10** | Client RustDesk chạy được, Manager Rust (`manager/src/*.rs`) tồn tại với 8 test. **NHƯNG** `V2MediaSession` / `src/v2_client.rs` / `media_transport.rs` không tồn tại → tuyên bố "wire framing Noise tích hợp trong `connection.rs`" không kiểm chứng được | OPEN |
 | 3 | **Protocol & Transport** | **4/10** | Giao thức upstream hoạt động. **NHƯNG** `PROTOCOL_V2_SPEC.md` tự đánh dấu **DRAFT/PROPOSED**; không có `src/v2_client.rs`, không có test FIT-01–FIT-06 trong repo | OPEN |
 | 4 | **Control Plane & Server** | **4/10** | `manager/` (Rust) tồn tại, 8 test. **NHƯNG** crate `control-plane/` không tồn tại; `deploy/docker-compose.yml` vẫn kéo `image: rustdesk/rustdesk-server:latest` cho hbbs/hbbr | OPEN |
-| 5 | **Security & Cryptography** | **6/10** | Token thiết bị của Manager nay được bọc DPAPI trên Windows (mới, 2026-10-21) + quyền 0600 ngoài Windows; `SECURITY_THREAT_MODEL.md` tồn tại. **NHƯNG** không có công cụ ký Authenticode (`signtool`) nào trong `scripts/`; không có chứng thư trong repo | OPEN |
+| 5 | **Security & Cryptography** | **3/10** | Token thiết bị của Manager nay được bọc DPAPI trên Windows (mới, 2026-10-21) + quyền 0600 ngoài Windows; `SECURITY_THREAT_MODEL.md` tồn tại. **NHƯNG** `POST /api/admin/jobs` trên Manager không có xác thực, Manager bind `0.0.0.0:8080`, job không được ký → đường RCE qua LAN (mục 4.0); không có công cụ ký Authenticode (`signtool`); không có chứng thư trong repo | OPEN |
 | 6 | **Storage & Configuration** | **7/10** | `docs/SBOM.json` = **1.037 components** (khớp tuyên bố, kiểm chứng được); cấu hình RustDesk lưu ổn định. **NHƯNG** diễn tập restore DB 48MB không có artifact/log trong repo | OPEN |
 | 7 | **UI & User Experience** | **7/10** | Widget card + bottom navigation mới; `dart analyze` sạch lỗi; `flutter test` → **132/132 pass**. **NHƯNG** **không có** feature gate `legacy_sciter` → tuyên bố "Sciter legacy cô lập" sai; `cargo fmt --check` bị comment out trong `ci.yml` | OPEN |
 | 8 | **Branding & Assets** | **8/10** | `res/deskagent.desktop`, `res/deskagent.service`, `flatpak/com.deskagent.DeskAgent.metainfo.xml`, `res/msi/Package/Components/DeskAgent.wxs` đều tồn tại; binary đổi tên `deskagent.exe`. **NHƯNG** 3 workflow upstream vẫn đang active (mục 4) | OPEN |
 | 9 | **Source-code Governance** | **4/10** | `.gitmodules` **vẫn trỏ** `https://github.com/rustdesk/hbb_common` → nghĩa vụ AGPL-3.0 của fork vẫn đang có hiệu lực; 60 git dep chưa vendor; `docs/OWNERSHIP.md` giữ attribution đúng | OPEN |
 | 10 | **Deployment & Operations** | **6/10** | `scripts/deskagent-build.cmd`, `docker-compose.yml`, `res/msi/.../DeskAgent.wxs` tồn tại. **NHƯNG** không có ký số; `deploy/docker-compose.yml` dùng image upstream; `perf-analyze.py` / `matrix-verify.py` **không** được nối vào `ci.yml` | OPEN |
-| | **TỔNG** | **57/100** | **CHƯA ĐẠT** ngưỡng ≥85 của `STRICT_DOD_RUBRIC.md` §2 | **NOT SIGNED OFF** |
+| | **TỔNG** | **54/100** | **CHƯA ĐẠT** ngưỡng ≥85 của `STRICT_DOD_RUBRIC.md` §2 | **NOT SIGNED OFF** |
 
-**Kết luận:** Điểm chuẩn hoá hiện tại của nhánh Rust là **57/100**. Nhánh `deskagent-clean`
+**Kết luận:** Điểm chuẩn hoá hiện tại của nhánh Rust là **54/100**. Nhánh `deskagent-clean`
 (Go, 0 dependency ngoài) là một sản phẩm riêng với bằng chứng E2E thực tế mạnh hơn —
 xem `deskagent-clean/AUDIT_P0_P4.md`. Hai nhánh **không** cộng điểm vào nhau.
 
@@ -56,7 +56,7 @@ xem `deskagent-clean/AUDIT_P0_P4.md`. Hai nhánh **không** cộng điểm vào 
 
 | Điều kiện `STRICT_DOD_RUBRIC.md` §2 | Yêu cầu | Thực tế | Kết quả |
 |---|---|---|---|
-| Tổng điểm | ≥ 85/100 | 57/100 | ❌ FAIL |
+| Tổng điểm | ≥ 85/100 | 54/100 | ❌ FAIL |
 | Sàn từng chiều | mọi chiều ≥ 5/10 | chiều 3, 4, 9 ở mức 4/10 | ❌ FAIL |
 | Trạng thái Gate | 8/8 CLOSED | 0/8 có bằng chứng đầy đủ trong repo | ❌ FAIL |
 | Số người chấm độc lập | ≥ 2 | 1 (tự khai) | ❌ FAIL |
@@ -84,6 +84,18 @@ Mỗi dòng dưới đây chạy được tại thư mục gốc repo `DeskAgent
 | 12 | "Manager tests 31/31 PASS" | `grep -c '#\[test\]' manager/src/*.rs` | **8** |
 | 13 | "Authenticode Valid cho installer và binary" | `grep -rn 'signtool' scripts/` | **không có** công cụ ký trong repo |
 | 14 | "`flutter-build.yml` đã đổi brand" | `grep -c rustdesk .github/workflows/flutter-build.yml` | **217** hit |
+| 15 | "Manager: per-device token (fail-closed)", "chữ ký job bao gồm `package_path`", "trust anchor `deskagent-deploy-pubkey`" | `grep -rn 'device_token\|ed25519\|sign\|verify\|PRIVKEY' manager/src/` | **không có** cơ chế nào trong Manager; `register_client` trả `{"ok":true}`, không phát hành token; `src/deskagent/deploy.rs` không xác minh chữ ký |
+| 16 | "Admin console API được bảo vệ" | `grep -n 'fn admin_routes' -A 12 manager/src/routes.rs` | `admin_routes()` **không có middleware xác thực**; `POST /api/admin/jobs` nhận `silent_cmd` tùy ý → lệnh chạy trên client. Xem `docs/PROJECT_STATUS.md` §7 |
+
+### 4.0 🔴 Lỗ hổng phát hiện trong lúc đối chiếu
+
+`POST /api/admin/jobs` trên Manager không yêu cầu credential, Manager bind
+`0.0.0.0:8080` mặc định, và client thực thi `silent_cmd` của job. Đây là đường
+tấn công **thực thi lệnh từ xa trên mọi client** chỉ bằng một HTTP request từ
+mạng LAN. Chi tiết và khai thác: `docs/PROJECT_STATUS.md` §7.
+
+Biên bản gốc đã chấm chiều "Security & Cryptography" ở mức 10/10 và Gate 4 CLOSED
+trong khi đường tấn công này tồn tại.
 
 ### 4.1 Tuyên bố **đúng** (đã kiểm chứng)
 
@@ -126,4 +138,4 @@ Các mục dưới đây có thể đúng trong môi trường kiểm thử, nh�
 | Ngày | Thay đổi |
 |---|---|
 | 2026-10-09 | Biên bản gốc ký 100/100, 8/8 Gate CLOSED — **đã bị thay thế** |
-| 2026-10-21 | Viết lại thành DRAFT sau khi 14 tuyên bố bị cây mã nguồn bác bỏ; điểm chuẩn hoá hạ còn 57/100; chuyển 3 workflow upstream ra khỏi trạng thái active; thêm bảo mật DPAPI cho token Manager; tách `custom-fps` thành commit riêng |
+| 2026-10-21 | Viết lại thành DRAFT sau khi 14 tuyên bố bị cây mã nguồn bác bỏ; điểm chuẩn hoá hạ còn 54/100; chuyển 3 workflow upstream ra khỏi trạng thái active; thêm bảo mật DPAPI cho token Manager; tách `custom-fps` thành commit riêng |
