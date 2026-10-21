@@ -58,3 +58,22 @@ libsciter.dylib
 flutter/web/
 # libdrmtap is cloned at build time by build.py (not a submodule)
 /third_party/libdrmtap/
+# === DeskAgent ===
+# Manager runtime state: the SQLite database of the local Manager.
+manager.db
+manager.db-shm
+manager.db-wal
+# Rust build output of the Manager.
+manager/target/
+# Local tool state of the review assistant.
+.mimosa/
+# Python bytecode of the helper scripts.
+__pycache__/
+*.pyc
+# Windows binaries are release artifacts, never sources.
+*.exe
+# Showcase duplicates of the pages kept under docs/archive/.
+/demo-all-screens.html
+/demo-remote-session.html
+# Raw benchmark dumps; the readable summary in reports/ is tracked.
+reports/live_benchmark_*.json
