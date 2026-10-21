@@ -1203,6 +1203,25 @@ pub fn get_webrtc_enabled() -> bool {
     )
 }
 
+/// The default for a punch/WebRTC option the user has never set.
+///
+/// [Note]
+/// DeskAgent is deployed on self-hosted servers, where UDP hole punching is
+/// the fastest path to a peer, so UDP punch defaults on everywhere. IPv6
+/// punch and WebRTC keep the upstream rule instead: off for a private
+/// rendezvous server, on for a public one. An empty value means "not
+/// set" and `option2bool` reads it as enabled.
+fn default_punch_option(key: &str, rendezvous_is_public: bool) -> String {
+    if key == keys::OPTION_ENABLE_UDP_PUNCH {
+        return "Y".to_owned();
+    }
+    if rendezvous_is_public {
+        String::new()
+    } else {
+        "N".to_owned()
+    }
+}
+
 pub fn get_local_option(key: &str) -> String {
     let v = LocalConfig::get_option(key);
     if key == keys::OPTION_ENABLE_UDP_PUNCH
@@ -1210,9 +1229,7 @@ pub fn get_local_option(key: &str) -> String {
         || key == keys::OPTION_ENABLE_WEBRTC
     {
         if v.is_empty() {
-            if !is_public(&Config::get_rendezvous_server()) {
-                return "N".to_owned();
-            }
+            return default_punch_option(key, is_public(&Config::get_rendezvous_server()));
         }
     }
     if key == "lang" && (v == "pt" || v == "br") {
@@ -3184,6 +3201,31 @@ mod tests {
         assert!(!is_public("hello-rustdesk.com"));
         assert!(!is_public("api.rustdesk.com.evil.test"));
         assert!(!is_public("https://rustdesk.com@evil.test"));
+    }
+
+    #[test]
+    fn test_default_punch_option_enables_udp_only() {
+        // UDP punch is on for both a private and a public rendezvous server.
+        assert_eq!(
+            default_punch_option(keys::OPTION_ENABLE_UDP_PUNCH, false),
+            "Y"
+        );
+        assert_eq!(
+            default_punch_option(keys::OPTION_ENABLE_UDP_PUNCH, true),
+            "Y"
+        );
+        // IPv6 punch and WebRTC keep the upstream rule: off for a private
+        // server, left unset (so enabled) for a public one.
+        assert_eq!(
+            default_punch_option(keys::OPTION_ENABLE_IPV6_PUNCH, false),
+            "N"
+        );
+        assert_eq!(
+            default_punch_option(keys::OPTION_ENABLE_IPV6_PUNCH, true),
+            ""
+        );
+        assert_eq!(default_punch_option(keys::OPTION_ENABLE_WEBRTC, false), "N");
+        assert_eq!(default_punch_option(keys::OPTION_ENABLE_WEBRTC, true), "");
     }
 
     #[test]
