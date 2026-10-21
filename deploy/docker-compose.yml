@@ -41,8 +41,14 @@ services:
     image: deskagent-manager:latest
     container_name: deskagent-manager
     ports:
-      - "8080:8080"         # console + API (CHƯA có auth — chỉ LAN/VPN!)
+      - "8080:8080"         # console + API (cần admin token, xem DESKAGENT_MANAGER_ADMIN_TOKEN)
     environment:
+      # Token quản trị: BẮT BUỘC đặt, nếu không API /api/admin/* sẽ trả 403.
+      # Sinh bằng: openssl rand -hex 32
+      - DESKAGENT_MANAGER_ADMIN_TOKEN=${DESKAGENT_MANAGER_ADMIN_TOKEN:?set DESKAGENT_MANAGER_ADMIN_TOKEN}
+      # Trong container phải nghe 0.0.0.0 để docker-proxy kịp cổng; bảo mật
+      # do admin token đảm nhiệm, không do bind.
+      - DESKAGENT_MANAGER_BIND=0.0.0.0:8080
       # Bot AI: để trống 2 biến DESKAGENT_AI_* thì bot trả lời "chưa cấu hình AI"
       - DESKAGENT_AI_URL=https://api.openai.com/v1
       - DESKAGENT_AI_KEY=

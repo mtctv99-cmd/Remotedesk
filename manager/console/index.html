@@ -111,6 +111,19 @@ header.topbar h1 { font-size: 17px; margin: 0; font-weight: 650; }
 @keyframes pulsing { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 .conn.ok { color: var(--accent-hi); border-color: rgba(20, 184, 166, 0.4); }
 .conn.bad { color: var(--red); border-color: rgba(248, 113, 113, 0.4); }
+#token-box { display: inline-flex; align-items: center; gap: 6px; }
+#token-box input {
+  width: 190px; font-size: 12.5px; padding: 5px 10px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg-deep); color: var(--fg);
+}
+#token-box input:focus { outline: 1px solid var(--accent-hi); }
+#token-box button {
+  font-size: 12px; font-weight: 600; padding: 5px 12px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg-deep); color: var(--dim);
+}
+#token-box button:hover { color: var(--fg); border-color: var(--accent-hi); }
 
 main.content { flex: 1; overflow-y: auto; padding: 20px 22px 34px; }
 .view { max-width: 1360px; margin: 0 auto; }
@@ -337,6 +350,10 @@ h3.sect:first-child { margin-top: 0; }
   <div id="loadbar"></div>
   <header class="topbar">
     <h1 id="page-title">Tổng quan</h1>
+    <div id="token-box">
+      <input id="admin-token" type="password" placeholder="Admin token" autocomplete="off" spellcheck="false">
+      <button id="token-save" type="button">Dùng</button>
+    </div>
     <div id="conn-pill" class="conn">
       <span id="conn-dot" class="dot pulse"></span>
       <span id="conn-text">Đang kết nối…</span>
@@ -695,8 +712,14 @@ async function api(path, opts) {
   busy(true);
   try {
     var res;
+    var request = opts || {};
+    var token = adminToken();
+    if (token) {
+      request.headers = request.headers || {};
+      request.headers['X-Admin-Token'] = token;
+    }
     try {
-      res = await fetch(path, opts || {});
+      res = await fetch(path, request);
     } catch (e) {
       setConn(false);
       throw ApiError(0, 'không thể kết nối tới Manager');
@@ -1360,6 +1383,31 @@ setInterval(function () { refreshOverview(); }, OVERVIEW_INTERVAL_MS);
 setInterval(function () {
   if (state.view === 'conversations' && state.activeConv) refreshThread();
 }, THREAD_INTERVAL_MS);
+
+// Admin token: kept in the session storage of the tab, so it dies with the
+// tab and never lands in a file on disk.
+var ADMIN_TOKEN_KEY = 'deskagent.adminToken';
+
+function adminToken() {
+  try { return sessionStorage.getItem(ADMIN_TOKEN_KEY) || ''; } catch (e) { return ''; }
+}
+
+function setAdminToken(value) {
+  try {
+    if (value) sessionStorage.setItem(ADMIN_TOKEN_KEY, value);
+    else sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+  } catch (e) { /* private mode: the token stays for this page only */ }
+}
+
+$('admin-token').value = adminToken();
+$('token-save').addEventListener('click', function () {
+  setAdminToken($('admin-token').value.trim());
+  $('admin-token').value = '';
+  refreshOverview();
+});
+$('admin-token').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') $('token-save').click();
+});
 
 // Boot.
 setConn('checking');

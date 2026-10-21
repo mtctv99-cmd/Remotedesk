@@ -292,8 +292,15 @@ enum Registration {
 /// [Note]
 /// The answer decides whether the client has to register again: a
 /// Manager that issues no token is recorded once, so an install without a
-/// token does not re-register on every tick.
-fn register_client(agent: &ureq::Agent, base: &Url, client_id: &str) -> ResultType<Registration> {
+/// token does not re-register on every tick. The current token is sent
+/// along, because a Manager only hands out a new one to a client that
+/// proves it owns the id.
+fn register_client(
+    agent: &ureq::Agent,
+    base: &Url,
+    client_id: &str,
+    token: &str,
+) -> ResultType<Registration> {
     let info = super::system_info::collect()?;
     let url = join_path(base, "api/client/register");
     let body = serde_json::json!({
@@ -303,8 +310,7 @@ fn register_client(agent: &ureq::Agent, base: &Url, client_id: &str) -> ResultTy
         "os_version": info.os_version,
         "arch": info.arch,
     });
-    let resp = agent
-        .post(&url)
+    let resp = with_token(agent.post(&url), token)
         .set("Content-Type", "application/json")
         .send_string(&body.to_string())?;
     let token = resp
@@ -383,8 +389,9 @@ pub fn tick() -> ResultType<()> {
     let agent = manager_agent();
     let base = manager_base_url()?;
     let (client_id, is_new) = load_or_create_client_id();
-    if needs_registration(is_new, &load_device_token()) {
-        match register_client(&agent, &base, &client_id) {
+    let current_token = load_device_token();
+    if needs_registration(is_new, &current_token) {
+        match register_client(&agent, &base, &client_id, &current_token) {
             Ok(Registration::TokenIssued) | Ok(Registration::NoToken) => {
                 REGISTER_FAILURES.store(0, Ordering::Relaxed);
                 NEXT_REGISTER_AT.store(0, Ordering::Relaxed);

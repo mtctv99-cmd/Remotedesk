@@ -47,6 +47,11 @@ CREATE TABLE IF NOT EXISTS job_results (
     output TEXT NOT NULL DEFAULT '',
     created_at INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS client_tokens (
+    client_id TEXT PRIMARY KEY,
+    token_hash TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY,
     client_id TEXT,
@@ -69,6 +74,51 @@ pub fn now() -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
+}
+
+// ---------- device tokens ----------
+
+/// Store the token hash of a client, replacing any previous one.
+pub fn set_client_token(
+    conn: &Connection,
+    client_id: &str,
+    token_hash: &str,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO client_tokens (client_id, token_hash, created_at)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(client_id) DO UPDATE SET
+            token_hash = excluded.token_hash,
+            created_at = excluded.created_at",
+        params![client_id, token_hash, now()],
+    )?;
+    Ok(())
+}
+
+/// The token hash of a client, if it has one.
+pub fn client_token_hash(conn: &Connection, client_id: &str) -> rusqlite::Result<Option<String>> {
+    conn.query_row(
+        "SELECT token_hash FROM client_tokens WHERE client_id = ?1",
+        params![client_id],
+        |row| row.get::<_, String>(0),
+    )
+    .optional()
+}
+
+/// Drop the token of a client so it registers again.
+pub fn clear_client_token(conn: &Connection, client_id: &str) -> rusqlite::Result<()> {
+    conn.execute("DELETE FROM client_tokens WHERE client_id = ?1", params![client_id])?;
+    Ok(())
+}
+
+/// A fresh random token, hex encoded.
+///
+/// [Note]
+/// SQLite draws the bytes from the platform entropy source, so the token
+/// does not need a dependency of its own.
+pub fn random_token(conn: &Connection) -> rusqlite::Result<String> {
+    let bytes: Vec<u8> = conn.query_row("SELECT randomblob(32)", [], |row| row.get(0))?;
+    Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 
 /// Create all tables if missing.
@@ -370,6 +420,19 @@ pub fn is_conversation_claimed(conn: &Connection, id: &str) -> rusqlite::Result<
         .query_row("SELECT claimed FROM conversations WHERE id = ?1", params![id], |row| row.get(0))
         .optional()?;
     Ok(claimed.unwrap_or(0) != 0)
+}
+
+/// The client a conversation belongs to, if any.
+pub fn conversation_client_id(
+    conn: &Connection,
+    id: &str,
+) -> rusqlite::Result<Option<String>> {
+    let client_id: Option<Option<String>> = conn
+        .query_row("SELECT client_id FROM conversations WHERE id = ?1", params![id], |row| {
+            row.get::<_, Option<String>>(0)
+        })
+        .optional()?;
+    Ok(client_id.flatten())
 }
 
 /// Admin takes over: the bot stops answering this conversation.

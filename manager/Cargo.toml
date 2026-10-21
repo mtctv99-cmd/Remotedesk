@@ -16,6 +16,8 @@ tokio = { version = "1", features = ["full"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Hash the device tokens so the clear text never reaches the database.
+sha2 = "0.10"
 # Outbound LLM calls (OpenAI-compatible). Not in the original dep list;
 # added per plan risk #4 because the AI proxy needs an HTTP client.
 ureq = { version = "2.9", features = ["json"] }

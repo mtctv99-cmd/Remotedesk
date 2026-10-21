@@ -5,15 +5,17 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, Query, Request, State};
 use axum::http::StatusCode;
-use axum::response::Html;
+use axum::middleware::Next;
+use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::ai;
+use crate::auth;
 use crate::db;
 use crate::AppState;
 
@@ -50,6 +52,35 @@ fn not_found() -> (StatusCode, String) {
     (StatusCode::NOT_FOUND, "not found".to_string())
 }
 
+fn unauthorized(message: &str) -> (StatusCode, String) {
+    (StatusCode::UNAUTHORIZED, message.to_string())
+}
+
+/// Authorise a request that acts on behalf of one client.
+///
+/// [Note]
+/// The device token of the request must match the hash stored for that
+/// client. A client without a token, or with the token of another client,
+/// is refused.
+fn authorize_client(
+    state: &SharedState,
+    client_id: &str,
+    headers: &axum::http::HeaderMap,
+) -> Result<(), (StatusCode, String)> {
+    let conn = state.db.lock().map_err(|_| db_poisoned())?;
+    let stored = db::client_token_hash(&conn, client_id)
+        .map_err(internal_error)?
+        .unwrap_or_default();
+    if stored.is_empty() {
+        return Err(unauthorized("the client has no device token"));
+    }
+    if auth::token_matches(auth::device_token(headers), &stored) {
+        Ok(())
+    } else {
+        Err(unauthorized("invalid device token"))
+    }
+}
+
 // ---------- router ----------
 
 /// Build the full router: console at "/", APIs nested under /api.
@@ -58,8 +89,20 @@ pub fn router(state: SharedState) -> Router {
         .route("/", get(root_page))
         .nest("/api/client", client_routes())
         .nest("/api/conversations", conversation_routes())
-        .nest("/api/admin", admin_routes())
+        .nest("/api/admin", admin_routes(state.clone()))
         .with_state(state)
+}
+
+/// Refuse a request that does not carry the admin token.
+async fn require_admin(
+    State(state): State<SharedState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    if let Err((status, message)) = state.admin.authorize(request.headers()) {
+        return (status, message).into_response();
+    }
+    next.run(request).await
 }
 
 /// Serve the single-file admin console.
@@ -82,17 +125,19 @@ fn conversation_routes() -> Router<SharedState> {
         .route("/:id/messages", post(post_message).get(get_messages))
 }
 
-fn admin_routes() -> Router<SharedState> {
+fn admin_routes(state: SharedState) -> Router<SharedState> {
     Router::new()
         .route("/clients", get(admin_clients))
         .route("/clients/:id/inventory", get(admin_inventory))
         .route("/clients/:id/events", get(admin_events))
+        .route("/clients/:id/reset-token", post(admin_reset_token))
         .route("/conversations", get(admin_conversations))
         .route("/conversations/:id/messages", get(admin_messages))
         .route("/conversations/:id/claim", post(admin_claim))
         .route("/conversations/:id/reply", post(admin_reply))
         .route("/conversations/:id/close", post(admin_close))
         .route("/jobs", post(admin_create_job).get(admin_list_jobs))
+        .layer(axum::middleware::from_fn_with_state(state, require_admin))
 }
 
 // ---------- payload types ----------
@@ -159,11 +204,40 @@ struct AfterQuery {
 
 // ---------- client API ----------
 
+/// Whether a registration may go ahead and issue a token.
+///
+/// [Note]
+/// A client that already has a token keeps it unless the request carries
+/// that token, so nobody can take over a client by repeating its id. A
+/// client without a stored token -- a fresh one, or one whose token an
+/// administrator reset -- gets a new one.
+fn registration_allowed(stored_hash: &str, presented_token: &str) -> bool {
+    stored_hash.is_empty() || auth::token_matches(presented_token, stored_hash)
+}
+
+/// Register a client and hand out its device token.
+///
+/// [Note]
+/// The token is issued once and only its hash is stored. Registering an
+/// unknown client id issues a token; registering a known one requires the
+/// token that client already has, so nobody can take over a client by
+/// repeating its id. A client whose token was reset by an administrator
+/// has no token stored and gets a fresh one.
 async fn register_client(
     State(state): State<SharedState>,
+    headers: axum::http::HeaderMap,
     Json(payload): Json<RegisterIn>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
     let conn = state.db.lock().map_err(|_| db_poisoned())?;
+    let stored = db::client_token_hash(&conn, &payload.client_id)
+        .map_err(internal_error)?
+        .unwrap_or_default();
+    if !registration_allowed(&stored, auth::device_token(&headers)) {
+        return Err((
+            StatusCode::CONFLICT,
+            "the client is already registered; send the current device token".to_string(),
+        ));
+    }
     db::upsert_client(
         &conn,
         &payload.client_id,
@@ -173,14 +247,19 @@ async fn register_client(
         &payload.arch,
     )
     .map_err(internal_error)?;
-    Ok(Json(json!({ "ok": true })))
+    let token = db::random_token(&conn).map_err(internal_error)?;
+    db::set_client_token(&conn, &payload.client_id, &auth::hash_token(&token))
+        .map_err(internal_error)?;
+    Ok(Json(json!({ "ok": true, "device_token": token })))
 }
 
 async fn client_inventory(
     State(state): State<SharedState>,
     Path(id): Path<String>,
+    headers: axum::http::HeaderMap,
     Json(payload): Json<InventoryIn>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
+    authorize_client(&state, &id, &headers)?;
     let conn = state.db.lock().map_err(|_| db_poisoned())?;
     db::save_inventory(&conn, &id, &payload.json).map_err(internal_error)?;
     Ok(Json(json!({ "ok": true })))
@@ -189,8 +268,10 @@ async fn client_inventory(
 async fn client_events(
     State(state): State<SharedState>,
     Path(id): Path<String>,
+    headers: axum::http::HeaderMap,
     Json(payload): Json<EventsIn>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
+    authorize_client(&state, &id, &headers)?;
     let batch: Vec<(String, String, i64)> = payload
         .events
         .into_iter()
@@ -204,7 +285,9 @@ async fn client_events(
 async fn client_jobs(
     State(state): State<SharedState>,
     Path(id): Path<String>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<Vec<db::JobRow>>, (StatusCode, String)> {
+    authorize_client(&state, &id, &headers)?;
     let conn = state.db.lock().map_err(|_| db_poisoned())?;
     let mut jobs = db::pending_jobs(&conn, &id).map_err(internal_error)?;
     // Mark delivered jobs as running so the next poll does not repeat them.
@@ -220,8 +303,10 @@ async fn client_jobs(
 async fn client_job_result(
     State(state): State<SharedState>,
     Path((client_id, job_id)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
     Json(payload): Json<JobResultIn>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
+    authorize_client(&state, &client_id, &headers)?;
     let conn = state.db.lock().map_err(|_| db_poisoned())?;
     db::save_job_result(&conn, &job_id, &client_id, &payload.status, &payload.output)
         .map_err(internal_error)?;
@@ -242,23 +327,31 @@ enum BotAction {
 
 async fn create_conversation(
     State(state): State<SharedState>,
+    headers: axum::http::HeaderMap,
     body: Option<Json<ConvIn>>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let client_id = body.and_then(|Json(payload)| payload.client_id);
+    let client_id = body
+        .and_then(|Json(payload)| payload.client_id)
+        .ok_or_else(|| unauthorized("the conversation needs a client id"))?;
+    authorize_client(&state, &client_id, &headers)?;
     let id = new_id("c");
     let conn = state.db.lock().map_err(|_| db_poisoned())?;
-    db::insert_conversation(&conn, &id, client_id.as_deref()).map_err(internal_error)?;
+    db::insert_conversation(&conn, &id, Some(&client_id)).map_err(internal_error)?;
     Ok(Json(json!({ "conversation_id": id })))
 }
 
 async fn post_message(
     State(state): State<SharedState>,
     Path(id): Path<String>,
+    headers: axum::http::HeaderMap,
     Json(payload): Json<MsgIn>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
     // Scope the lock: dropped before the AI call below.
     let action = {
         let conn = state.db.lock().map_err(|_| db_poisoned())?;
+        let owner = db::conversation_client_id(&conn, &id).map_err(internal_error)?;
+        let owner = owner.ok_or_else(not_found)?;
+        authorize_client(&state, &owner, &headers)?;
         if !db::conversation_exists(&conn, &id).map_err(internal_error)? {
             return Err(not_found());
         }
@@ -289,8 +382,15 @@ async fn post_message(
 async fn get_messages(
     State(state): State<SharedState>,
     Path(id): Path<String>,
+    headers: axum::http::HeaderMap,
     Query(q): Query<AfterQuery>,
 ) -> Result<Json<Vec<db::MessageRow>>, (StatusCode, String)> {
+    let conn = state.db.lock().map_err(|_| db_poisoned())?;
+    let owner = db::conversation_client_id(&conn, &id)
+        .map_err(internal_error)?
+        .ok_or_else(not_found)?;
+    drop(conn);
+    authorize_client(&state, &owner, &headers)?;
     let conn = state.db.lock().map_err(|_| db_poisoned())?;
     let messages = db::messages_after(&conn, &id, q.after.unwrap_or(0)).map_err(internal_error)?;
     Ok(Json(messages))
@@ -326,6 +426,21 @@ async fn admin_events(
 ) -> Result<Json<Vec<db::EventRow>>, (StatusCode, String)> {
     let conn = state.db.lock().map_err(|_| db_poisoned())?;
     Ok(Json(db::list_events(&conn, &id, MAX_EVENTS_RETURNED).map_err(internal_error)?))
+}
+
+/// Drop the device token of a client so it can register again.
+///
+/// [Note]
+/// The way back for a client that lost its token. Between this call and
+/// the next registration the client id is free for anybody to claim, so
+/// the client should register again straight away.
+async fn admin_reset_token(
+    State(state): State<SharedState>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let conn = state.db.lock().map_err(|_| db_poisoned())?;
+    db::clear_client_token(&conn, &id).map_err(internal_error)?;
+    Ok(Json(json!({ "ok": true, "client_id": id })))
 }
 
 async fn admin_conversations(
@@ -405,4 +520,28 @@ async fn admin_list_jobs(
 ) -> Result<Json<Vec<db::JobWithResult>>, (StatusCode, String)> {
     let conn = state.db.lock().map_err(|_| db_poisoned())?;
     Ok(Json(db::list_jobs(&conn).map_err(internal_error)?))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_known_client_cannot_be_taken_over_without_its_token() {
+        let stored = auth::hash_token("original");
+        // No token: refused.
+        assert!(!registration_allowed(&stored, ""));
+        // A wrong token: refused.
+        assert!(!registration_allowed(&stored, "guess"));
+        // The right token: allowed, so the client can rotate its token.
+        assert!(registration_allowed(&stored, "original"));
+    }
+
+    #[test]
+    fn a_client_without_a_stored_token_may_register() {
+        // Fresh client.
+        assert!(registration_allowed("", ""));
+        // A client whose token an administrator reset.
+        assert!(registration_allowed("", "anything"));
+    }
 }
