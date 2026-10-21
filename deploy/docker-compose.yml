@@ -1,13 +1,15 @@
 # ================================================================
-# DeskAgent - docker-compose cho server đầy đủ (hbbs + hbbr + Manager)
+# DeskAgent - docker-compose cho server đầy đủ
 #
 # Bản này dùng port mapping — chạy được trên CẢ Windows (Docker Desktop)
-# lẫn Linux VPS. Trên Linux VPS có thể thay các block ports: bằng
-# network_mode: host cho gọn (xem README-DESKAGENT.md).
+# lẫn Linux VPS.
 #
 # Chạy:      docker compose up -d
 # Xem log:   docker compose logs -f hbbs
 # Key client: hbbs-data/id_ed25519.pub (sinh lần chạy đầu)
+#
+# Mật khẩu admin nằm trong file .env cạnh compose, KHÔNG commit:
+#   echo "DESKAGENT_ADMIN_PASS=<chuỗi ngẫu nhiên>" > .env
 # ================================================================
 services:
   hbbs:
@@ -15,7 +17,7 @@ services:
     container_name: deskagent-hbbs
     # -r QUAN TRỌNG: quảng bá relay đúng bằng IP của HOST chạy Docker
     # (không có -r, hbbs trong container quảng bá IP nội bộ 172.x -> client không relay được)
-    command: hbbs -r <DOCKER-HOST-IP>:21117
+    command: hbbs -r 192.168.232.129:21117
     ports:
       - "21115:21115/tcp"   # NAT type test
       - "21116:21116/tcp"   # TCP hole punching + ID server
@@ -41,22 +43,40 @@ services:
     image: deskagent-manager:latest
     container_name: deskagent-manager
     ports:
-      - "8080:8080"         # console + API (cần admin token, xem DESKAGENT_MANAGER_ADMIN_TOKEN)
+      - "8080:8080"         # console + API (yêu cầu admin token, xem .env)
     environment:
-      # Token quản trị: BẮT BUỘC đặt, nếu không API /api/admin/* sẽ trả 403.
-      # Sinh bằng: openssl rand -hex 32
-      - DESKAGENT_MANAGER_ADMIN_TOKEN=${DESKAGENT_MANAGER_ADMIN_TOKEN:?set DESKAGENT_MANAGER_ADMIN_TOKEN}
-      # Trong container phải nghe 0.0.0.0 để docker-proxy kịp cổng; bảo mật
-      # do admin token đảm nhiệm, không do bind.
-      - DESKAGENT_MANAGER_BIND=0.0.0.0:8080
+      # Mật khẩu admin: BẮT BUỘC đặt, nếu không API /api/admin/* sẽ trả 403.
+      # Manager từ chối mật khẩu yếu ("admin"/"deskagent"/dưới 8 ký tự).
+      - DESKAGENT_ADMIN_USER=${DESKAGENT_ADMIN_USER:-admin}
+      - DESKAGENT_ADMIN_PASS=${DESKAGENT_ADMIN_PASS:?set DESKAGENT_ADMIN_PASS in .env}
       # Bot AI: để trống 2 biến DESKAGENT_AI_* thì bot trả lời "chưa cấu hình AI"
       - DESKAGENT_AI_URL=https://api.openai.com/v1
       - DESKAGENT_AI_KEY=
       - DESKAGENT_AI_MODEL=gpt-4o-mini
       # Khuyến nghị chặn cứng host AI được phép gọi (phòng SSRF)
       - DESKAGENT_AI_HOSTS=api.openai.com
-      # SQLite db nằm trong volume /data
     working_dir: /data
     volumes:
       - ./manager-data:/data
+    restart: unless-stopped
+
+  # Owned control plane (WS-6): v2 signaling + blind relay + enrollment.
+  # Shares manager.db via /shared. Dual-stack with hbbs/hbbr (PROTOCOL_V2_SPEC 8).
+  deskagent-control:
+    build: ../control-plane
+    image: deskagent-control-plane:latest
+    container_name: deskagent-control
+    ports:
+      - "34116:34116/tcp"
+      - "34117:34117/tcp"
+      - "127.0.0.1:34118:34118/tcp"
+    environment:
+      - DESKAGENT_CONTROL_DB=/shared/manager.db
+      - DESKAGENT_CONTROL_BIND_API=0.0.0.0:34118
+      - DESKAGENT_CONTROL_RELAY_ADVERTISE=192.168.232.129:34117
+      - DESKAGENT_CONTROL_SIG_ADVERTISE=192.168.232.129:34116
+    volumes:
+      - ./manager-data:/shared
+      - ./control-plane-data:/data
+    working_dir: /data
     restart: unless-stopped
