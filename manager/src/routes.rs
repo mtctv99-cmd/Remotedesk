@@ -900,8 +900,8 @@ async fn client_peer_data(
 /// Largest accepted upload body.
 const ATTACH_MAX_BYTES: usize = 20 * 1024 * 1024;
 /// Extensions allowed through the sanitizer (everything else becomes .bin).
-const ATTACH_EXTS: [&str; 9] =
-    ["png", "jpg", "jpeg", "webp", "gif", "bmp", "txt", "log", "pdf"];
+const ATTACH_EXTS: [&str; 10] =
+    ["png", "jpg", "jpeg", "webp", "gif", "bmp", "txt", "log", "pdf", "bin"];
 
 /// Keep only [A-Za-z0-9._-] and clamp the extension to the allow-list so the
 /// stored filename can never escape the attach dir or smuggle a double ext.
@@ -917,9 +917,10 @@ fn sanitize_attach_name(name: &str) -> String {
     }
     let ext = trimmed.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
     if ATTACH_EXTS.contains(&ext.as_str()) {
-        format!("{}.{}", &trimmed[..trimmed.len() - ext.len()], ext).replace("..", ".")
+        // Extension whitelisted: keep the name as-is (single extension).
+        trimmed.to_string()
     } else {
-        format!("{}.bin", trimmed.trim_end_matches('.'))
+        format!("{}.bin", trimmed)
     }
 }
 
@@ -972,7 +973,8 @@ async fn client_upload_attachment(
     std::fs::create_dir_all(&dir).map_err(internal_error)?;
     let path = dir.join(format!("{}-{}", key, safe_name));
     std::fs::write(&path, &body).map_err(internal_error)?;
-    let url = format!("/api/attach/{}-{}", key, safe_name);
+    // Full path MUST match the GET route registered under /api/client nest.
+    let url = format!("/api/client/attach/{}-{}", key, safe_name);
     Ok(Json(json!({ "key": key, "url": url, "size": body.len() })))
 }
 
@@ -2538,5 +2540,45 @@ mod tests {
         )
         .await;
         assert_eq!(status, StatusCode::OK, "other IP unaffected");
+    }
+}
+
+#[cfg(test)]
+mod attach_sanitize_tests {
+    use super::sanitize_attach_name;
+
+    #[test]
+    fn keeps_whitelisted_extension() {
+        assert_eq!(sanitize_attach_name("shot.png"), "shot.png");
+        assert_eq!(sanitize_attach_name("log.txt"), "log.txt");
+    }
+
+    #[test]
+    fn keeps_original_case_for_whitelisted_ext() {
+        assert_eq!(sanitize_attach_name("Photo.PNG"), "Photo.PNG");
+    }
+
+    #[test]
+    fn appends_bin_once_for_unknown_extension() {
+        assert_eq!(sanitize_attach_name("page.html"), "page.html.bin");
+        assert_eq!(sanitize_attach_name("svc.exe"), "svc.exe.bin");
+    }
+
+    #[test]
+    fn no_double_extension() {
+        assert_eq!(sanitize_attach_name("h.bin"), "h.bin");
+        assert_eq!(sanitize_attach_name("v.bin.bin"), "v.bin.bin");
+    }
+
+    #[test]
+    fn strips_path_components() {
+        assert_eq!(sanitize_attach_name("../etc/passwd"), "passwd.bin");
+        assert_eq!(sanitize_attach_name("a/b/c.png"), "c.png");
+    }
+
+    #[test]
+    fn empty_falls_back() {
+        assert_eq!(sanitize_attach_name(""), "attach.bin");
+        assert_eq!(sanitize_attach_name("..."), "attach.bin");
     }
 }
