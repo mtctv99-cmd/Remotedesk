@@ -364,3 +364,26 @@ Không khớp với mockup:
 ### I. Tiêu đề section 6 "6 Surfaces Showcase" vs thực tế 6 cửa sổ
 
 Không ảnh hưởng số đo. Ghi để kỹ sư biết tiêu đề chỉ là mô tả (popup-windows-goc.html:868).
+
+---
+
+## 12. Widget đang chạy — viên thuốc 86×40 (pre-Go, build 05/10/2026)
+
+**Nguồn sự thật khác mockup**: số đo lấy từ **build đang chạy thật** trên Win11 host
+(`Remote\DeskAgent-extracted`, `data\app.so` 05/10) và ảnh chụp `pill-old-click.png`,
+`pill_menu_open.png`, `verified_single_pill.png`. Spec đầy đủ + bài học Win32 nằm ở
+**`docs/CLIENT_WIDGET_SHIPPED.md`**.
+
+| hạng mục | giá trị |
+|---|---|
+| Trạng thái thu gọn | pill 86×40, radius 20, `#202020`, viền trắng 12%, headphones `#60cdff` + "Hỗ trợ" `#f4f4f5` |
+| Trạng thái mở | panel 380×96, radius 12; hàng 1: monitor + chip `IP \| mật khẩu` + pill Hỗ trợ; hàng 2: monitor + ô ID + nút Kết nối |
+| Nút Kết nối | nền `#60cdff`, chữ `#0b0b0b`, radius 6, cao 30 |
+| Menu chuột phải | "× Đóng (Chạy ngầm)", acrylic, radius 8, ~168×34 |
+| Neo | đáy phải, margin phải 10, đáy 6 |
+| Khởi động | luôn ở pill; cửa sổ frameless, always-on-top |
+
+Quyết định deploy 22/10/2026: client đang cài là **build pre-Go này**. Hướng
+`client-widget.html` (card trắng 380×140, mục 2/7 ở trên) chỉ áp dụng khi được
+duyệt chuyển giao diện — mặc định **không** đổi bản đang chạy.
+

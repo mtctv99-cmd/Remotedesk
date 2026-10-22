@@ -321,3 +321,20 @@ Script tái lập: `scripts/make-client-package.ps1`.
   `%LOCALAPPDATA%\deskagent\`.
 - Mật khẩu admin Manager đã chuyển khỏi git vào `.env` trên server
   (`chmod 600`), compose từ chối start nếu thiếu.
+
+---
+
+## 10. Client Win11 host — rollback pre-Go (2026-10-22)
+
+- **Client đang cài trên Win11 host** được rollback về **build pre-Go 05/10/2026**
+  (`Remote\DeskAgent-extracted`) theo quyết định của chủ dự án ("chuẩn nhất"):
+  giao diện viên thuốc `Hỗ trợ` 86×40 → panel 380×96, chuột phải "Đóng (Chạy ngầm)".
+  Spec đầy đủ: `docs/CLIENT_WIDGET_SHIPPED.md`, mục 12 trong CONTRACT_UI_DESIGN.md.
+- `C:\Program Files\DeskAgent` được thay bằng bộ file 05/10; bản Flutter mới hơn
+  (22/10) dời vào `_old-*\` cạnh đó. Start Menu/Startup trỏ cùng đường dẫn.
+- Nhánh Rust trong repo vẫn cập nhật phần dựng lại viên thuốc (commit
+  `67c6ac1ac`→`bfc5f703f`): token Lucide + logo SVG, frameless (gỡ 4 bit caption,
+  `WS_EX_NOACTIVATE`), khởi động luôn ở pill. Điểm strict-DoD của nhánh Rust
+  **không đổi** vì thêm phần này (UI, không đụng core).
+- Đánh dấu Bau hướng tương lai: khi nâng client, giữ trạng thái pill; việc còn
+  thiếu ở nhánh Rust xem mục 9.4.
