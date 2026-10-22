@@ -52,7 +52,7 @@ class _WidgetPalette {
   static const Color blueDark = Color(0xFF0369A1);
   static const Color orange = Color(0xFFF97316);
   static const Color orangeDark = Color(0xFFEA580C);
-  static const Color green = Color(0xFF10B981);
+  static const Color green = Color(0xFF34D399); // semantic success (bao-cao-ux)
   static const String mono = 'Consolas';
 }
 

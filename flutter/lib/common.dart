@@ -1341,11 +1341,12 @@ Color? _msgboxColor(String type) {
   if (type == "input-password" || type == "custom-os-password") {
     return Color(0xFFAD448E);
   }
+  // Semantic status palette (bao-cao-ux): success #34D399, error #F87171.
   if (type.contains("success")) {
-    return Color(0xFF32bea6);
+    return Color(0xFF34D399);
   }
   if (type.contains("error") || type == "re-input-password") {
-    return Color(0xFFE04F5F);
+    return Color(0xFFF87171);
   }
   return Color(0xFF2C8CFF);
 }

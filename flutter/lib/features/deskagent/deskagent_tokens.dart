@@ -27,6 +27,10 @@ abstract final class DeskAgentFluentColors {
   static const Color subtle = Color(0xFF2B2B2B);
 
   // ── Trạng thái — popup-windows-goc.html:20-23, remote-session-goc.html:15 ──
+  /// Semantic palette BẮT BUỘC cho mọi trạng thái (bao-cao-ux 'Token màu
+  /// trạng thái': success #34D399, warning #FBBF24, danger #F87171). Ngoại lệ
+  /// duy nhất: light client widget giữ brand green `#10b981` theo
+  /// `client-widget-goc.html:37` — chỉ trong surface sáng đó.
   static const Color warning = Color(0xFFFBBF24);
   static const Color success = Color(0xFF34D399);
   static const Color danger = Color(0xFFF87171);
