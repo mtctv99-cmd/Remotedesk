@@ -67,6 +67,7 @@ Future<void> main(List<String> args) async {
     kWindowType = type.windowType;
     if (type == -2) {
       // DeskAgent widget popup: `Thiết bị gần đây` (no WindowType needed).
+      print('recent-popup main: launching child, keys=${argument.keys.toList()} peers=${(argument['peers'] as List?)?.length}');
       runMultiWindow(argument, kAppTypeDesktopRecentPeers);
       return;
     }
