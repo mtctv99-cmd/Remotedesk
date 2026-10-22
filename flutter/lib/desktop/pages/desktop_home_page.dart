@@ -597,6 +597,12 @@ class _DesktopHomePageState extends State<DesktopHomePage>
       }
     }
 
+    // Text on the pale amber banner needs dark ink in light mode (white is
+    // ~1.07:1 there). Color token #1c1c1c per CONTRACT_UI_DESIGN.md §1.1.
+    final bannerTextColor =
+        Theme.of(context).brightness == Brightness.dark
+            ? Colors.white
+            : const Color(0xFF1C1C1C);
     return Stack(
       children: [
         Container(
@@ -618,7 +624,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                                   child: Text(
                                 translate(title),
                                 style: TextStyle(
-                                    color: Colors.white,
+                                    color: bannerTextColor,
                                     fontWeight: FontWeight.bold,
                                     fontSize: 15),
                               ).marginOnly(bottom: 6)),
@@ -630,7 +636,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                             translate(content),
                             style: TextStyle(
                                 height: 1.5,
-                                color: Colors.white,
+                                color: bannerTextColor,
                                 fontWeight: FontWeight.normal,
                                 fontSize: 13),
                           ).marginOnly(bottom: 20)
@@ -645,8 +651,8 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                                       padding: 8,
                                       isOutline: true,
                                       text: translate(btnText),
-                                      textColor: Colors.white,
-                                      borderColor: Colors.white,
+                                      textColor: bannerTextColor,
+                                      borderColor: bannerTextColor,
                                       textSize: 20,
                                       radius: 10,
                                       onTap: onPressed,
@@ -665,7 +671,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                                         style: TextStyle(
                                             decoration:
                                                 TextDecoration.underline,
-                                            color: Colors.white,
+                                            color: bannerTextColor,
                                             fontSize: 12),
                                       )).marginOnly(top: 6)),
                             ]
@@ -678,7 +684,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
             child: IconButton(
               icon: Icon(
                 Icons.close,
-                color: Colors.white,
+                color: bannerTextColor,
                 size: 20,
               ),
               onPressed: closeCard,

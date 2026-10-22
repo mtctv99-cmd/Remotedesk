@@ -1389,11 +1389,211 @@ void showWaitAcceptDialog(SessionID sessionId, String type, String title,
       closeConnection();
     }
 
+    void accept() {
+      close();
+      // Accept (popup-windows-goc.html:524) is the remote side's approve-click accept, not a
+      // client-side permission grant: a click-mode approval authorizes on Rust's side
+      // (src/server/connection.rs:2997 try_start_cm), and the client only has to (re)send its
+      // LoginRequest, i.e. sessionLogin with empty password (src/client.rs:4818).
+      bind.sessionLogin(
+          sessionId: sessionId,
+          osUsername: '',
+          osPassword: '',
+          password: '',
+          remember: false);
+      dialogManager.showLoading(translate('Connecting...'),
+          onCancel: closeConnection);
+    }
+
+    final pi = gFFI.ffiModel.pi;
+    // The nook can precede PeerInfo (it comes before the logon response). The requester ID
+    // captured at connect (CursorModel.peerId, model.dart:4142) goes first; the remote
+    // username is only a fallback, and '-' when neither is known yet.
+    final peerId = gFFI.cursorModel.peerId.isNotEmpty
+        ? gFFI.cursorModel.peerId
+        : pi.username;
+    final peerLabel = peerId.isNotEmpty ? peerId : '-';
+
+    // Contract §3.3 (popup-windows-goc.html:435-544); its acrylic-opacity Flutter fallback is
+    // TBD there, so the opaque background is used. Permission cells have no Rust permission API
+    // on this path -> display-only, all on; the click accept grants the whole session.
+    const accent = MyTheme.accent;
+    const borderColor = Color(0x1FFFFFFF);
+    const card = Color(0xFF272727);
+
+    Widget permCell(String label, IconData icon) => Container(
+          height: 42,
+          decoration: BoxDecoration(
+            color: const Color(0x2E60CDFF),
+            border: Border.all(color: const Color(0x7360CDFF)),
+            borderRadius: BorderRadius.circular(5),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 14, color: accent),
+              const SizedBox(height: 2),
+              Text(translate(label),
+                  style: const TextStyle(fontSize: 8.5, color: accent)),
+            ],
+          ),
+        );
+
+    final nameStyle = const TextStyle(
+        fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white);
+
     return CustomAlertDialog(
       title: null,
-      content: msgboxContent(type, title, text),
+      content: Container(
+        width: 320,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF202020),
+          border: Border.all(color: borderColor),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: card,
+                border: Border.all(color: borderColor),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E293B),
+                    border: Border.all(color: const Color(0x26FFFFFF)),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Icon(Icons.desktop_windows_outlined,
+                      size: 20, color: accent),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        if (pi.hostname.isNotEmpty) ...[
+                          Flexible(
+                              child: Text(pi.hostname,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: nameStyle)),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 5),
+                            child: Text('/',
+                                style: TextStyle(
+                                    color: Color(0xFF64748B),
+                                    fontWeight: FontWeight.w300)),
+                          ),
+                        ],
+                        Text(peerLabel,
+                            style: nameStyle.copyWith(color: accent)),
+                      ]),
+                      const SizedBox(height: 2),
+                      Row(children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: const BoxDecoration(
+                              color: Color(0xFFFBBF24), shape: BoxShape.circle),
+                        ),
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: Text(
+                            'Yêu cầu quyền truy cập máy của bạn',
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 10.5, color: Color(0xFFFBBF24)),
+                          ),
+                        ),
+                      ]),
+                    ],
+                  ),
+                ),
+              ]),
+            ),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: card,
+                border: Border.all(color: borderColor),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: GridView.count(
+                crossAxisCount: 4,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: 6,
+                crossAxisSpacing: 6,
+                childAspectRatio: 73 / 42,
+                children: [
+                  permCell('Bàn phím', Icons.keyboard_outlined),
+                  permCell('Clipboard', Icons.content_paste_outlined),
+                  permCell('Âm thanh', Icons.volume_up_outlined),
+                  permCell('Tệp tin', Icons.folder_outlined),
+                  permCell('Restart', Icons.restart_alt),
+                  permCell('Ghi hình', Icons.fiber_manual_record_outlined),
+                  permCell('Khóa phím', Icons.keyboard_hide_outlined),
+                  permCell('Che màn', Icons.visibility_off_outlined),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 32,
+              child: Row(children: [
+                Expanded(
+                  child: dialogButton('Chấp nhận (Accept)',
+                      onPressed: accept,
+                      style:
+                          const TextStyle(fontSize: 11.5, color: Colors.black),
+                      buttonStyle: ElevatedButton.styleFrom(
+                        backgroundColor: accent,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4)),
+                      )),
+                ),
+                const SizedBox(width: 8),
+                // Cancel lives in the AlertDialog action row, which forces ~36px per button,
+                // so this is a non-tappable 32px bar keeping the mockup's 1:1 button widths.
+                const Expanded(
+                  child: SizedBox(
+                    height: 32,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                          color: Color(0xFF2A2A2A),
+                          borderRadius: BorderRadius.all(Radius.circular(4))),
+                    ),
+                  ),
+                ),
+              ]),
+            ),
+          ],
+        ),
+      ),
       actions: [
-        dialogButton('Cancel', onPressed: onCancel, isOutline: true),
+        // Cancel keeps the previous closeConnection behaviour.
+        dialogButton('Từ chối (Cancel)',
+            onPressed: onCancel,
+            isOutline: true,
+            style: const TextStyle(fontSize: 11.5, color: Color(0xFFD4D4D8)),
+            buttonStyle: OutlinedButton.styleFrom(
+              backgroundColor: const Color(0xFF2A2A2A),
+              side: const BorderSide(color: borderColor),
+              padding: EdgeInsets.zero,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4)),
+            )),
       ],
       onCancel: onCancel,
     );

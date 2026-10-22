@@ -249,9 +249,9 @@ class MyTheme {
   MyTheme._();
 
   static const Color grayBg = Color(0xFFEFEFF2);
-  static const Color accent = Color(0xFF0071FF);
-  static const Color accent50 = Color(0x770071FF);
-  static const Color accent80 = Color(0xAA0071FF);
+  static const Color accent = Color(0xFF60CDFF);
+  static const Color accent50 = Color(0x7760CDFF);
+  static const Color accent80 = Color(0xAA60CDFF);
   static const Color canvasColor = Color(0xFF212121);
   static const Color border = Color(0xFFCCCCCC);
   static const Color idColor = Color(0xFF00B6F0);
@@ -386,7 +386,7 @@ class MyTheme {
         borderRadius: BorderRadius.circular(8.0),
         side: BorderSide(
           width: 1,
-          color: grayBg,
+          color: Colors.white12,
         ),
       ),
     ),
@@ -431,8 +431,9 @@ class MyTheme {
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         backgroundColor: MyTheme.accent,
+        foregroundColor: Colors.white,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8.0),
+          borderRadius: BorderRadius.circular(4.0),
         ),
       ),
     ),
@@ -441,7 +442,7 @@ class MyTheme {
         backgroundColor: grayBg,
         foregroundColor: Colors.black87,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8.0),
+          borderRadius: BorderRadius.circular(4.0),
         ),
       ),
     ),
@@ -484,7 +485,7 @@ class MyTheme {
         borderRadius: BorderRadius.circular(8.0),
         side: BorderSide(
           width: 1,
-          color: Color(0xFF24252B),
+          color: Colors.white12,
         ),
       ),
     ),
@@ -534,22 +535,22 @@ class MyTheme {
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         backgroundColor: MyTheme.accent,
-        foregroundColor: Colors.white,
+        foregroundColor: Color(0xFF0B0B0B),
         disabledForegroundColor: Colors.white70,
         disabledBackgroundColor: Colors.white10,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8.0),
+          borderRadius: BorderRadius.circular(4.0),
         ),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        backgroundColor: Color(0xFF24252B),
-        side: BorderSide(color: Colors.white12, width: 0.5),
+        backgroundColor: Color(0xFF2A2A2E),
+        side: BorderSide(color: Colors.white12, width: 1),
         disabledForegroundColor: Colors.white70,
-        foregroundColor: Colors.white70,
+        foregroundColor: Color(0xFFE8E8ED),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8.0),
+          borderRadius: BorderRadius.circular(4.0),
         ),
       ),
     ),
@@ -641,7 +642,7 @@ final ButtonStyle flatButtonStyle = TextButton.styleFrom(
   minimumSize: Size(0, 36),
   padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
   shape: const RoundedRectangleBorder(
-    borderRadius: BorderRadius.all(Radius.circular(8.0)),
+    borderRadius: BorderRadius.all(Radius.circular(4.0)),
   ),
 );
 
@@ -875,7 +876,15 @@ class OverlayDialogManager {
               child: StatefulBuilder(builder: (context, setState) {
                 return Listener(
                   onPointerUp: (_) => innerClicked = true,
-                  child: builder(setState, close, overlayState.context),
+                  // ponytail: contract box-shadow 0 20px 50px rgba(0,0,0,0.7);
+                  // single-box approximation, upgrade to exact 50px blur if visual diff matters.
+                  child: PhysicalModel(
+                    color: Colors.transparent,
+                    elevation: 20,
+                    shadowColor: Colors.black,
+                    borderRadius: BorderRadius.circular(8),
+                    child: builder(setState, close, overlayState.context),
+                  ),
                 );
               })));
     });
@@ -1021,31 +1030,47 @@ makeMobileActionsOverlayEntry(VoidCallback? onHide, {FFI? ffi}) {
   });
 }
 
+enum ToastType { info, success, warn, error }
+
+/// Fluent Dark toast (docs/CONTRACT_UI_DESIGN.md §3.2). Fixed dark palette,
+/// independent of light/dark theme.
 void showToast(String text,
     {Duration timeout = const Duration(seconds: 3),
-    Alignment alignment = const Alignment(0.0, 0.8)}) {
+    Alignment alignment = const Alignment(0.0, 0.8),
+    ToastType type = ToastType.info}) {
   final overlayState = globalKey.currentState?.overlay;
   if (overlayState == null) return;
+  final accent = switch (type) {
+    ToastType.info => const Color(0xFF60CDFF),
+    ToastType.success => const Color(0xFF34D399),
+    ToastType.warn => const Color(0xFFFBBF24),
+    ToastType.error => const Color(0xFFF87171),
+  };
   final entry = OverlayEntry(builder: (context) {
     return IgnorePointer(
         child: Align(
             alignment: alignment,
             child: Container(
+              constraints: const BoxConstraints(maxWidth: 330),
               decoration: BoxDecoration(
-                color: MyTheme.color(context).toastBg,
-                borderRadius: const BorderRadius.all(
-                  Radius.circular(20),
+                color: const Color(0xFF202020).withOpacity(0.94),
+                borderRadius: const BorderRadius.all(Radius.circular(6)),
+                border: Border(
+                  left: BorderSide(color: accent, width: 3),
                 ),
+                boxShadow: const [
+                  BoxShadow(color: Color(0x73000000), blurRadius: 20, offset: Offset(0, 6)),
+                ],
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Text(
                 text,
                 textAlign: TextAlign.center,
-                style: TextStyle(
+                style: const TextStyle(
                     decoration: TextDecoration.none,
-                    fontWeight: FontWeight.w300,
-                    fontSize: 18,
-                    color: MyTheme.color(context).toastText),
+                    fontWeight: FontWeight.w400,
+                    fontSize: 11.5,
+                    color: Color(0xFFF4F4F5)),
               ),
             )));
   });
@@ -1067,7 +1092,7 @@ class CustomAlertDialog extends StatelessWidget {
       required this.content,
       this.actions,
       this.contentPadding,
-      this.contentBoxConstraints = const BoxConstraints(maxWidth: 400),
+      this.contentBoxConstraints = const BoxConstraints(maxWidth: 308),
       this.onSubmit,
       this.onCancel})
       : super(key: key);

@@ -338,8 +338,26 @@ class _ToolbarTheme {
   static const double buttonSize = 32;
   static const double buttonHMargin = 2;
   static const double buttonVMargin = 6;
-  static const double iconRadius = 8;
   static const double elevation = 3;
+
+  // Contract CONTRACT_UI_DESIGN.md §4.1 (remote-session-goc.html:157-202).
+  static const double toolButtonHeight = 24;
+  static const double toolButtonPaddingH = 7;
+  static const double toolButtonRadius = 4;
+  static const double toolButtonFontSize = 11.5;
+  static const double toolButtonIconSize = 14;
+  static const double toolButtonGap = 5;
+  static const double toolButtonIconOnlyWidth = 26;
+  static const double toolDividerThickness = 1;
+  static const double toolDividerHeight = 14;
+  static const double toolDividerMarginX = 4;
+  static const Color toolBorderHover = Color(0x0DFFFFFF); // 5%
+  static const Color toolBorderActive = Color(0x4D60CDFF); // 30%
+
+  static Color toolActiveBg([double opacity = 0.18]) =>
+      MyTheme.accent.withOpacity(opacity);
+  // Contract CONTRACT_UI_DESIGN.md §4.1: idle text = --win11-text-sec #d1d5db.
+  static const Color toolIdleText = Color(0xFFD1D5DB);
 
   static double dividerSpaceToAction = isWindows ? 8 : 14;
 
@@ -365,8 +383,11 @@ class _ToolbarTheme {
                 BorderRadius.circular(_ToolbarTheme.menuBorderRadius))),
         padding: MaterialStateProperty.all(_ToolbarTheme.menuPadding),
       );
+  // shrinkWrap: kMinInteractiveDimension (48) would inflate the 24px contract.
   static final defaultMenuButtonStyle = ButtonStyle(
     backgroundColor: MaterialStatePropertyAll(Colors.transparent),
+    minimumSize: const MaterialStatePropertyAll(Size.zero),
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
     padding: MaterialStatePropertyAll(EdgeInsets.zero),
     overlayColor: MaterialStatePropertyAll(Colors.transparent),
   );
@@ -815,7 +836,7 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
       }
     }));
     if (!isWebDesktop) {
-      toolbarItems.add(_MobileActionMenu(ffi: widget.ffi));
+      toolbarItems.add(Obx(() => _MobileActionMenu(ffi: widget.ffi)));
     }
 
     toolbarItems.add(Obx(() {
@@ -833,13 +854,20 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
       }
     }));
 
-    toolbarItems
-        .add(_ControlMenu(id: widget.id, ffi: widget.ffi, state: widget.state));
+    // CONTRACT_UI_DESIGN.md §4.1: 4 labelled buttons; "Phím tắt" opens the
+    // control-actions menu (its menu already holds the shortcut commands).
+    toolbarItems.add(_ControlMenu(
+      id: widget.id,
+      ffi: widget.ffi,
+      state: widget.state,
+      label: 'Phím tắt',
+    ));
     toolbarItems.add(_DisplayMenu(
       id: widget.id,
       ffi: widget.ffi,
       state: widget.state,
       setFullscreen: _setFullscreen,
+      label: 'Hiển thị',
     ));
     // Do not show keyboard for camera connection type.
     if (widget.ffi.connType == ConnType.defaultConn) {
@@ -850,6 +878,8 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
       toolbarItems.add(_VoiceCallMenu(id: widget.id, ffi: widget.ffi));
     }
     if (!isWeb) toolbarItems.add(_RecordMenu());
+    toolbarItems.add(const _ToolbarDivider());
+    toolbarItems.add(const _ToolMenu());
     toolbarItems.add(_CloseMenu(id: widget.id, ffi: widget.ffi));
     final toolbarBorderRadius = BorderRadius.all(Radius.circular(4.0));
     // innerAxis: how the toolbar icons themselves flow.
@@ -931,22 +961,36 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
   }
 }
 
+/// CONTRACT_UI_DESIGN.md §4.1 separator: 1 × 14, rgba(255,255,255,0.08), margin 0 4.
+class _ToolbarDivider extends StatelessWidget {
+  const _ToolbarDivider({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: _ToolbarTheme.toolDividerThickness,
+        height: _ToolbarTheme.toolDividerHeight,
+        margin: const EdgeInsets.symmetric(
+            horizontal: _ToolbarTheme.toolDividerMarginX),
+        color: const Color(0x14FFFFFF), // 8% white
+      );
+}
+
 class _PinMenu extends StatelessWidget {
   final ToolbarState state;
   const _PinMenu({Key? key, required this.state}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
+    // Contract §4.1 icon-only pin (remote-session-goc.html:1696). Tooltips are
+    // translate()'d: vi.rs:357-358 → "Ghim thanh công cụ" / "Bỏ ghim thanh công cụ".
     return Obx(
       () => _IconMenuButton(
         assetName: state.pin ? "assets/pinned.svg" : "assets/unpinned.svg",
         tooltip: state.pin ? 'Unpin Toolbar' : 'Pin Toolbar',
         onPressed: state.switchPin,
-        color:
-            state.pin ? _ToolbarTheme.blueColor : _ToolbarTheme.inactiveColor,
-        hoverColor: state.pin
-            ? _ToolbarTheme.hoverBlueColor
-            : _ToolbarTheme.hoverInactiveColor,
+        selected: state.pin,
+        color: _ToolbarTheme.inactiveColor,
+        hoverColor: _ToolbarTheme.hoverInactiveColor,
       ),
     );
   }
@@ -964,12 +1008,9 @@ class _MobileActionMenu extends StatelessWidget {
           tooltip: 'Mobile Actions',
           onPressed: () => ffi.dialogManager.setMobileActionsOverlayVisible(
               !ffi.dialogManager.mobileActionsOverlayVisible.value),
-          color: ffi.dialogManager.mobileActionsOverlayVisible.isTrue
-              ? _ToolbarTheme.blueColor
-              : _ToolbarTheme.inactiveColor,
-          hoverColor: ffi.dialogManager.mobileActionsOverlayVisible.isTrue
-              ? _ToolbarTheme.hoverBlueColor
-              : _ToolbarTheme.hoverInactiveColor,
+          selected: ffi.dialogManager.mobileActionsOverlayVisible.isTrue,
+          color: _ToolbarTheme.inactiveColor,
+          hoverColor: _ToolbarTheme.hoverInactiveColor,
         ));
   }
 }
@@ -1020,7 +1061,9 @@ class _MainMonitorSwitchButton extends StatelessWidget {
       if (cycle.total < 2) return const Offstage();
       final label = cycle.label;
 
+      // "Màn 1 / Màn 2" per CONTRACT_UI_DESIGN.md §4.1 (remote-session-goc.html:1672).
       return _IconMenuButton(
+        label: label, // mockup: "Màn 1"
         tooltip: cycle.tooltip,
         color: _ToolbarTheme.blueColor,
         hoverColor: _ToolbarTheme.hoverBlueColor,
@@ -1302,14 +1345,20 @@ class _ControlMenu extends StatelessWidget {
   final String id;
   final FFI ffi;
   final ToolbarState state;
+  final String? label;
   _ControlMenu(
-      {Key? key, required this.id, required this.ffi, required this.state})
+      {Key? key,
+      required this.id,
+      required this.ffi,
+      required this.state,
+      this.label})
       : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return _IconSubmenuButton(
         tooltip: 'Control Actions',
+        label: label,
         svg: "assets/actions.svg",
         color: _ToolbarTheme.blueColor,
         hoverColor: _ToolbarTheme.hoverBlueColor,
@@ -1687,11 +1736,13 @@ class _DisplayMenu extends StatefulWidget {
   final FFI ffi;
   final ToolbarState state;
   final Function(bool) setFullscreen;
+  final String? label;
   const _DisplayMenu(
       {required this.id,
       required this.ffi,
       required this.state,
-      required this.setFullscreen});
+      required this.setFullscreen,
+      this.label});
 
   @override
   State<_DisplayMenu> createState() => _DisplayMenuState();
@@ -1786,6 +1837,7 @@ class _DisplayMenuState extends State<_DisplayMenu> {
 
     return _IconSubmenuButton(
       tooltip: 'Display Settings',
+      label: widget.label,
       svg: "assets/display.svg",
       ffi: widget.ffi,
       color: _ToolbarTheme.blueColor,
@@ -2971,6 +3023,31 @@ class _RecordMenu extends StatelessWidget {
   }
 }
 
+/// CONTRACT_UI_DESIGN.md §4.1 "Tool" (remote-session-goc.html:1688-1692).
+/// No assets/tool.svg; "actions.svg" (lightning bolt) stands in.
+/// ponytail: only a stub submenu — no Tools window code was found in this tree.
+/// Upgrade: grow the menu real items once that window exists.
+class _ToolMenu extends StatelessWidget {
+  const _ToolMenu({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return _IconSubmenuButton(
+      tooltip: 'Tool',
+      label: 'Tool',
+      svg: 'assets/actions.svg',
+      color: _ToolbarTheme.blueColor,
+      hoverColor: _ToolbarTheme.hoverBlueColor,
+      menuChildrenGetter: (_) => [
+        MenuButton(
+          child: Text(translate('Tool')),
+          onPressed: () {},
+        ),
+      ],
+    );
+  }
+}
+
 class _CloseMenu extends StatelessWidget {
   final String id;
   final FFI ffi;
@@ -2994,12 +3071,18 @@ class _CloseMenu extends StatelessWidget {
   }
 }
 
+/// Contract CONTRACT_UI_DESIGN.md §4.1 (remote-session-goc.html:157-202):
+/// height 24, padding-x 7, radius 4, font 11.5, icon 14, gap 5; icon-only 26.
+/// `selected` is the contract's `.active` state; [color]/[hoverColor] still
+/// color the icon for menu buttons that tint by state (recording, close...).
 class _IconMenuButton extends StatefulWidget {
   final String? assetName;
   final Widget? icon;
+  final String? label;
   final String tooltip;
   final Color color;
   final Color hoverColor;
+  final bool? selected;
   final VoidCallback? onPressed;
   final double? hMargin;
   final double? vMargin;
@@ -3009,9 +3092,11 @@ class _IconMenuButton extends StatefulWidget {
     Key? key,
     this.assetName,
     this.icon,
+    this.label,
     required this.tooltip,
     required this.color,
     required this.hoverColor,
+    this.selected,
     required this.onPressed,
     this.hMargin,
     this.vMargin,
@@ -3033,15 +3118,46 @@ class _IconMenuButtonState extends State<_IconMenuButton> {
         SvgPicture.asset(
           widget.assetName!,
           colorFilter: ColorFilter.mode(Colors.white, BlendMode.srcIn),
-          width: _ToolbarTheme.buttonSize,
-          height: _ToolbarTheme.buttonSize,
+          width: _ToolbarTheme.toolButtonIconSize,
+          height: _ToolbarTheme.toolButtonIconSize,
         );
+    Widget? label;
+    if (widget.label != null) {
+      label = Text(
+        widget.label!,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: _ToolbarTheme.toolButtonFontSize,
+          color: _ToolbarTheme.toolIdleText,
+        ),
+      );
+    }
+    // Contract .active wins; otherwise keep the legacy filled-on-hover look
+    // only when the button is not a contract-state (selected) button.
+    final selected = widget.selected;
+    final contract = selected != null || widget.label != null;
+    final Color bg;
+    final Color? border;
+    if (selected == true) {
+      bg = _ToolbarTheme.toolActiveBg();
+      border = _ToolbarTheme.toolBorderActive;
+    } else if (contract) {
+      bg = hover ? const Color(0x0FFFFFFF) : Colors.transparent;
+      border = hover ? _ToolbarTheme.toolBorderHover : Colors.transparent;
+    } else {
+      bg = hover ? widget.hoverColor : widget.color;
+      border = null;
+    }
     var button = SizedBox(
-      width: widget.width ?? _ToolbarTheme.buttonSize,
-      height: _ToolbarTheme.buttonSize,
+      width: widget.width ??
+          (label == null ? _ToolbarTheme.toolButtonIconOnlyWidth : null),
+      height: _ToolbarTheme.toolButtonHeight,
       child: MenuItemButton(
           style: ButtonStyle(
               backgroundColor: MaterialStatePropertyAll(Colors.transparent),
+              minimumSize: const MaterialStatePropertyAll(Size.zero),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               padding: MaterialStatePropertyAll(EdgeInsets.zero),
               overlayColor: MaterialStatePropertyAll(Colors.transparent)),
           onHover: (value) => setState(() {
@@ -3055,10 +3171,33 @@ class _IconMenuButtonState extends State<_IconMenuButton> {
                 child: Ink(
                     decoration: BoxDecoration(
                       borderRadius:
-                          BorderRadius.circular(_ToolbarTheme.iconRadius),
-                      color: hover ? widget.hoverColor : widget.color,
+                          BorderRadius.circular(_ToolbarTheme.toolButtonRadius),
+                      color: bg,
+                      border: border == null
+                          ? null
+                          : Border.all(color: border, width: 1),
                     ),
-                    child: icon)),
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(
+                          horizontal: label == null
+                              ? 0
+                              : _ToolbarTheme.toolButtonPaddingH),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: _ToolbarTheme.toolButtonIconSize,
+                            height: _ToolbarTheme.toolButtonIconSize,
+                            child: FittedBox(child: icon),
+                          ),
+                          if (label != null) ...[
+                            SizedBox(width: _ToolbarTheme.toolButtonGap),
+                            label,
+                          ],
+                        ],
+                      ),
+                    ))),
           )),
     ).marginSymmetric(
         horizontal: widget.hMargin ?? _ToolbarTheme.buttonHMargin,
@@ -3075,8 +3214,11 @@ class _IconMenuButtonState extends State<_IconMenuButton> {
   }
 }
 
+/// Same contract metrics as [_IconMenuButton] (CONTRACT_UI_DESIGN.md §4.1).
+/// Without [label] it stays icon-only, but still gets the contract size/colors.
 class _IconSubmenuButton extends StatefulWidget {
   final String tooltip;
+  final String? label;
   final String? svg;
   final Widget? icon;
   final Color color;
@@ -3090,6 +3232,7 @@ class _IconSubmenuButton extends StatefulWidget {
     Key? key,
     this.svg,
     this.icon,
+    this.label,
     required this.tooltip,
     required this.color,
     required this.hoverColor,
@@ -3118,12 +3261,25 @@ class _IconSubmenuButtonState extends State<_IconSubmenuButton> {
         SvgPicture.asset(
           widget.svg!,
           colorFilter: ColorFilter.mode(Colors.white, BlendMode.srcIn),
-          width: _ToolbarTheme.buttonSize,
-          height: _ToolbarTheme.buttonSize,
+          width: _ToolbarTheme.toolButtonIconSize,
+          height: _ToolbarTheme.toolButtonIconSize,
         );
+    Widget? label;
+    if (widget.label != null) {
+      label = Text(
+        widget.label!,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: _ToolbarTheme.toolButtonFontSize,
+          color: _ToolbarTheme.toolIdleText,
+        ),
+      );
+    }
     final button = SizedBox(
-        width: widget.width ?? _ToolbarTheme.buttonSize,
-        height: _ToolbarTheme.buttonSize,
+        width: widget.width ??
+            (label == null ? _ToolbarTheme.toolButtonIconOnlyWidth : null),
+        height: _ToolbarTheme.toolButtonHeight,
         child: SubmenuButton(
             menuStyle:
                 widget.menuStyle ?? _ToolbarTheme.defaultMenuStyle(context),
@@ -3137,11 +3293,38 @@ class _IconSubmenuButtonState extends State<_IconSubmenuButton> {
                     type: MaterialType.transparency,
                     child: Ink(
                         decoration: BoxDecoration(
-                          borderRadius:
-                              BorderRadius.circular(_ToolbarTheme.iconRadius),
-                          color: hover ? widget.hoverColor : widget.color,
+                          borderRadius: BorderRadius.circular(
+                              _ToolbarTheme.toolButtonRadius),
+                          color: hover
+                              ? const Color(0x0FFFFFFF)
+                              : Colors.transparent,
+                          border: Border.all(
+                              color: hover
+                                  ? _ToolbarTheme.toolBorderHover
+                                  : Colors.transparent,
+                              width: 1),
                         ),
-                        child: icon))),
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(
+                              horizontal: label == null
+                                  ? 0
+                                  : _ToolbarTheme.toolButtonPaddingH),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                width: _ToolbarTheme.toolButtonIconSize,
+                                height: _ToolbarTheme.toolButtonIconSize,
+                                child: FittedBox(child: icon),
+                              ),
+                              if (label != null) ...[
+                                SizedBox(width: _ToolbarTheme.toolButtonGap),
+                                label,
+                              ],
+                            ],
+                          ),
+                        )))),
             menuChildren: widget
                 .menuChildrenGetter(this)
                 .map((e) => _buildPointerTrackWidget(e, widget.ffi))
