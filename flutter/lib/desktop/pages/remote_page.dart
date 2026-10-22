@@ -22,6 +22,7 @@ import '../../utils/image.dart';
 import '../widgets/remote_toolbar.dart';
 import '../widgets/kb_layout_type_chooser.dart';
 import '../widgets/tabbar_widget.dart';
+import '../../features/deskagent/deskagent_tools_window.dart';
 import 'macos_full_screen_focus_recovery.dart';
 
 import 'package:flutter_hbb/native/custom_cursor.dart'
@@ -994,6 +995,22 @@ class _RemotePageState extends State<RemotePage>
         right: 10,
         child: _buildRawTouchAndPointerRegion(
             QualityMonitor(_ffi.qualityMonitorModel), null, null),
+      ),
+    );
+    // DeskAgent Tools overlay (Trợ lý AI / Chat IT) — toggled by the toolbar
+    // Tool button (DeskAgentTools.visible).
+    paints.add(
+      Positioned.fill(
+        child: ValueListenableBuilder<bool>(
+          valueListenable: DeskAgentTools.visible,
+          builder: (context, visible, _) {
+            if (!visible) return const SizedBox.shrink();
+            return DeskAgentToolsWindow(
+              ffi: _ffi,
+              onClose: () => DeskAgentTools.visible.value = false,
+            );
+          },
+        ),
       ),
     );
     return Stack(

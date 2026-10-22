@@ -16,6 +16,8 @@ import 'package:debounce_throttle/debounce_throttle.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:window_size/window_size.dart' as window_size;
 
+import 'package:flutter_hbb/features/deskagent/deskagent_tools_window.dart';
+
 import '../../common.dart';
 import '../../models/model.dart';
 import '../../models/platform_model.dart';
@@ -3054,15 +3056,14 @@ class _RecordMenu extends StatelessWidget {
 
 /// CONTRACT_UI_DESIGN.md §4.1 "Tool" (remote-session-goc.html:1688-1692).
 /// No assets/tool.svg; "actions.svg" (lightning bolt) stands in.
-/// ponytail: only a stub submenu — no Tools window code was found in this tree.
-/// Upgrade: grow the menu real items once that window exists.
+/// Toggles the real Tools Window overlay (Trợ lý AI / Chat IT tabs).
 class _ToolMenu extends StatelessWidget {
-  const _ToolMenu({Key? key}) : super(key: key);
+  const _ToolMenu({Key? key});
 
   @override
   Widget build(BuildContext context) {
     return _IconSubmenuButton(
-      tooltip: 'Tool',
+      tooltip: 'Mở cửa sổ công cụ',
       label: 'Tool',
       svg: 'assets/actions.svg',
       color: _ToolbarTheme.blueColor,
@@ -3070,7 +3071,9 @@ class _ToolMenu extends StatelessWidget {
       menuChildrenGetter: (_) => [
         MenuButton(
           child: Text(translate('Tool')),
-          onPressed: () {},
+          onPressed: () {
+            DeskAgentTools.visible.value = !DeskAgentTools.visible.value;
+          },
         ),
       ],
     );
