@@ -2,9 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/features/deskagent/deskagent_config.dart';
+import 'package:flutter_hbb/models/platform_model.dart';
 
 const double _kIconSize = 72;
 const double _kTitleFontSize = 20;
@@ -195,6 +198,66 @@ class _AiChatPageState extends State<AiChatPage> {
       if (mounted) {
         setState(() {
           _waitingReply = false;
+          _error = _friendlyError(e);
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _sending = false;
+        });
+      }
+    }
+  }
+
+  /// Pick an image, upload it to the Manager (X-Device-Token), then send a
+  /// chat message carrying the download link. Real upload, no local-only copy.
+  Future<void> _uploadAndSendAttachment() async {
+    if (_sending) {
+      return;
+    }
+    final result = await FilePicker.platform.pickFiles(type: FileType.image);
+    if (result == null || result.files.single.path == null) {
+      return;
+    }
+    final file = result.files.single;
+    final token = bind.mainGetLocalOption(key: 'manager-device-token');
+    if (token.isEmpty) {
+      setState(() {
+        _error =
+            'Thiếu manager-device-token: cần client mới đăng ký lại Manager';
+      });
+      return;
+    }
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
+    _messages.add(_ChatMessage('user', '📷 ${file.name}'));
+    setState(() {});
+    try {
+      final bytes = await File(file.path!).readAsBytes();
+      final uri = Uri.parse('$kApiBase/client/attach')
+          .replace(queryParameters: {'name': file.name});
+      final req = await _client.postUrl(uri);
+      req.headers.set('X-Device-Token', token);
+      req.headers.set('Content-Type', 'application/octet-stream');
+      req.add(bytes);
+      final resp = await req.close();
+      final body = await resp.transform(utf8.decoder).join();
+      if (resp.statusCode != 200) {
+        throw 'upload HTTP ${resp.statusCode}: $body';
+      }
+      final url = ((jsonDecode(body) as Map)['url'] ?? '').toString();
+      final text = '📎 ${file.name}\n$url';
+      final conversationId = await _ensureConversation();
+      await _postMessage(conversationId, text);
+      _messages.add(_ChatMessage('user', text));
+      _waitingReply = true;
+      await _poll();
+    } catch (e) {
+      if (mounted) {
+        setState(() {
           _error = _friendlyError(e);
         });
       }
@@ -482,6 +545,11 @@ class _AiChatPageState extends State<AiChatPage> {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       child: Row(
         children: [
+          IconButton(
+            onPressed: _sending ? null : _uploadAndSendAttachment,
+            tooltip: translate('Attach image'),
+            icon: const Icon(Icons.attach_file, size: 20),
+          ),
           Expanded(
             child: TextField(
               controller: _controller,

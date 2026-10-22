@@ -8,7 +8,8 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use axum::extract::{ConnectInfo, Path, Query, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, Query, State};
+use axum::body::Bytes;
 use axum::http::header::{CONTENT_DISPOSITION, CONTENT_TYPE};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse};
@@ -193,10 +194,13 @@ fn client_routes() -> Router<SharedState> {
         .route("/config", get(client_get_config))
         .route("/peers", get(client_get_peers))
         .route("/peer-data", get(client_peer_data))
+        .route("/attach", post(client_upload_attachment))
+        .route("/attach/:key", get(client_get_attachment))
         .route("/:id/inventory", post(client_inventory))
         .route("/:id/events", post(client_events))
         .route("/:id/jobs", get(client_jobs))
         .route("/:id/jobs/:job_id/result", post(client_job_result))
+        .layer(DefaultBodyLimit::max(25 * 1024 * 1024))
 }
 
 fn conversation_routes() -> Router<SharedState> {
@@ -887,6 +891,97 @@ async fn client_peer_data(
         "inventory": inventory,
         "events": events,
     })))
+}
+
+// ---------- attachments (chat Ctrl+V / file attach) ----------
+
+/// Upload root, relative to the server working dir (`/data` in the docker
+/// deployment, so uploaded files live on the persistent volume).
+const ATTACH_DIR: &str = "attach";
+/// Largest accepted upload body.
+const ATTACH_MAX_BYTES: usize = 20 * 1024 * 1024;
+/// Extensions allowed through the sanitizer (everything else becomes .bin).
+const ATTACH_EXTS: [&str; 9] =
+    ["png", "jpg", "jpeg", "webp", "gif", "bmp", "txt", "log", "pdf"];
+
+/// Keep only [A-Za-z0-9._-] and clamp the extension to the allow-list so the
+/// stored filename can never escape the attach dir or smuggle a double ext.
+fn sanitize_attach_name(name: &str) -> String {
+    let base = name.rsplit(['/', '\\']).next().unwrap_or(name);
+    let cleaned: String = base
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+        .collect();
+    let trimmed = cleaned.trim_matches('.').trim_matches('-');
+    if trimmed.is_empty() {
+        return "attach.bin".to_string();
+    }
+    let ext = trimmed.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+    if ATTACH_EXTS.contains(&ext.as_str()) {
+        format!("{}.{}", &trimmed[..trimmed.len() - ext.len()], ext).replace("..", ".")
+    } else {
+        format!("{}.bin", trimmed.trim_end_matches('.'))
+    }
+}
+
+fn attach_content_type(key: &str) -> &'static str {
+    match key.rsplit('.').next().unwrap_or("") {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        "bmp" => "image/bmp",
+        "txt" | "log" => "text/plain; charset=utf-8",
+        "pdf" => "application/pdf",
+        "zip" => "application/zip",
+        _ => "application/octet-stream",
+    }
+}
+
+async fn client_upload_attachment(
+    _auth: DeviceAuth,
+    State(state): State<SharedState>,
+    Query(q): Query<HashMap<String, String>>,
+    body: Bytes,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    if body.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "empty body".to_string()));
+    }
+    if body.len() > ATTACH_MAX_BYTES {
+        return Err((StatusCode::PAYLOAD_TOO_LARGE, "attachment too large".to_string()));
+    }
+    let raw_name = q.get("name").map(String::as_str).unwrap_or("attach.png");
+    let safe_name = sanitize_attach_name(raw_name);
+    let key = new_id("att_");
+    let dir = std::path::Path::new(ATTACH_DIR);
+    std::fs::create_dir_all(dir).map_err(internal_error)?;
+    let path = dir.join(format!("{}-{}", key, safe_name));
+    std::fs::write(&path, &body).map_err(internal_error)?;
+    let url = format!("/api/attach/{}-{}", key, safe_name);
+    Ok(Json(json!({ "key": key, "url": url, "size": body.len() })))
+}
+
+async fn client_get_attachment(
+    _auth: DeviceAuth,
+    State(_state): State<SharedState>,
+    Path(key): Path<String>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let safe = sanitize_attach_name(&key);
+    if !key.ends_with(&safe) || !key.starts_with("att_") {
+        return Err((StatusCode::BAD_REQUEST, "bad attachment key".to_string()));
+    }
+    let path = std::path::Path::new(ATTACH_DIR).join(&key);
+    let bytes = tokio::fs::read(&path)
+        .await
+        .map_err(|_| (StatusCode::NOT_FOUND, "attachment not found".to_string()))?;
+    let ct = attach_content_type(&key);
+    Ok((
+        [
+            (CONTENT_TYPE, ct.to_string()),
+            (CONTENT_DISPOSITION, "inline".to_string()),
+        ],
+        bytes,
+    ))
 }
 
 async fn client_get_config(

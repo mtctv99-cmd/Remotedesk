@@ -52,6 +52,9 @@ const String kAppTypeDesktopViewCamera = "view camera";
 const String kAppTypeDesktopPortForward = "port forward";
 const String kAppTypeDesktopTerminal = "terminal";
 
+/// Widget popup window: `Thiết bị gần đây` (380x220, frameless).
+const String kAppTypeDesktopRecentPeers = "recent peers";
+
 const String kWindowMainWindowOnTop = "main_window_on_top";
 const String kWindowRefreshCurrentUser = "refresh_current_user";
 const String kWindowGetScreenList = "get_screen_list";

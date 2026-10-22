@@ -387,6 +387,10 @@ fn register_client(
     if let Err(e) = secret::write_secret(&device_token_path(), &token) {
         bail!("failed to persist the manager device token: {}", e);
     }
+    // Mirror into the local option store so the Flutter side (chat attachment
+    // upload, Tools Sự kiện tab) can send X-Device-Token without reading the
+    // obfuscated secret file.
+    hbb_common::config::Config::set_option("manager-device-token".into(), token.clone());
     // The Manager issues tokens again, so the earlier marker is stale.
     let _ = std::fs::remove_file(token_state_path());
     Ok(Registration::TokenIssued)
