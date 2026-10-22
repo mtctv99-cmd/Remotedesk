@@ -372,6 +372,8 @@ fn register_client(
                 log::warn!("failed to persist the manager bound client id: {}", e);
             }
         }
+        // Mirror the bound id for the Flutter side (Deploy tab job list).
+        hbb_common::config::Config::set_option("manager-client-id".into(), bound.to_string());
     }
     let token = answer
         .get("device_token")

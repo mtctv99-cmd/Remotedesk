@@ -61,16 +61,17 @@ Future<void> main(List<String> args) async {
         ? <String, dynamic>{}
         : jsonDecode(args[2]) as Map<String, dynamic>;
     int type = argument['type'] ?? -1;
+    // DeskAgent widget popup: dispatched BEFORE the WindowType mapping, since
+    // type.windowType would throw a RangeError for our negative marker.
+    if (type == -2) {
+      print('recent-popup main: launching child, peers=${(argument['peers'] as List?)?.length}');
+      runMultiWindow(argument, kAppTypeDesktopRecentPeers);
+      return;
+    }
     // to-do: No need to parse window id ?
     // Because stateGlobal.windowId is a global value.
     argument['windowId'] = kWindowId;
     kWindowType = type.windowType;
-    if (type == -2) {
-      // DeskAgent widget popup: `Thiết bị gần đây` (no WindowType needed).
-      print('recent-popup main: launching child, keys=${argument.keys.toList()} peers=${(argument['peers'] as List?)?.length}');
-      runMultiWindow(argument, kAppTypeDesktopRecentPeers);
-      return;
-    }
     switch (kWindowType) {
       case WindowType.RemoteDesktop:
         desktopType = DesktopType.remote;
@@ -326,14 +327,17 @@ void runMultiWindow(
   if (appType == kAppTypeDesktopRecentPeers) {
     // Widget recent popup: frameless 380x220, positioned so its bottom sits
     // 4px above the panel's input row (window top passed from the caller).
-    final ctl = WindowController.fromWindowId(kWindowId!);
     final left = (argument['left'] as num?)?.toDouble() ?? 0;
     final topOffset = (argument['top'] as num?)?.toDouble() ?? 0;
+    print('recent-popup child: window shown, setting frame left=$left top=$topOffset');
+    final ctl = WindowController.fromWindowId(kWindowId!);
     await ctl
         .setFrame(Offset(left, topOffset) & const Size(380, 220));
     await ctl.setTitle('DeskAgentRecent');
     await ctl.show();
+    print('recent-popup child: frame+title set, body rendered');
     DeskAgentFrameless.apply('DeskAgentRecent');
+    print('recent-popup child: frameless applied');
   }
 }
 

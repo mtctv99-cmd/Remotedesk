@@ -1,13 +1,17 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/features/deskagent/deskagent_config.dart';
+import 'package:flutter_hbb/features/deskagent/deskagent_icons.dart';
+import 'package:flutter_hbb/features/deskagent/deskagent_tokens.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
+import 'package:pasteboard/pasteboard.dart';
 
 const double _kIconSize = 72;
 const double _kTitleFontSize = 20;
@@ -250,6 +254,140 @@ class _AiChatPageState extends State<AiChatPage> {
       }
       final url = ((jsonDecode(body) as Map)['url'] ?? '').toString();
       final text = '📎 ${file.name}\n$url';
+      final conversationId = await _ensureConversation();
+      await _postMessage(conversationId, text);
+      _messages.add(_ChatMessage('user', text));
+      _waitingReply = true;
+      await _poll();
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = _friendlyError(e);
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _sending = false;
+        });
+      }
+    }
+  }
+
+  /// Upload bytes to the Manager attachment API, return the download URL.
+  /// Both the attach button and the Ctrl+V paste flow go through this.
+  Future<String> _uploadBytes(Uint8List bytes, String name) async {
+    final token = bind.mainGetLocalOption(key: 'manager-device-token');
+    if (token.isEmpty) {
+      throw 'Thiếu manager-device-token: cần client mới đăng ký lại Manager';
+    }
+    final uri = Uri.parse('$kApiBase/client/attach')
+        .replace(queryParameters: {'name': name});
+    final request = await _client.postUrl(uri).timeout(_kRequestTimeout);
+    request.headers.set('X-Device-Token', token);
+    request.headers.contentType = ContentType.binary;
+    request.add(bytes);
+    final response = await request.close().timeout(_kRequestTimeout);
+    final text =
+        await response.transform(utf8.decoder).join().timeout(_kRequestTimeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw HttpException('HTTP ${response.statusCode}: $text', uri: uri);
+    }
+    final data = text.isEmpty ? null : jsonDecode(text);
+    final url = data is Map ? '${data['url'] ?? ''}' : '';
+    if (url.isEmpty) {
+      throw const FormatException('không có url trong phản hồi upload');
+    }
+    return url;
+  }
+
+  /// Ctrl+V paste flow: read the image bytes from the clipboard and upload
+  /// them as an attachment. Falls back to normal paste when the clipboard
+  /// holds no image (handled by the TextField itself).
+  Future<void> _pasteImageOrText() async {
+    final image = await Pasteboard.image;
+    if (image == null || image.isEmpty) {
+      return; // no image on clipboard: let the Flutter paste continue
+    }
+    final name =
+        'clipboard-${DateTime.now().millisecondsSinceEpoch}.png';
+    final url = await _uploadBytes(image, name);
+    final text = '📷 $name\n$url';
+    _messages.add(_ChatMessage('user', text));
+    setState(() {});
+    try {
+      final conversationId = await _ensureConversation();
+      await _postMessage(conversationId, text);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = _friendlyError(e);
+        });
+      }
+    }
+  }
+
+  /// Attach button flow: pick an image file and upload it.
+  Future<void> _pickAndSendAttachment() async {
+    if (_sending) {
+      return;
+    }
+    final result = await FilePicker.platform.pickFiles(type: FileType.image);
+    if (result == null || result.files.single.path == null) {
+      return;
+    }
+    final file = result.files.single;
+    final bytes = await File(file.path!).readAsBytes();
+    final token = bind.mainGetLocalOption(key: 'manager-device-token');
+    if (token.isEmpty) {
+      setState(() {
+        _error = 'Thiếu manager-device-token: cần client mới đăng ký lại Manager';
+      });
+      return;
+    }
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
+    _messages.add(_ChatMessage('user', '📷 ${file.name}'));
+    setState(() {});
+    try {
+      final url =
+          await _uploadBytes(bytes, file.name).timeout(_kRequestTimeout);
+      final text = '📷 ${file.name}\n$url';
+      final conversationId = await _ensureConversation();
+      await _postMessage(conversationId, text);
+      _messages.add(_ChatMessage('user', text));
+      _waitingReply = true;
+      await _poll();
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = _friendlyError(e);
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _sending = false;
+        });
+      }
+    }
+  }
+
+  /// Ctrl+V flow body: upload the clipboard image via the Manager attach API
+  /// and send the link as a message. No-op when the clipboard holds no image.
+  Future<void> _pasteImageOrTextUpload() async {
+    if (_sending) return;
+    final image = await Pasteboard.image;
+    if (image == null || image.isEmpty) return;
+    final name = 'clipboard-${DateTime.now().millisecondsSinceEpoch}.png';
+    _sending = true;
+    _messages.add(_ChatMessage('user', '📷 $name'));
+    if (mounted) setState(() {});
+    try {
+      final url = await _uploadBytes(image, name).timeout(_kRequestTimeout);
+      final text = '📷 $name\n$url';
       final conversationId = await _ensureConversation();
       await _postMessage(conversationId, text);
       _messages.add(_ChatMessage('user', text));
@@ -551,23 +689,36 @@ class _AiChatPageState extends State<AiChatPage> {
             icon: const Icon(Icons.attach_file, size: 20),
           ),
           Expanded(
-            child: TextField(
-              controller: _controller,
-              enabled: !_sending,
-              onSubmitted: (_) => _send(),
-              decoration: InputDecoration(
-                hintText: translate('Type a message'),
-                isDense: true,
-                filled: true,
-                fillColor: Theme.of(context)
-                    .colorScheme
-                    .surfaceContainerHighest
-                    .withOpacity(0.4),
-                contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 10),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide.none,
+            child: Focus(
+              // Ctrl+V: upload a pasted screenshot via the Manager attach API.
+              // When the clipboard holds no image the event is ignored and the
+              // normal text paste proceeds.
+              onKeyEvent: (node, event) {
+                if (event is KeyDownEvent &&
+                    event.logicalKey == LogicalKeyboardKey.keyV &&
+                    HardwareKeyboard.instance.isControlPressed) {
+                  unawaited(_pasteImageOrTextUpload());
+                }
+                return KeyEventResult.ignored;
+              },
+              child: TextField(
+                controller: _controller,
+                enabled: !_sending,
+                onSubmitted: (_) => _send(),
+                decoration: InputDecoration(
+                  hintText: translate('Type a message'),
+                  isDense: true,
+                  filled: true,
+                  fillColor: Theme.of(context)
+                      .colorScheme
+                      .surfaceContainerHighest
+                      .withOpacity(0.4),
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
               ),
             ),
