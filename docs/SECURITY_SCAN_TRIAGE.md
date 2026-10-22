@@ -1,4 +1,16 @@
-# SECURITY SCAN TRIAGE — Mimosa normal-depth (2026-10-22)
+# SECURITY SCAN TRIAGE — Mimosa normal + deep (2026-10-22)
+
+## Deep scan (lần 2, seal mới)
+
+Scan: `scan-2026-10-22T16-48-47.869Z-db8cc2015e1e` · seal
+`sha256:82732d5644bc6d698a046013e9c696b4278b703c7f14def91bf2ee638bcd282a` ·
+27 findings. So với normal-depth: **không có finding mới ngoài 3 taint lớn
+đã chấp nhận**; các HIGH còn lại cùng nhóm dev-tooling/fixture đã liệt kê
+bên dưới (path-traversal `preprocess.py`/`build.py`/`generate.py`/`lang.py`,
+cmd-injection `build.py:52`, fixture creds). Perf scripts đã được harden
+trong commit `4d619c916` (path anchor + env password).
+
+## Normal-depth scan (lần 1)
 
 Scan: `scan-2026-10-22T14-09-42.780Z-3a5600af4e53` · seal
 `sha256:636a2e3988bc70f5d8a32263529367694f82c9e8cc5cae33d4e2e73e8299e639` ·
