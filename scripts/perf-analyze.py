@@ -102,9 +102,28 @@ def main(argv):
     for i, a in enumerate(argv[1:]):
         if a == "--csv" and i + 1 < len(argv[1:]):
             csv_path = argv[1:][i + 1]
+    # Mimosa scan: anchor in/output paths to the repo cwd so a stray
+    # relative/absolute arg cannot point outside the working tree.
+    from pathlib import Path
+    repo = Path(__file__).resolve().parent.parent
+
+    def _anchor(p):
+        if p is None:
+            return None
+        resolved = Path(p).expanduser()
+        if not resolved.is_absolute():
+            resolved = (repo / resolved).resolve()
+        else:
+            resolved = resolved.resolve()
+        if repo not in resolved.parents:
+            raise SystemExit(f"path escapes repository: {resolved}")
+        return str(resolved)
+
+    csv_path = _anchor(csv_path)
     if not args:
         print(__doc__)
         return 2
+    args[0] = _anchor(args[0])
     with open(args[0], encoding="utf-8", errors="replace") as f:
         per_stage, order, by_trace = analyze(f)
     rows = summarize(per_stage)

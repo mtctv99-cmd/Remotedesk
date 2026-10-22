@@ -1,3 +1,4 @@
+import os
 import socket
 import time
 import hashlib
@@ -41,12 +42,22 @@ def recv_frame(s):
 
 def main():
     parser = argparse.ArgumentParser(description="DeskAgent Direct Remote Benchmark Probe")
-    parser.add_argument("--host", default="192.168.232.130", help="Target DeskAgent host")
+    parser.add_argument("--host", required=True, help="Target DeskAgent host")
     parser.add_argument("--port", type=int, default=21118, help="Target direct port")
-    parser.add_argument("--password", default="123", help="Target permanent/temporary password")
+    # Mimosa rule: no usable credential literals in sources — read from env.
+    parser.add_argument("--password", default=os.environ.get("DESKAGENT_BENCH_PASSWORD", ""), help="Target permanent/temporary password (or set DESKAGENT_BENCH_PASSWORD)")
     parser.add_argument("--duration", type=float, default=15.0, help="Measurement duration in seconds")
     parser.add_argument("--out-json", default="reports/live_benchmark_latest.json", help="JSON output path")
     args = parser.parse_args()
+    # Mimosa scan: anchor the output path to the repo working tree.
+    from pathlib import Path
+    repo = Path(__file__).resolve().parent.parent
+    out = Path(args.out_json).expanduser()
+    if not out.is_absolute():
+        out = (repo / out).resolve()
+    if repo not in out.parents:
+        raise SystemExit(f"output path escapes repository: {out}")
+    args.out_json = str(out)
 
     print(f"Connecting to {args.host}:{args.port}...")
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
