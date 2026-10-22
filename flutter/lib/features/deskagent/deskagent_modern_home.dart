@@ -15,17 +15,52 @@ import 'package:flutter_hbb/models/state_model.dart';
 import 'package:flutter_hbb/utils/multi_window_manager.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
+import 'package:window_manager/window_manager.dart';
 
-import 'about_info_page.dart';
 import 'ai_chat_page.dart';
-import 'event_viewer_page.dart';
+import 'deskagent_config.dart';
+import 'deskagent_icons.dart';
+import 'deskagent_window_mode.dart';
+
+/// Palette of the shipped pill/panel (`pill-old-click.png`): dark surface with
+/// the Win11 cyan accent; the connect button uses dark text on cyan.
+class _PillPalette {
+  static const Color bg = Color(0xFF202020);
+  static const Color chip = Color(0xFF2A2A2E);
+  static const Color border = Color(0x1FFFFFFF); // white 12%
+  static const Color text = Color(0xFFF4F4F5);
+  static const Color muted = Color(0xFFA1A1AA);
+  static const Color accent = Color(0xFF60CDFF);
+  static const Color accentText = Color(0xFF0B0B0B);
+  static const String mono = 'Consolas';
+}
+
+/// Client widget palette, taken from `showcase/client-widget.html`
+/// ("Trắng – Cam – Xanh"): a light mica surface with a blue primary and an
+/// orange call-to-action. Kept local to the widget so the app-wide theme (which
+/// also serves the dark remote session and dialogs) stays untouched.
+class _WidgetPalette {
+  static const Color bg = Color(0xFFF9F9F9);
+  static const Color card = Color(0xFFFFFFFF);
+  static const Color text = Color(0xFF1A1A1A);
+  static const Color muted = Color(0xFF6B7280);
+  static const Color border = Color(0x24000000); // black 14%
+  static const Color blue = Color(0xFF0284C7);
+  static const Color blueDark = Color(0xFF0369A1);
+  static const Color orange = Color(0xFFF97316);
+  static const Color orangeDark = Color(0xFFEA580C);
+  static const Color green = Color(0xFF10B981);
+  static const String mono = 'Consolas';
+}
+
 
 /// Modern DeskAgent Home Widget tailored for the docked bottom-right client window.
 /// Provides a sleek single-column card layout:
 /// - My Device ID & Password (with 1-click copy for IT support)
 /// - Remote Control (Connect input + actions)
 /// - Recent Sessions
-/// - Bottom Navigation Bar (Home, AI Chat, System Info, Event Logs)
+/// No tab bar: AI Chat / About / Event Viewer open as one full-area overlay
+/// (contract §2: header + connect area + one stretched content area).
 class DeskAgentModernHome extends StatefulWidget {
   const DeskAgentModernHome({Key? key}) : super(key: key);
 
@@ -34,12 +69,16 @@ class DeskAgentModernHome extends StatefulWidget {
 }
 
 class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
-  int _currentIndex = 0;
   bool _showPassword = true;
 
   final IDTextEditingController _remoteIdController = IDTextEditingController();
   final FocusNode _remoteIdFocusNode = FocusNode();
   final AllPeersLoader _peersLoader = AllPeersLoader();
+  /// Peers dismissed with "Xóa" in the recent dropdown (this session only).
+  final Set<String> _hiddenRecent = <String>{};
+
+  /// First non-loopback IPv4 of this machine, shown in the panel's IP chip.
+  String _localIp = '';
 
   Timer? _statusTimer;
   bool _statusRefreshing = false;
@@ -53,10 +92,13 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
       if (_remoteIdFocusNode.hasFocus && _peersLoader.needLoad) {
         _peersLoader.getAllPeers();
       }
+      // The recent-peers dropdown follows the field's focus.
+      if (mounted) setState(() {});
     });
 
     // Load last remote ID if available
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _loadLocalIp();
       try {
         final lastId = await bind.mainGetLastRemoteId();
         if (lastId.isNotEmpty && _remoteIdController.id.isEmpty) {
@@ -126,6 +168,26 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
     }
   }
 
+  /// Resolve the LAN address shown next to the "IP" badge in the panel.
+  Future<void> _loadLocalIp() async {
+    try {
+      final interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+        includeLoopback: false,
+      );
+      for (final itf in interfaces) {
+        for (final addr in itf.addresses) {
+          if (!addr.isLoopback) {
+            if (mounted) setState(() => _localIp = addr.address);
+            return;
+          }
+        }
+      }
+    } catch (_) {
+      // Keep the placeholder; the panel still works without an address.
+    }
+  }
+
   @override
   void dispose() {
     _statusTimer?.cancel();
@@ -156,48 +218,724 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
     );
   }
 
+  bool get _isDockedWidget =>
+      isDesktop &&
+      desktopType == DesktopType.main &&
+      bind.mainGetLocalOption(key: kOptionDeskAgentWidgetMode) != 'N';
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      body: SafeArea(
-        child: IndexedStack(
-          index: _currentIndex,
-          children: [
-            _buildHomeTab(context),
-            const AiChatPage(embedded: true),
-            const AboutInfoPage(embedded: true),
-            const EventViewerPage(embedded: true),
-          ],
-        ),
-      ),
-      bottomNavigationBar: _buildBottomNav(context),
+      backgroundColor: _PillPalette.bg,
+      body: Obx(() {
+        final mode = deskAgentWindowMode.value;
+        if (_isDockedWidget && mode == DeskAgentWindowMode.pill) {
+          return _buildPill(context);
+        }
+        if (_isDockedWidget) {
+          return Column(
+            children: [
+              _buildPanel(context),
+              if (mode == DeskAgentWindowMode.expanded)
+                Expanded(child: _buildChatBody(context)),
+            ],
+          );
+        }
+        // Main window with widget mode off keeps the settings-style home.
+        return _buildHomeTab(context);
+      }),
     );
   }
 
-  // --- TAB 0: HOME ---
-  Widget _buildHomeTab(BuildContext context) {
-    return Column(
-      children: [
-        _buildHeader(context),
-        const Divider(height: 1),
-        Expanded(
-          child: ChangeNotifierProvider.value(
-            value: gFFI.serverModel,
-            child: Consumer<ServerModel>(
-              builder: (context, serverModel, _) {
-                return ListView(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+  /// 86x40 "Hỗ trợ" pill, exactly as the shipped build (`pill_final.png`).
+  Widget _buildPill(BuildContext context) {
+    Offset? downAt;
+    bool dragging = false;
+    return Listener(
+      onPointerDown: (e) {
+        downAt = e.position;
+        dragging = false;
+      },
+      onPointerMove: (e) {
+        if (downAt != null && !dragging) {
+          if ((e.position - downAt!).distance > 6) {
+            dragging = true;
+            windowManager.startDragging();
+          }
+        }
+      },
+      onPointerUp: (e) {
+        final d = downAt;
+        downAt = null;
+        if (!dragging && d != null && (e.position - d).distance <= 6) {
+          setDeskAgentWindowMode(DeskAgentWindowMode.compact);
+        }
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: _PillPalette.bg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _PillPalette.border),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            DeskAgentIcons.headphones(size: 17, color: _PillPalette.accent),
+            const SizedBox(width: 5),
+            const Text(
+              'Hỗ trợ',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: _PillPalette.text,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Right-click menu of the pill: "Đóng (Chạy ngầm)" (pill_menu_open.png).
+  void _showPillMenu(BuildContext context, Offset at) {
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (overlay == null) return;
+    showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        at.dx - 160,
+        at.dy - 48,
+        overlay.size.width - at.dx,
+        overlay.size.height - at.dy,
+      ),
+      color: _PillPalette.chip,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      items: [
+        PopupMenuItem<String>(
+          value: 'hide',
+          height: 34,
+          onTap: () => windowManager.hide(),
+          child: Row(
+            children: [
+              DeskAgentIcons.x(size: 13, color: _PillPalette.text),
+              const SizedBox(width: 8),
+              const Text(
+                'Đóng (Chạy ngầm)',
+                style: TextStyle(fontSize: 12, color: _PillPalette.text),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 380x96 panel the pill expands into (`pill-old-click.png`):
+  /// [monitor] [IP chip] [Hỗ trợ] over [monitor] [ID input] [Kết nối].
+  Widget _buildPanel(BuildContext context) {
+    return GestureDetector(
+      onPanStart: (_) => windowManager.startDragging(),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        color: _PillPalette.bg,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              height: 38,
+              child: Row(
+                children: [
+                  DeskAgentIcons.monitor(size: 16, color: _PillPalette.accent),
+                  const SizedBox(width: 10),
+                  Expanded(child: _buildIpChip()),
+                  const SizedBox(width: 8),
+                  _buildHelpPill(),
+                ],
+              ),
+            ),
+            const SizedBox(height: 6),
+            SizedBox(
+              height: 32,
+              child: Row(
+                children: [
+                  DeskAgentIcons.monitor(size: 15, color: _PillPalette.muted),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextField(
+                      controller: _remoteIdController,
+                      focusNode: _remoteIdFocusNode,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [IDTextInputFormatter()],
+                      style: const TextStyle(
+                        fontFamily: _PillPalette.mono,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: _PillPalette.text,
+                      ),
+                      decoration: const InputDecoration(
+                        hintText: 'Nhập ID máy cần điều khiển...',
+                        hintStyle: TextStyle(
+                          fontFamily: _PillPalette.mono,
+                          fontSize: 11.5,
+                          color: _PillPalette.muted,
+                        ),
+                        isDense: true,
+                        filled: false,
+                        fillColor: Colors.transparent,
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      onSubmitted: (_) => _onConnect(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(6),
+                    onTap: _onConnect,
+                    child: Container(
+                      height: 30,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: _PillPalette.accent,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          DeskAgentIcons.headphones(
+                            size: 13,
+                            color: _PillPalette.accentText,
+                          ),
+                          const SizedBox(width: 4),
+                          const Text(
+                            'Kết nối',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: _PillPalette.accentText,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Dark chip `IP <addr> | <password>` from the approved screenshot.
+  Widget _buildIpChip() {
+    final pass = gFFI.serverModel.serverPasswd.text.trim();
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        height: 26,
+        padding: const EdgeInsets.symmetric(horizontal: 7),
+        decoration: BoxDecoration(
+          color: _PillPalette.chip,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              decoration: BoxDecoration(
+                color: _PillPalette.accent,
+                borderRadius: BorderRadius.circular(3),
+              ),
+              child: const Text(
+                'IP',
+                style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w800,
+                  color: _PillPalette.accentText,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                _localIp.isEmpty ? '---' : _localIp,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontFamily: _PillPalette.mono,
+                  fontSize: 11.5,
+                  color: _PillPalette.text,
+                ),
+              ),
+            ),
+            if (pass.isNotEmpty) ...[
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 5),
+                child: Text(
+                  '|',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: _PillPalette.muted,
+                  ),
+                ),
+              ),
+              Flexible(
+                child: Text(
+                  _showPassword ? pass : '••••••',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontFamily: _PillPalette.mono,
+                    fontSize: 11.5,
+                    color: _PillPalette.text,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHelpPill() {
+    final expanded = deskAgentWindowMode.value == DeskAgentWindowMode.expanded;
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () => setDeskAgentWindowMode(
+        expanded ? DeskAgentWindowMode.compact : DeskAgentWindowMode.expanded,
+      ),
+      child: Container(
+        height: 28,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _PillPalette.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DeskAgentIcons.headphones(size: 14, color: _PillPalette.accent),
+            const SizedBox(width: 4),
+            const Text(
+              'Hỗ trợ',
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: _PillPalette.text,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Recent peers, shown under the connect bar while the ID field has focus.
+  bool get _showRecentDropdown =>
+      _remoteIdFocusNode.hasFocus && _peersLoader.peers.isNotEmpty;
+
+  Widget _buildRecentDropdown() {
+    final peers = _peersLoader.peers.take(4).toList();
+    return Positioned(
+      top: 80,
+      left: 12,
+      right: 12,
+      child: Material(
+        color: _WidgetPalette.card,
+        borderRadius: BorderRadius.circular(8),
+        elevation: 6,
+        shadowColor: const Color(0x33000000),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: _WidgetPalette.border),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 6, 6, 2),
+                child: Row(
                   children: [
-                    _buildMyDeviceCard(context, serverModel),
-                    const SizedBox(height: 12),
-                    _buildConnectCard(context),
-                    const SizedBox(height: 12),
-                    _buildRecentSessionsCard(context),
+                    const Text(
+                      'Thiết bị gần đây',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.4,
+                        color: _WidgetPalette.muted,
+                      ),
+                    ),
+                    const Spacer(),
+                    InkWell(
+                      onTap: () {
+                        setState(() {
+                          _hiddenRecent.addAll(
+                            _peersLoader.peers.map((p) => p.id),
+                          );
+                        });
+                      },
+                      child: const Padding(
+                        padding: EdgeInsets.all(4),
+                        child: Text(
+                          'Xóa',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            color: _WidgetPalette.orangeDark,
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
-                );
-              },
+                ),
+              ),
+              for (final p in peers.where((p) => !_hiddenRecent.contains(p.id)))
+                InkWell(
+                  onTap: () {
+                    _remoteIdController.id = p.id;
+                    _remoteIdFocusNode.unfocus();
+                    setState(() {});
+                    _onConnect();
+                  },
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                    child: Row(
+                      children: [
+                        DeskAgentIcons.monitor(
+                          size: 14,
+                          color: _WidgetPalette.blue,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                p.alias.isNotEmpty
+                                    ? p.alias
+                                    : (p.hostname.isNotEmpty
+                                        ? p.hostname
+                                        : p.id),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: _WidgetPalette.text,
+                                ),
+                              ),
+                              Text(
+                                formatID(p.id),
+                                maxLines: 1,
+                                style: const TextStyle(
+                                  fontFamily: _WidgetPalette.mono,
+                                  fontSize: 10.5,
+                                  color: _WidgetPalette.muted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          width: 6,
+                          height: 6,
+                          margin: const EdgeInsets.only(right: 4),
+                          decoration: BoxDecoration(
+                            color: _WidgetPalette.green,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        Text(
+                          p.online ? 'Online' : 'Offline',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: _WidgetPalette.muted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Collapsed composer: tapping the row opens the chat (as in the mockup,
+  /// where the input is only a placeholder until the window expands).
+  Widget _buildComposer() {
+    return InkWell(
+      onTap: () => setDeskAgentWindowMode(DeskAgentWindowMode.expanded),
+      child: Container(
+        height: 48,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: const BoxDecoration(
+          color: _WidgetPalette.card,
+          border: Border(top: BorderSide(color: _WidgetPalette.border)),
+        ),
+        child: Row(
+          children: [
+            DeskAgentIcons.paperclip(size: 15, color: _WidgetPalette.muted),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'Nhập nội dung yêu cầu... (Ctrl+V dán ảnh/video)',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: _WidgetPalette.muted,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [_WidgetPalette.blue, _WidgetPalette.blueDark],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Center(
+                child: DeskAgentIcons.send(size: 13, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Chat title bar with the collapse control (expanded mode only).
+  Widget _buildChatHeader() {
+    return Container(
+      height: 36,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: _WidgetPalette.card,
+        border: Border(
+          top: BorderSide(color: _WidgetPalette.border.withOpacity(0.5)),
+          bottom: BorderSide(color: _WidgetPalette.border.withOpacity(0.5)),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: const BoxDecoration(
+              color: _WidgetPalette.green,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+          const Text(
+            'Hỗ trợ IT DeskAgent',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: _WidgetPalette.text,
+            ),
+          ),
+          const Spacer(),
+          InkWell(
+            borderRadius: BorderRadius.circular(6),
+            onTap: () =>
+                setDeskAgentWindowMode(DeskAgentWindowMode.compact),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DeskAgentIcons.chevronDown(
+                    size: 14,
+                    color: _WidgetPalette.muted,
+                  ),
+                  const SizedBox(width: 2),
+                  const Text(
+                    'Thu gọn',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: _WidgetPalette.muted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Expanded body: the real Manager chat, or — when the window is not the
+  /// docked widget — the classic device/recent list.
+  Widget _buildChatBody(BuildContext context) {
+    if (!_isDockedWidget) return _buildHomeTab(context);
+    return const AiChatPage(embedded: true);
+  }
+
+  // --- HOME GRID ---
+  Widget _buildHomeTab(BuildContext context) {
+    return ChangeNotifierProvider.value(
+      value: gFFI.serverModel,
+      child: Consumer<ServerModel>(
+        builder: (context, serverModel, _) {
+          return ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            children: [
+              _buildMyDeviceCard(context, serverModel),
+              const SizedBox(height: 12),
+              _buildRecentSessionsCard(context),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// Header 42px from `client-widget.html`: logo (opens settings), the
+  /// ID | password pair in monospace, and the orange "Gửi IT" action.
+  Widget _buildHeader(BuildContext context) {
+    return ChangeNotifierProvider.value(
+      value: gFFI.serverModel,
+      child: Consumer<ServerModel>(
+        builder: (context, serverModel, _) {
+          final myId = serverModel.serverId.text.trim();
+          final myPass = serverModel.serverPasswd.text.trim();
+          return GestureDetector(
+            // The window is frameless in widget mode: dragging the header moves
+            // it, the way the mockup's window behaves.
+            onPanStart: (_) => windowManager.startDragging(),
+            child: Container(
+              height: 42,
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 2),
+              color: _WidgetPalette.bg,
+              child: Row(
+                children: [
+                  _buildLogoButton(),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ClipRect(
+                      child: _buildCredentialGroup(myId, myPass),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  _buildSendItButton(myId, myPass),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// 28px logo with the online dot; clicking it opens the settings tab.
+  Widget _buildLogoButton() {
+    return Tooltip(
+      message: 'DeskAgent · Mở cài đặt',
+      child: InkWell(
+        onTap: DesktopTabPage.onAddSetting,
+        borderRadius: BorderRadius.circular(8),
+        child: SizedBox(
+          width: 28,
+          height: 28,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned.fill(
+                child: DeskAgentIcons.icon(DeskAgentIcons.logo, size: 28),
+              ),
+              Positioned(
+                right: -1,
+                bottom: -1,
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: _WidgetPalette.green,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: _WidgetPalette.bg, width: 1.5),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// `1 030 636 720 | xdsmkj` — click either half to copy it.
+  Widget _buildCredentialGroup(String myId, String myPass) {
+    final idText = myId.isNotEmpty ? formatID(myId) : '--- --- ---';
+    final passText = myPass.isNotEmpty
+        ? (_showPassword ? myPass : '••••••')
+        : '------';
+    return Row(
+      children: [
+        Flexible(
+          child: InkWell(
+            onTap: () {
+              if (myId.isEmpty) return;
+              Clipboard.setData(ClipboardData(text: myId));
+              showToast('Đã sao chép ID!');
+            },
+            child: Text(
+              idText,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontFamily: _WidgetPalette.mono,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.2,
+                color: _WidgetPalette.text,
+              ),
+            ),
+          ),
+        ),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 4),
+          child: Text(
+            '|',
+            style: TextStyle(fontSize: 12, color: _WidgetPalette.muted),
+          ),
+        ),
+        Flexible(
+          child: InkWell(
+            onTap: () {
+              if (myPass.isEmpty) return;
+              Clipboard.setData(ClipboardData(text: myPass));
+              showToast('Đã sao chép mật khẩu!');
+            },
+            onLongPress: () => setState(() => _showPassword = !_showPassword),
+            child: Text(
+              passText,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontFamily: _WidgetPalette.mono,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: _WidgetPalette.muted,
+              ),
             ),
           ),
         ),
@@ -205,121 +943,142 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
     );
   }
 
-  // Header: Logo + App Name + Hostname + Status + Settings Button
-  Widget _buildHeader(BuildContext context) {
-    final theme = Theme.of(context);
-    final hostname = Platform.localHostname;
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
-      color: theme.colorScheme.background,
-      child: Row(
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [MyTheme.accent, MyTheme.accent.withOpacity(0.7)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(
-              Icons.support_agent_rounded,
-              color: Colors.white,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'DeskAgent',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.3,
-                  ),
-                ),
-                Text(
-                  hostname.isNotEmpty ? hostname : 'Local PC',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: theme.textTheme.bodySmall?.color?.withOpacity(0.65),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          _buildOnlineStatusBadge(),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined, size: 20),
-            tooltip: translate('Settings'),
-            splashRadius: 18,
-            onPressed: DesktopTabPage.onAddSetting,
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Connection status pill badge
-  Widget _buildOnlineStatusBadge() {
-    return Obx(() {
-      final status = stateGlobal.svcStatus.value;
-      Color dotColor;
-      String label;
-
-      if (status == SvcStatus.ready) {
-        dotColor = const Color(0xFF32BEA6);
-        label = 'Online';
-      } else if (status == SvcStatus.connecting) {
-        dotColor = Colors.amber;
-        label = 'Connecting';
-      } else {
-        dotColor = const Color(0xFFE04F5F);
-        label = 'Offline';
-      }
-
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        margin: const EdgeInsets.only(right: 4),
+  /// Orange "Gửi IT" pill: copies ID + password for the helpdesk.
+  Widget _buildSendItButton(String myId, String myPass) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () {
+        if (myId.isEmpty) return;
+        Clipboard.setData(ClipboardData(text: 'ID: $myId  |  Pass: $myPass'));
+        showToast('Đã sao chép ID & Mật khẩu để gửi IT!');
+      },
+      child: Container(
+        height: 26,
+        padding: const EdgeInsets.symmetric(horizontal: 9),
         decoration: BoxDecoration(
-          color: dotColor.withOpacity(0.12),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: dotColor.withOpacity(0.3)),
+          gradient: const LinearGradient(
+            colors: [_WidgetPalette.orange, _WidgetPalette.orangeDark],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 7,
-              height: 7,
-              decoration: BoxDecoration(
-                color: dotColor,
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(width: 5),
-            Text(
-              label,
+            DeskAgentIcons.send(size: 12, color: Colors.white),
+            const SizedBox(width: 4),
+            const Text(
+              'Gửi IT',
               style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: dotColor,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
               ),
             ),
           ],
         ),
-      );
-    });
+      ),
+    );
+  }
+
+  /// 36px connect bar from the mockup: monitor glyph, monospace input, blue
+  /// "Kết nối" pill and the connection-options menu.
+  Widget _buildConnectBar(BuildContext context) {
+    return Container(
+      height: 36,
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+      padding: const EdgeInsets.only(left: 10, right: 4),
+      decoration: BoxDecoration(
+        color: _WidgetPalette.card,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _WidgetPalette.border),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A000000),
+            blurRadius: 3,
+            offset: Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          DeskAgentIcons.monitor(size: 15, color: _WidgetPalette.muted),
+          const SizedBox(width: 6),
+          Expanded(
+            child: TextField(
+              controller: _remoteIdController,
+              focusNode: _remoteIdFocusNode,
+              keyboardType: TextInputType.number,
+              inputFormatters: [IDTextInputFormatter()],
+              style: const TextStyle(
+                fontFamily: _WidgetPalette.mono,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: _WidgetPalette.text,
+              ),
+              decoration: const InputDecoration(
+                hintText: 'Nhập ID máy cần điều khiển...',
+                hintStyle: TextStyle(
+                  fontFamily: _WidgetPalette.mono,
+                  fontSize: 12,
+                  color: _WidgetPalette.muted,
+                ),
+                isDense: true,
+                filled: false,
+                fillColor: Colors.transparent,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
+              onChanged: (_) => setState(() {}),
+              onSubmitted: (_) => _onConnect(),
+            ),
+          ),
+          if (_remoteIdController.text.isNotEmpty)
+            InkWell(
+              onTap: () => setState(() => _remoteIdController.clear()),
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: DeskAgentIcons.x(size: 13, color: _WidgetPalette.muted),
+              ),
+            ),
+          const SizedBox(width: 2),
+          InkWell(
+            borderRadius: BorderRadius.circular(6),
+            onTap: _onConnect,
+            child: Container(
+              height: 28,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [_WidgetPalette.blue, _WidgetPalette.blueDark],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DeskAgentIcons.zap(size: 12, color: Colors.white),
+                  const SizedBox(width: 4),
+                  const Text(
+                    'Kết nối',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   // Card 1: My Device ID & Password
@@ -348,7 +1107,7 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
         children: [
           Row(
             children: [
-              Icon(Icons.badge_outlined, size: 16, color: MyTheme.accent),
+              DeskAgentIcons.monitor(size: 16, color: _WidgetPalette.blue),
               const SizedBox(width: 6),
               Text(
                 'THÔNG TIN MÁY NÀY',
@@ -387,17 +1146,17 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
                       SelectableText(
                         myId.isNotEmpty ? formatID(myId) : '--- --- ---',
                         style: const TextStyle(
+                          fontFamily: _WidgetPalette.mono,
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
                           letterSpacing: 1.2,
-                          fontFamily: 'WorkSans',
                         ),
                       ),
                     ],
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.copy_rounded, size: 18),
+                  icon: DeskAgentIcons.copy(size: 18),
                   tooltip: 'Sao chép ID',
                   splashRadius: 16,
                   onPressed: () {
@@ -447,24 +1206,21 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
                   ),
                 ),
                 IconButton(
-                  icon: Icon(
-                    _showPassword
-                        ? Icons.visibility_outlined
-                        : Icons.visibility_off_outlined,
-                    size: 18,
-                  ),
+                  icon: _showPassword
+                      ? DeskAgentIcons.eyeOff(size: 18)
+                      : DeskAgentIcons.eye(size: 18),
                   tooltip: _showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu',
                   splashRadius: 16,
                   onPressed: () => setState(() => _showPassword = !_showPassword),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  icon: DeskAgentIcons.refresh(size: 18),
                   tooltip: 'Đổi mật khẩu tạm',
                   splashRadius: 16,
                   onPressed: () => bind.mainUpdateTemporaryPassword(),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  icon: DeskAgentIcons.pen(size: 18),
                   tooltip: 'Cài đặt mật khẩu',
                   splashRadius: 16,
                   onPressed: () =>
@@ -488,7 +1244,7 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
                 ),
                 elevation: 0,
               ),
-              icon: const Icon(Icons.share_outlined, size: 16),
+              icon: DeskAgentIcons.send(size: 16),
               label: const Text(
                 'Sao chép ID & Mật khẩu gửi IT',
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
@@ -552,184 +1308,6 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
   }
 
   // Card 2: Remote Connection Input + Actions
-  Widget _buildConnectCard(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.dividerColor.withOpacity(0.2)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.desktop_windows_outlined, size: 16, color: Colors.teal),
-              const SizedBox(width: 6),
-              Text(
-                'ĐIỀU KHIỂN MÁY TỪ XA',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.6,
-                  color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _remoteIdController,
-            focusNode: _remoteIdFocusNode,
-            keyboardType: TextInputType.number,
-            inputFormatters: [IDTextInputFormatter()],
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1.0,
-              fontFamily: 'WorkSans',
-            ),
-            decoration: InputDecoration(
-              hintText: 'Nhập ID máy cần điều khiển...',
-              hintStyle: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.normal,
-                color: theme.hintColor.withOpacity(0.6),
-              ),
-              isDense: true,
-              filled: true,
-              fillColor: theme.colorScheme.background,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: theme.dividerColor.withOpacity(0.3)),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: theme.dividerColor.withOpacity(0.3)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: MyTheme.accent, width: 1.5),
-              ),
-              suffixIcon: _remoteIdController.text.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear, size: 16),
-                      onPressed: () {
-                        setState(() {
-                          _remoteIdController.clear();
-                        });
-                      },
-                    )
-                  : null,
-            ),
-            onChanged: (_) => setState(() {}),
-            onSubmitted: (_) => _onConnect(),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: SizedBox(
-                  height: 38,
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.teal,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      elevation: 0,
-                    ),
-                    icon: const Icon(Icons.play_arrow_rounded, size: 18),
-                    label: const Text(
-                      'Kết nối',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                    ),
-                    onPressed: () => _onConnect(),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                height: 38,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.background,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: theme.dividerColor.withOpacity(0.3)),
-                ),
-                child: PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert, size: 18),
-                  tooltip: 'Tùy chọn kết nối',
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  onSelected: (val) {
-                    if (val == 'file') _onConnect(isFileTransfer: true);
-                    if (val == 'terminal') _onConnect(isTerminal: true);
-                    if (val == 'camera') _onConnect(isViewCamera: true);
-                    if (val == 'tcp') _onConnect(isTcpTunneling: true);
-                  },
-                  itemBuilder: (ctx) => [
-                    const PopupMenuItem(
-                      value: 'file',
-                      child: Row(
-                        children: [
-                          Icon(Icons.folder_shared_outlined, size: 18),
-                          SizedBox(width: 8),
-                          Text('Truyền File'),
-                        ],
-                      ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'terminal',
-                      child: Row(
-                        children: [
-                          Icon(Icons.terminal_outlined, size: 18),
-                          SizedBox(width: 8),
-                          Text('Mở Terminal'),
-                        ],
-                      ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'camera',
-                      child: Row(
-                        children: [
-                          Icon(Icons.camera_alt_outlined, size: 18),
-                          SizedBox(width: 8),
-                          Text('Xem Camera'),
-                        ],
-                      ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'tcp',
-                      child: Row(
-                        children: [
-                          Icon(Icons.alt_route_outlined, size: 18),
-                          SizedBox(width: 8),
-                          Text('TCP Tunneling'),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
 
   // Card 3: Recent Sessions / Quick Peers
   Widget _buildRecentSessionsCard(BuildContext context) {
@@ -755,7 +1333,7 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
         children: [
           Row(
             children: [
-              Icon(Icons.history_rounded, size: 16, color: Colors.orange),
+              DeskAgentIcons.history(size: 16, color: _WidgetPalette.orange),
               const SizedBox(width: 6),
               Text(
                 'PHIÊN KẾT NỐI GẦN ĐÂY',
@@ -773,8 +1351,7 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
                     _peersLoader.getAllPeers();
                     setState(() {});
                   },
-                  child: Icon(
-                    Icons.refresh,
+                  child: DeskAgentIcons.refresh(
                     size: 14,
                     color: theme.textTheme.bodySmall?.color?.withOpacity(0.5),
                   ),
@@ -788,8 +1365,7 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
               child: Center(
                 child: Column(
                   children: [
-                    Icon(
-                      Icons.devices_other_outlined,
+                    DeskAgentIcons.monitor(
                       size: 28,
                       color: theme.dividerColor.withOpacity(0.6),
                     ),
@@ -871,76 +1447,4 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
       ),
     );
   }
-
-  // --- BOTTOM NAVIGATION BAR ---
-  Widget _buildBottomNav(BuildContext context) {
-    final theme = Theme.of(context);
-
-    final items = [
-      _NavItem(Icons.home_rounded, Icons.home_outlined, 'Trang chủ'),
-      _NavItem(Icons.support_agent_rounded, Icons.support_agent_outlined, 'Chat AI'),
-      _NavItem(Icons.computer_rounded, Icons.computer_outlined, 'Cấu hình'),
-      _NavItem(Icons.bug_report_rounded, Icons.bug_report_outlined, 'Bắt lỗi'),
-    ];
-
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.colorScheme.background,
-        border: Border(
-          top: BorderSide(
-            color: theme.dividerColor.withOpacity(0.2),
-            width: 1,
-          ),
-        ),
-      ),
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 52,
-          child: Row(
-            children: List.generate(items.length, (idx) {
-              final isSelected = _currentIndex == idx;
-              final item = items[idx];
-              final activeColor = MyTheme.accent;
-              final inactiveColor =
-                  theme.textTheme.bodySmall?.color?.withOpacity(0.5) ?? Colors.grey;
-
-              return Expanded(
-                child: InkWell(
-                  onTap: () => setState(() => _currentIndex = idx),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        isSelected ? item.selectedIcon : item.icon,
-                        color: isSelected ? activeColor : inactiveColor,
-                        size: 20,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        item.label,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight:
-                              isSelected ? FontWeight.bold : FontWeight.normal,
-                          color: isSelected ? activeColor : inactiveColor,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _NavItem {
-  final IconData selectedIcon;
-  final IconData icon;
-  final String label;
-  const _NavItem(this.selectedIcon, this.icon, this.label);
 }

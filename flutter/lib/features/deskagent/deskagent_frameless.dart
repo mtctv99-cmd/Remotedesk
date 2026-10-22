@@ -1,0 +1,92 @@
+import 'dart:ffi';
+
+import 'package:ffi/ffi.dart';
+
+/// Window-style surgery for the docked widget.
+///
+/// `window_manager.setAsFrameless()` alone leaves the caption bits in
+/// `GWL_STYLE`, so Windows keeps clamping the window to the 136px minimum
+/// track width (the pill is 86px wide). Removing the bits directly is what
+/// the previous shipped build did; `WS_THICKFRAME` has to go too, otherwise
+/// the DWM keeps a resize frame and the same minimum applies.
+class DeskAgentFrameless {
+  DeskAgentFrameless._();
+
+  static const int _gwlStyle = -16;
+  static const int _wsCaption = 0x00C00000;
+  static const int _wsSysMenu = 0x00080000;
+  static const int _wsMinimizeBox = 0x00020000;
+  static const int _wsMaximizeBox = 0x00010000;
+  static const int _wsThickFrame = 0x00040000;
+  static const int _swpNoMove = 0x0002;
+  static const int _swpNoSize = 0x0001;
+  static const int _swpNoZOrder = 0x0004;
+  static const int _swpNoActivate = 0x0010;
+  static const int _swpFrameChanged = 0x0020;
+
+  /// Move/resize the main window through Win32.
+  ///
+  /// The window_manager channel does not resize reliably once the caption
+  /// bits are gone (the window collapses to the taskbar in tests), so the
+  /// widget's size/anchor is applied here instead.
+  static void setBounds(String windowTitle, int x, int y, int w, int h) {
+    try {
+      final user32 = DynamicLibrary.open('user32.dll');
+      final findWindowW = user32.lookupFunction<
+          IntPtr Function(Pointer<Utf16>, Pointer<Utf16>),
+          int Function(Pointer<Utf16>, Pointer<Utf16>)>('FindWindowW');
+      final setWindowPos = user32.lookupFunction<
+          Int32 Function(IntPtr, IntPtr, Int32, Int32, Int32, Int32, Uint32),
+          int Function(int, int, int, int, int, int, int)>('SetWindowPos');
+      final title = windowTitle.toNativeUtf16();
+      final className = 'FLUTTER_RUNNER_WIN32_WINDOW'.toNativeUtf16();
+      final hwnd = findWindowW(className, title);
+      calloc.free(title);
+      calloc.free(className);
+      if (hwnd == 0) return;
+      // HWND_TOPMOST (-1) keeps the widget above other windows.
+      setWindowPos(hwnd, -1, x, y, w, h, _swpNoActivate);
+    } catch (_) {
+      // Fall back to the plugin path in the caller.
+    }
+  }
+
+  /// Strip the caption bits from the main window.
+  static void apply(String windowTitle) {
+    try {
+      final user32 = DynamicLibrary.open('user32.dll');
+      final findWindowW = user32.lookupFunction<
+          IntPtr Function(Pointer<Utf16>, Pointer<Utf16>),
+          int Function(Pointer<Utf16>, Pointer<Utf16>)>('FindWindowW');
+      final getWindowLongPtrW = user32.lookupFunction<
+          IntPtr Function(IntPtr, Int32),
+          int Function(int, int)>('GetWindowLongPtrW');
+      final setWindowLongPtrW = user32.lookupFunction<
+          IntPtr Function(IntPtr, Int32, IntPtr),
+          int Function(int, int, int)>('SetWindowLongPtrW');
+      final setWindowPos = user32.lookupFunction<
+          Int32 Function(IntPtr, IntPtr, Int32, Int32, Int32, Int32, Uint32),
+          int Function(
+              int, int, int, int, int, int, int)>('SetWindowPos');
+
+      final title = windowTitle.toNativeUtf16();
+      final className = 'FLUTTER_RUNNER_WIN32_WINDOW'.toNativeUtf16();
+      final hwnd = findWindowW(className, title);
+      calloc.free(title);
+      calloc.free(className);
+      if (hwnd == 0) return;
+
+      final style = getWindowLongPtrW(hwnd, _gwlStyle);
+      // Keep WS_THICKFRAME: removing it broke the Flutter surface (the window
+      // rendered transparent). The caption bits alone are what enforce the
+      // 136px minimum track width.
+      final stripped = style &
+          ~(_wsCaption | _wsSysMenu | _wsMinimizeBox | _wsMaximizeBox);
+      setWindowLongPtrW(hwnd, _gwlStyle, stripped);
+      setWindowPos(hwnd, 0, 0, 0, 0, 0,
+          _swpNoMove | _swpNoSize | _swpNoZOrder | _swpNoActivate | _swpFrameChanged);
+    } catch (_) {
+      // Non-Windows or an unexpected API shape: keep the normal frame.
+    }
+  }
+}

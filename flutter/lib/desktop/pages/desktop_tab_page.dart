@@ -4,6 +4,7 @@ import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_home_page.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_setting_page.dart';
 import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
+import 'package:flutter_hbb/features/deskagent/deskagent_config.dart';
 import 'package:flutter_hbb/features/deskagent/deskagent_modern_home.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:flutter_hbb/models/state_model.dart';
@@ -92,6 +93,13 @@ class _DesktopTabPageState extends State<DesktopTabPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Widget mode draws its own window (pill / panel). The tab strip added a
+    // 28px title bar with Windows-style buttons above the pill, which the
+    // approved mockup does not have.
+    if (desktopType == DesktopType.main &&
+        bind.mainGetLocalOption(key: kOptionDeskAgentWidgetMode) != 'N') {
+      return const DeskAgentModernHome();
+    }
     final tabWidget = Container(
         child: Scaffold(
             backgroundColor: Theme.of(context).colorScheme.background,

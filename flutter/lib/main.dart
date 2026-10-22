@@ -17,13 +17,14 @@ import 'package:flutter_hbb/desktop/screen/desktop_remote_screen.dart';
 import 'package:flutter_hbb/desktop/screen/desktop_terminal_screen.dart';
 import 'package:flutter_hbb/desktop/widgets/refresh_wrapper.dart';
 import 'package:flutter_hbb/features/deskagent/deskagent_config.dart';
+import 'package:flutter_hbb/features/deskagent/deskagent_frameless.dart';
+import 'package:flutter_hbb/features/deskagent/deskagent_window_mode.dart';
 import 'package:flutter_hbb/models/state_model.dart';
 import 'package:flutter_hbb/utils/multi_window_manager.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
-import 'package:window_size/window_size.dart' as window_size;
 
 import 'common.dart';
 import 'consts.dart';
@@ -185,41 +186,20 @@ void runMainApp(bool startService) async {
 }
 
 /// DeskAgent widget mode: turn the main window into a small always-on-top
-/// widget at the bottom-right corner of the primary screen. The normal
-/// window frame is kept (no frameless window) so it stays draggable.
+/// widget at the bottom-right corner of the primary screen. The window is
+/// frameless so the card (header + connect bar + composer) is not pushed down
+/// by the native caption; dragging is handled by the header.
+/// Size and anchor live in [setDeskAgentWindowMode].
 Future<void> _applyMainWindowWidgetMode() async {
-  const widgetSize = Size(380, 560);
-  const rightMargin = 12.0;
-  const bottomMargin = 48.0; // keep clear of the taskbar
-  if (await windowManager.isMaximized()) {
-    await windowManager.unmaximize();
-  }
-  try {
-    final screens = await window_size.getScreenList();
-    if (screens.isNotEmpty) {
-      // On Windows the primary monitor is the one with origin (0, 0).
-      final screen = screens.firstWhere(
-        (s) => s.frame.left == 0 && s.frame.top == 0,
-        orElse: () => screens.first,
-      );
-      final work = screen.visibleFrame; // physical px, excludes the taskbar
-      // Repo convention (see _adjustRestoreMainWindowOffset in common.dart):
-      // work in physical pixels and ignore the device pixel ratio.
-      final scale = screen.scaleFactor <= 0 ? 1.0 : screen.scaleFactor;
-      final size = Size(widgetSize.width * scale, widgetSize.height * scale);
-      await windowManager.setSize(size, ignoreDevicePixelRatio: true);
-      await windowManager.setPosition(
-        Offset(
-          work.right - size.width - rightMargin,
-          work.bottom - size.height - bottomMargin,
-        ),
-        ignoreDevicePixelRatio: true,
-      );
-    }
-  } catch (e) {
-    debugPrint('widget mode: failed to place the window: $e');
-  }
-  await windowManager.setAlwaysOnTop(true);
+  await windowManager.setAsFrameless();
+  await setDeskAgentWindowMode(deskAgentWindowMode.value);
+  // Startup calls setResizable(true) after this block, which re-adds
+  // WS_THICKFRAME, and the style strip must land only once the view is up.
+  Future.delayed(const Duration(milliseconds: 900), () async {
+    DeskAgentFrameless.apply(getWindowName());
+    deskAgentWindowReady = true;
+    await setDeskAgentWindowMode(deskAgentWindowMode.value);
+  });
 }
 
 void runMobileApp() async {

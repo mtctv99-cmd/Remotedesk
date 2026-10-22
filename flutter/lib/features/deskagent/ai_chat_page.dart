@@ -210,10 +210,13 @@ class _AiChatPageState extends State<AiChatPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: !widget.embedded,
-        title: Text(translate('AI Chat')),
-      ),
+      // Embedded in the docked widget: the host window already draws the
+      // header, so the page must not add another app bar.
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              title: Text(translate('AI Chat')),
+            ),
       body: Column(
         children: [
           Expanded(child: _messageList()),
