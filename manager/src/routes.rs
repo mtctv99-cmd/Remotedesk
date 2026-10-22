@@ -897,7 +897,6 @@ async fn client_peer_data(
 
 /// Upload root, relative to the server working dir (`/data` in the docker
 /// deployment, so uploaded files live on the persistent volume).
-const ATTACH_DIR: &str = "attach";
 /// Largest accepted upload body.
 const ATTACH_MAX_BYTES: usize = 20 * 1024 * 1024;
 /// Extensions allowed through the sanitizer (everything else becomes .bin).
@@ -938,6 +937,22 @@ fn attach_content_type(key: &str) -> &'static str {
     }
 }
 
+/// Upload root. In the docker deployment the working dir is /data (volume),
+/// so attachments land on the persistent volume; local dev falls back to
+/// ./attach. An explicit DESKAGENT_ATTACH_DIR overrides both.
+fn attach_dir() -> std::path::PathBuf {
+    if let Ok(dir) = std::env::var("DESKAGENT_ATTACH_DIR") {
+        if !dir.is_empty() {
+            return std::path::PathBuf::from(dir);
+        }
+    }
+    if std::path::Path::new("/data").is_dir() {
+        std::path::PathBuf::from("/data/attach")
+    } else {
+        std::path::PathBuf::from("attach")
+    }
+}
+
 async fn client_upload_attachment(
     _auth: DeviceAuth,
     State(state): State<SharedState>,
@@ -953,8 +968,8 @@ async fn client_upload_attachment(
     let raw_name = q.get("name").map(String::as_str).unwrap_or("attach.png");
     let safe_name = sanitize_attach_name(raw_name);
     let key = new_id("att_");
-    let dir = std::path::Path::new(ATTACH_DIR);
-    std::fs::create_dir_all(dir).map_err(internal_error)?;
+    let dir = attach_dir();
+    std::fs::create_dir_all(&dir).map_err(internal_error)?;
     let path = dir.join(format!("{}-{}", key, safe_name));
     std::fs::write(&path, &body).map_err(internal_error)?;
     let url = format!("/api/attach/{}-{}", key, safe_name);
@@ -970,7 +985,7 @@ async fn client_get_attachment(
     if !key.ends_with(&safe) || !key.starts_with("att_") {
         return Err((StatusCode::BAD_REQUEST, "bad attachment key".to_string()));
     }
-    let path = std::path::Path::new(ATTACH_DIR).join(&key);
+    let path = attach_dir().join(&key);
     let bytes = tokio::fs::read(&path)
         .await
         .map_err(|_| (StatusCode::NOT_FOUND, "attachment not found".to_string()))?;
