@@ -1444,6 +1444,9 @@ void showWaitAcceptDialog(SessionID sessionId, String type, String title,
 
     return CustomAlertDialog(
       title: null,
+      // The card is 320px per the incoming mockup; without widening the
+      // content constraint the shared 308px default clamps the row.
+      contentBoxConstraints: const BoxConstraints(minWidth: 320),
       content: Container(
         width: 320,
         padding: const EdgeInsets.all(12),
@@ -1552,10 +1555,9 @@ void showWaitAcceptDialog(SessionID sessionId, String type, String title,
               height: 32,
               child: Row(children: [
                 Expanded(
-                  child: dialogButton('Chấp nhận (Accept)',
+                  child: dialogButton('Chấp nhận',
                       onPressed: accept,
-                      style:
-                          const TextStyle(fontSize: 11.5, color: Colors.black),
+                      style: const TextStyle(fontSize: 11.5, color: Colors.black),
                       buttonStyle: ElevatedButton.styleFrom(
                         backgroundColor: accent,
                         elevation: 0,
@@ -1564,37 +1566,28 @@ void showWaitAcceptDialog(SessionID sessionId, String type, String title,
                       )),
                 ),
                 const SizedBox(width: 8),
-                // Cancel lives in the AlertDialog action row, which forces ~36px per button,
-                // so this is a non-tappable 32px bar keeping the mockup's 1:1 button widths.
-                const Expanded(
-                  child: SizedBox(
-                    height: 32,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                          color: Color(0xFF2A2A2A),
-                          borderRadius: BorderRadius.all(Radius.circular(4))),
-                    ),
-                  ),
+                Expanded(
+                  // Reject sits beside Accept as a real button (was a dead
+                  // DecoratedBox keeping the 1:1 widths); the duplicated
+                  // actions-row reject is gone.
+                  child: dialogButton('Từ chối',
+                      onPressed: onCancel,
+                      isOutline: true,
+                      style: const TextStyle(
+                          fontSize: 11.5, color: Color(0xFFD4D4D8)),
+                      buttonStyle: OutlinedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2A2A2A),
+                        side: const BorderSide(color: borderColor),
+                        padding: EdgeInsets.zero,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4)),
+                      )),
                 ),
               ]),
             ),
           ],
         ),
       ),
-      actions: [
-        // Cancel keeps the previous closeConnection behaviour.
-        dialogButton('Từ chối (Cancel)',
-            onPressed: onCancel,
-            isOutline: true,
-            style: const TextStyle(fontSize: 11.5, color: Color(0xFFD4D4D8)),
-            buttonStyle: OutlinedButton.styleFrom(
-              backgroundColor: const Color(0xFF2A2A2A),
-              side: const BorderSide(color: borderColor),
-              padding: EdgeInsets.zero,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(4)),
-            )),
-      ],
       onCancel: onCancel,
     );
   });

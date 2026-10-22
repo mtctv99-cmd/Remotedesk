@@ -826,6 +826,32 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
   Widget _buildToolbar(
       BuildContext context, _ToolbarEdge edge, bool isHorizontal) {
     final List<Widget> toolbarItems = [];
+    // FPS badge inside the session frame (mockup .badge-p2p); the tab-strip
+    // badge disappears when fullscreen hides the tab bar.
+    toolbarItems.add(ListenableBuilder(
+      listenable: widget.ffi.qualityMonitorModel,
+      builder: (context, _) {
+        final fps = widget.ffi.qualityMonitorModel.data.fps;
+        if (fps == null || fps.isEmpty) return const SizedBox.shrink();
+        return Container(
+          margin: const EdgeInsets.only(right: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+          decoration: BoxDecoration(
+            color: const Color(0xFF4ADE80).withOpacity(0.12),
+            border: Border.all(color: const Color(0xFF4ADE80).withOpacity(0.25)),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            '$fps FPS',
+            style: const TextStyle(
+              fontSize: 10,
+              fontFamily: 'monospace',
+              color: Color(0xFF4ADE80),
+            ),
+          ),
+        );
+      },
+    ));
     toolbarItems.add(_PinMenu(state: widget.state));
     toolbarItems.add(Obx(() {
       final privacyModeState = PrivacyModeState.find(widget.id);
