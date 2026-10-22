@@ -116,6 +116,8 @@ class DeskAgentIcons {
       icon('sparkles', size: size, color: color);
   static Widget headphones({double size = 16, Color? color}) =>
       icon('headphones', size: size, color: color);
+  static Widget radio({double size = 16, Color? color}) =>
+      icon('radio', size: size, color: color);
   static Widget bot({double size = 16, Color? color}) =>
       icon('bot', size: size, color: color);
   static Widget download({double size = 16, Color? color}) =>

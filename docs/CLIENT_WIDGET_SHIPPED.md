@@ -1,4 +1,4 @@
-# CLIENT WIDGET ĐANG CHẠY — PIL 86×40 (pre-Go, build 05/10/2026)
+# CLIENT WIDGET — BUILD PRE-GO 05/10 + BẢN CẬP NHẬT THIẾT KẾ 22/10
 
 Nguồn sự thật: **build chạy thật** `Remote\DeskAgent-extracted` (exe + `data\app.so` 05/10/2026),
 ảnh chụp `pill-old-click.png`, `pill_menu_open.png`, `verified_single_pill.png` (workspace root),
@@ -6,6 +6,16 @@ và báo cáo HWND trong `docs/BAO_CAO_TIEN_DO.md:34`.
 
 Đây là bản client **đang cài trên Win11 host** (`C:\Program Files\DeskAgent`, 22/10/2026).
 Mã Dart của nó **không có trong git** (chưa từng commit, không có trong dangling blob/mirror).
+(Ảnh `pill-old-click.png` từng được trích dẫn đã bị dọn khỏi workspace — bản chụp thay thế:
+`pill-era-380x96.png`.)
+
+> **Cập nhật 22/10 (đã duyệt qua báo cáo UX `bao-cao-ux`)**: pill hạ xuống **82×32, radius 16**,
+> vẽ giữa cửa sổ 86×40 trong suốt (hit-test giữ 86×40); panel đổi hàng 1 thành chip
+> `ID | Pass | IP` bấm-để-copy (thứ tự mất chỗ: ID trọn → Pass bullet → IP ellipsis),
+> thêm nút **Gửi IT** (cam, copy ID+pass → mở chat) và nút **`–` thu nhỏ**; icon
+> **Kết nối** đổi thành sóng broadcast (radio `#60CDFF`, chữ đen). Chiều cao pill
+> chốt = 32: budget `1 viền + 6.5 + 17 icon + 6.5 + 1 viền`; KHÔNG sửa min-track
+> 40 của runner (không native change).
 
 ---
 
@@ -14,6 +24,7 @@ Mã Dart của nó **không có trong git** (chưa từng commit, không có tro
 | Thuộc tính | Giá trị | Nguồn |
 |---|---|---|
 | Kích thước cửa sổ | **86 × 40** | HWND 2464,1346 86×40 (BAO_CAO_TIEN_DO.md:34) |
+| Thân pill (mới 22/10) | **82 × 32, radius 16**, vẽ giữa cửa sổ trong suốt | báo cáo UX `bao-cao-ux`, đã duyệt |
 | Neo | góc phải dưới, margin phải ~10, đáy ~6 (trên taskbar) | đo từ rect 2464,1346 @2560×1440 |
 | Nền | `#202020` | verified_single_pill.png |
 | Viền | trắng 12% (hairline) | như panel |
@@ -32,10 +43,12 @@ Hành vi: **click** → mở panel; **chuột phải** → menu "Đóng (Chạy 
 | Cửa sổ | 380 × 96, radius 12, nền `#202020`, viền trắng 12% | pill-old-click.png |
 | Padding | 12 ngang, 10 trên/dưới; hàng 1 cao ~38, gap 6, hàng 2 ~32 | ảnh |
 | Hàng 1 trái | icon monitor 16 `#60CDFF` | ảnh |
-| Chip IP | `IP` badge nền `#60CDFF` chữ `#0B0B0B` + địa chỉ IP + `|` + mật khẩu, mono 11.5 `#F4F4F5`, nền chip `#2A2A2E` radius 6 | ảnh |
-| Hàng 1 phải | pill `Hỗ trợ` (headphones 14 + text 11.5), radius 14, viền trắng 12% → **thu về viên thuốc** | ảnh |
+| Chip hàng 1 (mới 22/10) | `ID <id> \| <pass> \| <ip>` — bấm để copy phần tương ứng; mất chỗ: ID trọn → Pass bullet → IP ellipsis; chip cao 27, mono 12 | bao-cao-ux (finding copy-chip) |
+| Hàng 1 phải (mới 22/10) | nút **Gửi IT** (gradient cam `#F97316→#EA580C`, send 12, copy ID+pass → mở chat) + nút **`–`** thu nhỏ cửa sổ | bao-cao-ux (finding Gửi IT, đường thoát P0-3) |
 | Hàng 2 | icon monitor 15 `#A1A1AA` + ô nhập ID mono 13 `#F4F4F5` (placeholder "Nhập ID máy cần điều khiển...") | ảnh |
-| Nút Kết nối | nền `#60CDFF`, chữ **`#0B0B0B`** w700 12, radius 6, cao 30, icon headphones 13 | ảnh |
+| Nút Kết nối | nền `#60CDFF`, chữ **`#0B0B0B`** w700 12, radius 6, cao 30, icon **sóng broadcast** 13 (radio, thay headphones theo P0 icon phân biệt) | ảnh + bao-cao-ux |
+| Menu chuột phải pill (mới 22/10) | 2 mục: `Mở panel` / `Đóng (Chạy ngầm)` | bao-cao-ux (đường thoát P0-3) |
+| Menu chuột phải panel (mới 22/10) | `Thu gọn` (→ pill) / `Đóng (Chạy ngầm)` | bao-cao-ux |
 
 ## 3. Menu chuột phải
 

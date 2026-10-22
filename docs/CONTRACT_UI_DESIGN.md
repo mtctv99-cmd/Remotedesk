@@ -376,12 +376,13 @@ Không ảnh hưởng số đo. Ghi để kỹ sư biết tiêu đề chỉ là 
 
 | hạng mục | giá trị |
 |---|---|
-| Trạng thái thu gọn | pill 86×40, radius 20, `#202020`, viền trắng 12%, headphones `#60cdff` + "Hỗ trợ" `#f4f4f5` |
-| Trạng thái mở | panel 380×96, radius 12; hàng 1: monitor + chip `IP \| mật khẩu` + pill Hỗ trợ; hàng 2: monitor + ô ID + nút Kết nối |
-| Nút Kết nối | nền `#60cdff`, chữ `#0b0b0b`, radius 6, cao 30 |
-| Menu chuột phải | "× Đóng (Chạy ngầm)", acrylic, radius 8, ~168×34 |
+| Trạng thái thu gọn | **pill 82×32, radius 16** vẽ giữa cửa sổ 86×40 trong suốt (hit-test 86×40), `#202020`, viền trắng 12%, headphones `#60cdff` + "Hỗ trợ" `#f4f4f5` |
+| Trạng thái mở | panel 380×96, radius 12; hàng 1: monitor + chip `ID \| pass \| ip` (bấm copy, truncate ID→pass→IP) + nút Gửi IT (cam, copy→mở chat) + `–` thu nhỏ; hàng 2: monitor + ô ID + nút Kết nối |
+| Nút Kết nối | nền `#60cdff`, chữ `#0b0b0b`, radius 6, cao 30, icon sóng broadcast 13 |
+| Menu chuột phải pill | `Mở panel` / `Đóng (Chạy ngầm)` |
+| Menu chuột phải panel | `Thu gọn` (→ pill) / `Đóng (Chạy ngầm)` |
 | Neo | đáy phải, margin phải 10, đáy 6 |
-| Khởi động | luôn ở pill; cửa sổ frameless, always-on-top |
+| Khởi động | luôn ở pill; cửa sổ frameless, always-on-top (không `WS_EX_NOACTIVATE`) |
 
 Quyết định deploy 22/10/2026: client đang cài là **build pre-Go này**. Hướng
 `client-widget.html` (card trắng 380×140, mục 2/7 ở trên) chỉ áp dụng khi được

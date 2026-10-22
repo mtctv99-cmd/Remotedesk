@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart' show kPrimaryMouseButton, kSecondaryMouseButton;
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/formatter/id_formatter.dart';
@@ -249,50 +250,63 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
     );
   }
 
-  /// 86x40 "Hỗ trợ" pill, exactly as the shipped build (`pill_final.png`).
+  /// Pill 82x32 (radius 16) centered inside the 86x40 window. The Listener
+  /// stays opaque over the full window so clicks never fall through the
+  /// transparent 4/2px margins (design doc: budget 1+6.5+17+6.5+1).
   Widget _buildPill(BuildContext context) {
     Offset? downAt;
     bool dragging = false;
-    return Listener(
-      onPointerDown: (e) {
-        downAt = e.position;
-        dragging = false;
-      },
-      onPointerMove: (e) {
-        if (downAt != null && !dragging) {
-          if ((e.position - downAt!).distance > 6) {
-            dragging = true;
-            windowManager.startDragging();
+    void openMenu(Offset at) => _showPillMenu(context, at);
+    return Center(
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: (e) {
+          downAt = e.position;
+          dragging = false;
+          if (e.buttons == kSecondaryMouseButton) {
+            openMenu(e.position);
           }
-        }
-      },
-      onPointerUp: (e) {
-        final d = downAt;
-        downAt = null;
-        if (!dragging && d != null && (e.position - d).distance <= 6) {
-          setDeskAgentWindowMode(DeskAgentWindowMode.compact);
-        }
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          color: _PillPalette.bg,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: _PillPalette.border),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            DeskAgentIcons.headphones(size: 17, color: _PillPalette.accent),
-            const SizedBox(width: 5),
-            const Text(
-              'Hỗ trợ',
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-                color: _PillPalette.text,
+        },
+        onPointerMove: (e) {
+          if (downAt != null && !dragging && e.buttons == kPrimaryMouseButton) {
+            if ((e.position - downAt!).distance > 6) {
+              dragging = true;
+              windowManager.startDragging();
+            }
+          }
+        },
+        onPointerUp: (e) {
+          final d = downAt;
+          downAt = null;
+          if (e.buttons == kSecondaryMouseButton) return;
+          if (!dragging && d != null && (e.position - d).distance <= 6) {
+            setDeskAgentWindowMode(DeskAgentWindowMode.compact);
+          }
+        },
+        child: Container(
+          width: 82,
+          height: 32,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: _PillPalette.bg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: _PillPalette.border),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DeskAgentIcons.headphones(size: 17, color: _PillPalette.accent),
+              const SizedBox(width: 5),
+              const Text(
+                'Hỗ trợ',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: _PillPalette.text,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -315,6 +329,21 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       items: [
         PopupMenuItem<String>(
+          value: 'panel',
+          height: 34,
+          onTap: () => setDeskAgentWindowMode(DeskAgentWindowMode.compact),
+          child: Row(
+            children: [
+              DeskAgentIcons.maximize(size: 13, color: _PillPalette.text),
+              const SizedBox(width: 8),
+              const Text(
+                'Mở panel',
+                style: TextStyle(fontSize: 12, color: _PillPalette.text),
+              ),
+            ],
+          ),
+        ),
+        PopupMenuItem<String>(
           value: 'hide',
           height: 34,
           onTap: () => windowManager.hide(),
@@ -333,11 +362,13 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
     );
   }
 
-  /// 380x96 panel the pill expands into (`pill-old-click.png`):
-  /// [monitor] [IP chip] [Hỗ trợ] over [monitor] [ID input] [Kết nối].
+  /// 380x96 panel the pill expands into (design doc):
+  /// [monitor] [ID|pass|IP chip] [Gửi IT] [–] over [monitor] [ID input] [Kết nối].
   Widget _buildPanel(BuildContext context) {
+    void openPanelMenu(Offset at) => _showPanelMenu(context, at);
     return GestureDetector(
       onPanStart: (_) => windowManager.startDragging(),
+      onSecondaryTapUp: (d) => openPanelMenu(d.globalPosition),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
         child: Container(
@@ -358,7 +389,18 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
                   const SizedBox(width: 10),
                   Expanded(child: _buildIpChip()),
                   const SizedBox(width: 8),
-                  _buildHelpPill(),
+                  ChangeNotifierProvider.value(
+                    value: gFFI.serverModel,
+                    child: Consumer<ServerModel>(
+                      builder: (context, serverModel, _) {
+                        final myId = serverModel.serverId.text.trim();
+                        final myPass = serverModel.serverPasswd.text.trim();
+                        return _buildGuiItButton(myId, myPass);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  _buildMinimizeButton(),
                 ],
               ),
             ),
@@ -413,7 +455,7 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          DeskAgentIcons.headphones(
+                          DeskAgentIcons.radio(
                             size: 13,
                             color: _PillPalette.accentText,
                           ),
@@ -440,13 +482,15 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
     );
   }
 
-  /// Dark chip `IP <addr> | <password>` from the approved screenshot.
+  /// Chip hàng 1: `ID <id> | <pass> | <ip>` — bấm để copy từng phần.
+  /// Thứ tự mất chỗ: ID giữ trọn → mật khẩu bullet → IP ellipsis.
   Widget _buildIpChip() {
+    final myId = gFFI.serverModel.serverId.text.trim();
     final pass = gFFI.serverModel.serverPasswd.text.trim();
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
-        height: 26,
+        height: 27,
         padding: const EdgeInsets.symmetric(horizontal: 7),
         decoration: BoxDecoration(
           color: _PillPalette.chip,
@@ -455,94 +499,186 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-              decoration: BoxDecoration(
-                color: _PillPalette.accent,
-                borderRadius: BorderRadius.circular(3),
-              ),
-              child: const Text(
-                'IP',
-                style: TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w800,
-                  color: _PillPalette.accentText,
-                ),
-              ),
-            ),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                _localIp.isEmpty ? '---' : _localIp,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontFamily: _PillPalette.mono,
-                  fontSize: 11.5,
-                  color: _PillPalette.text,
-                ),
-              ),
-            ),
+            _chipBadge('ID', myId.isEmpty ? '---' : formatID(myId), 'Đã sao chép ID!'),
             if (pass.isNotEmpty) ...[
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 5),
+              const _ChipSep(),
+              _chipBadge('Pass', _showPassword ? pass : '••••••', 'Đã sao chép mật khẩu!'),
+            ],
+            const _ChipSep(),
+            Flexible(
+              child: InkWell(
+                onTap: _localIp.isEmpty
+                    ? null
+                    : () {
+                        Clipboard.setData(ClipboardData(text: _localIp));
+                        showToast('Đã sao chép IP!');
+                      },
                 child: Text(
-                  '|',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: _PillPalette.muted,
-                  ),
-                ),
-              ),
-              Flexible(
-                child: Text(
-                  _showPassword ? pass : '••••••',
+                  _localIp.isEmpty ? '---' : _localIp,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontFamily: _PillPalette.mono,
-                    fontSize: 11.5,
-                    color: _PillPalette.text,
+                    fontSize: 12,
+                    color: _PillPalette.muted,
                   ),
                 ),
               ),
-            ],
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildHelpPill() {
-    final expanded = deskAgentWindowMode.value == DeskAgentWindowMode.expanded;
+  /// Badge + giá trị mono, bấm để copy (một phần của chip hàng 1).
+  Widget _chipBadge(String label, String value, String copiedMsg) {
     return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: () => setDeskAgentWindowMode(
-        expanded ? DeskAgentWindowMode.compact : DeskAgentWindowMode.expanded,
+      onTap: value.isEmpty || value == '---'
+          ? null
+          : () {
+              Clipboard.setData(ClipboardData(text: value));
+              showToast(copiedMsg);
+            },
+      onLongPress: label == 'Pass'
+          ? () => setState(() => _showPassword = !_showPassword)
+          : null,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+            decoration: BoxDecoration(
+              color: _PillPalette.accent,
+              borderRadius: BorderRadius.circular(3),
+            ),
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w800,
+                color: _PillPalette.accentText,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: _PillPalette.mono,
+              fontSize: 12,
+              color: _PillPalette.text,
+            ),
+          ),
+        ],
       ),
+    );
+  }
+
+  /// Nút `Gửi IT`: copy ID + mật khẩu cho IT rồi mở chat (mockup
+  /// client-widget.html:1803 copyAndSendIT).
+  Widget _buildGuiItButton(String myId, String myPass) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () {
+        if (myId.isNotEmpty) {
+          Clipboard.setData(ClipboardData(text: 'ID: $myId  |  Pass: $myPass'));
+          showToast('Đã sao chép ID & Mật khẩu để gửi IT!');
+        }
+        setDeskAgentWindowMode(DeskAgentWindowMode.expanded);
+      },
       child: Container(
-        height: 28,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+        height: 27,
+        padding: const EdgeInsets.symmetric(horizontal: 9),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: _PillPalette.border),
+          gradient: const LinearGradient(
+            colors: [_WidgetPalette.orange, _WidgetPalette.orangeDark],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            DeskAgentIcons.headphones(size: 14, color: _PillPalette.accent),
+            DeskAgentIcons.send(size: 12, color: Colors.white),
             const SizedBox(width: 4),
             const Text(
-              'Hỗ trợ',
+              'Gửi IT',
               style: TextStyle(
                 fontSize: 11.5,
-                fontWeight: FontWeight.w600,
-                color: _PillPalette.text,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  /// Nút `–` thu nhỏ cửa sổ (đường thoát nhìn thấy được, P0-3).
+  Widget _buildMinimizeButton() {
+    return InkWell(
+      borderRadius: BorderRadius.circular(6),
+      onTap: () => windowManager.minimize(),
+      child: const SizedBox(
+        width: 27,
+        height: 27,
+        child: Center(
+          child: Text(
+            '–',
+            style: TextStyle(fontSize: 14, color: _PillPalette.muted),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Menu chuột phải trên panel: thu về pill / đóng chạy ngầm (P0-3).
+  void _showPanelMenu(BuildContext context, Offset at) {
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (overlay == null) return;
+    showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        at.dx,
+        at.dy,
+        overlay.size.width - at.dx,
+        overlay.size.height - at.dy,
+      ),
+      color: _PillPalette.chip,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      items: [
+        PopupMenuItem<String>(
+          value: 'collapse',
+          height: 34,
+          onTap: () => setDeskAgentWindowMode(DeskAgentWindowMode.pill),
+          child: const Row(
+            children: [
+              SizedBox(width: 13, child: Center(child: Text( '–', style: TextStyle(fontSize: 14, color: _PillPalette.muted)))),
+              SizedBox(width: 8),
+              Text('Thu gọn', style: TextStyle(fontSize: 12, color: _PillPalette.text)),
+            ],
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'hide',
+          height: 34,
+          onTap: () => windowManager.hide(),
+          child: Row(
+            children: [
+              DeskAgentIcons.x(size: 13, color: _PillPalette.text),
+              const SizedBox(width: 8),
+              const Text('Đóng (Chạy ngầm)',
+                  style: TextStyle(fontSize: 12, color: _PillPalette.text)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -1453,6 +1589,25 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
               }).toList(),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// Dấu `|` ngăn cách hai phần của chip trên panel.
+class _ChipSep extends StatelessWidget {
+  const _ChipSep();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 5),
+      child: Text(
+        '|',
+        style: TextStyle(
+          fontSize: 11,
+          color: _PillPalette.muted.withOpacity(0.7),
+        ),
       ),
     );
   }
