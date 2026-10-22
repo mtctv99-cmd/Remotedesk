@@ -216,9 +216,11 @@ class ChatModel with ChangeNotifier {
             }
           },
           child: DraggableChatWindow(
+              // 320x380 per the remote-session mockup; 250x350 was too narrow
+              // for pasted technical logs.
               position: chatInitPos ?? chatWindowPosition,
-              width: 250,
-              height: 350,
+              width: 320,
+              height: 380,
               chatModel: this));
     });
     overlayState.insert(overlay);

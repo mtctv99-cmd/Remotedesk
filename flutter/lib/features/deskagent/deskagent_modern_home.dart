@@ -2,12 +2,14 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart' show kPrimaryMouseButton, kSecondaryMouseButton;
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/formatter/id_formatter.dart';
 import 'package:flutter_hbb/common/widgets/autocomplete.dart';
+import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_setting_page.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_tab_page.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
@@ -81,6 +83,9 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
   /// First non-loopback IPv4 of this machine, shown in the panel's IP chip.
   String _localIp = '';
 
+  /// Recent peers popup window (`Thiết bị gần đây`, 380×220 frameless).
+  int? _recentPeersWindowId;
+
   Timer? _statusTimer;
   bool _statusRefreshing = false;
   bool _deviceIdLoaded = false;
@@ -88,12 +93,42 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
   @override
   void initState() {
     super.initState();
+    // The widget-mode main window bypasses DesktopTabPage, which normally
+    // registers the cross-window handler; without this, popup windows (the
+    // recent-peers window) cannot reach the connect flow.
+    DesktopMultiWindow.setMethodHandler((call, fromWindowId) async {
+      if (call.method == kWindowConnect) {
+        final map = call.arguments is Map
+            ? call.arguments as Map<dynamic, dynamic>
+            : <dynamic, dynamic>{};
+        final id = '${map['id'] ?? ''}';
+        final ctx = this.context;
+        if (ctx != null && ctx.mounted && id.isNotEmpty) {
+          await connect(
+            ctx,
+            id,
+            isFileTransfer: map['isFileTransfer'] == true,
+            isTerminal: map['isTerminal'] == true,
+            isViewCamera: map['isViewCamera'] == true,
+            isTcpTunneling: map['isTcpTunneling'] == true,
+          );
+          _hideRecentPeersPopup();
+        }
+      }
+    });
     _peersLoader.init(setState);
     _remoteIdFocusNode.addListener(() {
       if (_remoteIdFocusNode.hasFocus && _peersLoader.needLoad) {
         _peersLoader.getAllPeers();
       }
-      // The recent-peers dropdown follows the field's focus.
+      // Show the recent-peers popup while the ID field has focus. Note the
+      // FocusNode does not blur when another window takes focus, which is
+      // exactly what keeps the popup alive while the user taps in it.
+      if (_remoteIdFocusNode.hasFocus) {
+        _openRecentPeersPopup();
+      } else {
+        _hideRecentPeersPopup();
+      }
       if (mounted) setState(() {});
     });
 
@@ -191,6 +226,7 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
 
   @override
   void dispose() {
+    DesktopMultiWindow.setMethodHandler(null);
     _statusTimer?.cancel();
     _remoteIdController.dispose();
     _remoteIdFocusNode.dispose();
@@ -248,6 +284,55 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
         return _buildHomeTab(context);
       }),
     );
+  }
+
+  /// Show/create the recent-peers popup; its bottom sits 4px above the panel
+  /// input row (window top = panel top - 170 for 220 height + 54 offset).
+  Future<void> _openRecentPeersPopup() async {
+    if (!_isDockedWidget || !isWindows) return;
+    final peers = _peersLoader.peers.take(4).map((p) => {
+          'id': p.id,
+          'name': p.alias.isNotEmpty
+              ? p.alias
+              : (p.hostname.isNotEmpty ? p.hostname : p.id),
+          'online': p.online,
+        }).toList();
+    if (_recentPeersWindowId != null) {
+      try {
+        WindowController.fromWindowId(_recentPeersWindowId!).show();
+        DesktopMultiWindow.invokeMethod(
+          _recentPeersWindowId!,
+          'recent-peers-refresh',
+          jsonEncode({'peers': peers}),
+        );
+      } catch (_) {
+        _recentPeersWindowId = null;
+      }
+      return;
+    }
+    final pos = await windowManager.getPosition();
+    final left = pos.dx;
+    var top = pos.dy + 54 - 220 - 4; // bottom == row2Top - 4, opens upward
+    if (top < 0) top = pos.dy + 54 + 4; // tiny screens: fall below the input
+    try {
+      final ctl = await DesktopMultiWindow.createWindow(jsonEncode({
+        'type': -2,
+        'peers': peers,
+        'left': left,
+        'top': top,
+      }));
+      _recentPeersWindowId = ctl.windowId;
+    } catch (e) {
+      debugPrint('recent popup: create failed: $e');
+    }
+  }
+
+  void _hideRecentPeersPopup() {
+    final id = _recentPeersWindowId;
+    if (id == null) return;
+    try {
+      WindowController.fromWindowId(id).hide();
+    } catch (_) {}
   }
 
   /// Pill 82x32 (radius 16) centered inside the 86x40 window. The Listener

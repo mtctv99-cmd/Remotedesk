@@ -250,7 +250,9 @@ class ToolbarState {
   bool _isInitializing = false;
 
   ToolbarState() {
-    _pin = RxBool(false);
+    // P1 UX: sessions start pinned, matching the Win11 mockup; the user can
+    // still unpin, and idle auto-hide keeps 10s instead of 5s below.
+    _pin = RxBool(true);
     final s = bind.getLocalFlutterOption(k: kOptionRemoteMenubarState);
     if (s.isEmpty) {
       return;
@@ -259,7 +261,7 @@ class ToolbarState {
     try {
       final m = jsonDecode(s);
       if (m != null) {
-        _pin = RxBool(m['pin'] ?? false);
+        _pin = RxBool(m['pin'] ?? true);
       }
     } catch (e) {
       debugPrint('Failed to decode toolbar state ${e.toString()}');
@@ -446,6 +448,7 @@ class RemoteMenuEntry {
       ),
       proc: () {
         bind.sessionCtrlAltDel(sessionId: sessionId);
+        showToast('Đã gửi Ctrl+Alt+Del tới máy điều khiển');
         if (dismissFunc != null) {
           dismissFunc();
         }
@@ -666,7 +669,7 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
     });
 
     _debouncerHide = Debouncer<int>(
-      Duration(milliseconds: 5000),
+      Duration(milliseconds: 10000),
       onChanged: _debouncerHideProc,
       initialValue: 0,
     );

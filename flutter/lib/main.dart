@@ -18,6 +18,7 @@ import 'package:flutter_hbb/desktop/screen/desktop_terminal_screen.dart';
 import 'package:flutter_hbb/desktop/widgets/refresh_wrapper.dart';
 import 'package:flutter_hbb/features/deskagent/deskagent_config.dart';
 import 'package:flutter_hbb/features/deskagent/deskagent_frameless.dart';
+import 'package:flutter_hbb/features/deskagent/deskagent_recent_popup.dart';
 import 'package:flutter_hbb/features/deskagent/deskagent_window_mode.dart';
 import 'package:flutter_hbb/models/state_model.dart';
 import 'package:flutter_hbb/utils/multi_window_manager.dart';
@@ -64,6 +65,11 @@ Future<void> main(List<String> args) async {
     // Because stateGlobal.windowId is a global value.
     argument['windowId'] = kWindowId;
     kWindowType = type.windowType;
+    if (type == -2) {
+      // DeskAgent widget popup: `Thiết bị gần đây` (no WindowType needed).
+      runMultiWindow(argument, kAppTypeDesktopRecentPeers);
+      return;
+    }
     switch (kWindowType) {
       case WindowType.RemoteDesktop:
         desktopType = DesktopType.remote;
@@ -258,6 +264,9 @@ void runMultiWindow(
         params: argument,
       );
       break;
+    case kAppTypeDesktopRecentPeers:
+      widget = RecentPeersWindow(argument);
+      break;
     default:
       // no such appType
       exit(0);
@@ -313,6 +322,18 @@ void runMultiWindow(
   }
   // show window from hidden status
   WindowController.fromWindowId(kWindowId!).show();
+  if (appType == kAppTypeDesktopRecentPeers) {
+    // Widget recent popup: frameless 380x220, positioned so its bottom sits
+    // 4px above the panel's input row (window top passed from the caller).
+    final ctl = WindowController.fromWindowId(kWindowId!);
+    final left = (argument['left'] as num?)?.toDouble() ?? 0;
+    final topOffset = (argument['top'] as num?)?.toDouble() ?? 0;
+    await ctl
+        .setFrame(Offset(left, topOffset) & const Size(380, 220));
+    await ctl.setTitle('DeskAgentRecent');
+    await ctl.show();
+    DeskAgentFrameless.apply('DeskAgentRecent');
+  }
 }
 
 void runConnectionManagerScreen() async {
