@@ -226,7 +226,9 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _PillPalette.bg,
+      // Transparent so the rounded card (pill 20px / panel 12px) shows the
+      // desktop at its corners, the way the shipped widget did.
+      backgroundColor: Colors.transparent,
       body: Obx(() {
         final mode = deskAgentWindowMode.value;
         if (_isDockedWidget && mode == DeskAgentWindowMode.pill) {
@@ -336,10 +338,16 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
   Widget _buildPanel(BuildContext context) {
     return GestureDetector(
       onPanStart: (_) => windowManager.startDragging(),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-        color: _PillPalette.bg,
-        child: Column(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: BoxDecoration(
+            color: _PillPalette.bg,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _PillPalette.border),
+          ),
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(
@@ -427,6 +435,7 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
             ),
           ],
         ),
+      ),
       ),
     );
   }
