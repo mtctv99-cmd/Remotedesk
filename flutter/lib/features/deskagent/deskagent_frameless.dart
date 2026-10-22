@@ -13,11 +13,13 @@ class DeskAgentFrameless {
   DeskAgentFrameless._();
 
   static const int _gwlStyle = -16;
+  static const int _gwlExStyle = -20;
   static const int _wsCaption = 0x00C00000;
   static const int _wsSysMenu = 0x00080000;
   static const int _wsMinimizeBox = 0x00020000;
   static const int _wsMaximizeBox = 0x00010000;
   static const int _wsThickFrame = 0x00040000;
+  static const int _wsExNoActivate = 0x08000000;
   static const int _swpNoMove = 0x0002;
   static const int _swpNoSize = 0x0001;
   static const int _swpNoZOrder = 0x0004;
@@ -83,6 +85,13 @@ class DeskAgentFrameless {
       final stripped = style &
           ~(_wsCaption | _wsSysMenu | _wsMinimizeBox | _wsMaximizeBox);
       setWindowLongPtrW(hwnd, _gwlStyle, stripped);
+      // WS_EX_NOACTIVATE keeps the widget from ever taking focus, and the
+      // click never reaches Flutter. The shipped pill did not have it.
+      final exStyle = getWindowLongPtrW(hwnd, _gwlExStyle);
+      final exStripped = exStyle & ~_wsExNoActivate;
+      if (exStripped != exStyle) {
+        setWindowLongPtrW(hwnd, _gwlExStyle, exStripped);
+      }
       setWindowPos(hwnd, 0, 0, 0, 0, 0,
           _swpNoMove | _swpNoSize | _swpNoZOrder | _swpNoActivate | _swpFrameChanged);
     } catch (_) {

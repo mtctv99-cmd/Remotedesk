@@ -192,13 +192,17 @@ void runMainApp(bool startService) async {
 /// Size and anchor live in [setDeskAgentWindowMode].
 Future<void> _applyMainWindowWidgetMode() async {
   await windowManager.setAsFrameless();
-  await setDeskAgentWindowMode(deskAgentWindowMode.value);
+  // Every launch starts collapsed: the restored window frame (or a stale mode
+  // from an earlier session) must not leave the panel open.
+  deskAgentWindowMode.value = DeskAgentWindowMode.pill;
+  await setDeskAgentWindowMode(DeskAgentWindowMode.pill);
   // Startup calls setResizable(true) after this block, which re-adds
   // WS_THICKFRAME, and the style strip must land only once the view is up.
   Future.delayed(const Duration(milliseconds: 900), () async {
     DeskAgentFrameless.apply(getWindowName());
     deskAgentWindowReady = true;
-    await setDeskAgentWindowMode(deskAgentWindowMode.value);
+    deskAgentWindowMode.value = DeskAgentWindowMode.pill;
+    await setDeskAgentWindowMode(DeskAgentWindowMode.pill);
   });
 }
 

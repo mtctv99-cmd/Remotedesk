@@ -68,23 +68,13 @@ Future<void> setDeskAgentWindowMode(DeskAgentWindowMode mode) async {
       final size = Size(logical.width * scale, logical.height * scale);
       final x = work.right - size.width - _kWidgetRightMargin;
       final y = work.bottom - size.height - _kWidgetBottomMargin;
-      if (isWindows && deskAgentWindowReady) {
-        // Deterministic geometry: the plugin channel is unreliable on a
-        // frameless window with the caption bits stripped.
-        DeskAgentFrameless.setBounds(
-          getWindowName(),
-          x.round(),
-          y.round(),
-          size.width.round(),
-          size.height.round(),
-        );
-      } else {
-        await windowManager.setSize(size, ignoreDevicePixelRatio: true);
-        await windowManager.setPosition(
-          Offset(x, y),
-          ignoreDevicePixelRatio: true,
-        );
-      }
+      // The plugin channel is what tells the Flutter view its new size; a raw
+      // SetWindowPos leaves the engine at the old surface size (black area).
+      await windowManager.setSize(size, ignoreDevicePixelRatio: true);
+      await windowManager.setPosition(
+        Offset(x, y),
+        ignoreDevicePixelRatio: true,
+      );
     }
   } catch (e) {
     debugPrint('widget mode: failed to place the window: $e');
