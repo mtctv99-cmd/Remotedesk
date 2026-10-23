@@ -668,11 +668,15 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
     );
   }
 
-  /// Chip hàng 1: `ID <id> | <pass> | <ip>` — bấm để copy từng phần.
-  /// Thứ tự mất chỗ: ID giữ trọn → mật khẩu bullet → IP ellipsis.
+  /// Chip hàng 1: `[ID] <id> | [Pass] ••••` — bấm để copy từng phần.
+  /// ID chưa nhận (rỗng hoặc "Generating …") thì rơi về `[IP] <ip>`,
+  /// và Pass rỗng bị ẩn — không còn chi tiết thừa.
   Widget _buildIpChip() {
-    final myId = gFFI.serverModel.serverId.text.trim();
+    final rawId = gFFI.serverModel.serverId.text.trim();
     final pass = gFFI.serverModel.serverPasswd.text.trim();
+    final idReady = rawId.isNotEmpty && !rawId.startsWith('Generating');
+    final idShown =
+        idReady ? formatID(rawId) : (_localIp.isEmpty ? '---' : _localIp);
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
@@ -684,50 +688,23 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
-          children: myId.isEmpty
-              ? [
-                  // Chưa nhận ID từ rendezvous: hiện IP như client rollback.
-                  _chipBadge('IP', _localIp.isEmpty ? '---' : _localIp,
-                      'Đã sao chép IP!'),
-                  const _ChipSep(),
-                  const Text(
-                    '-',
-                    style: TextStyle(
-                      fontFamily: _PillPalette.mono,
-                      fontSize: 12,
-                      color: _PillPalette.muted,
-                    ),
-                  ),
-                ]
-              : [
-                  _chipBadge('ID', formatID(myId), 'Đã sao chép ID!'),
-                  if (pass.isNotEmpty) ...[
-                    const _ChipSep(),
-                    _chipBadge('Pass', _showPassword ? pass : '••••••',
-                        'Đã sao chép mật khẩu!'),
-                  ],
-                  const _ChipSep(),
-                  Flexible(
-                    child: InkWell(
-                      onTap: _localIp.isEmpty
-                          ? null
-                          : () {
-                              Clipboard.setData(ClipboardData(text: _localIp));
-                              showToast('Đã sao chép IP!');
-                            },
-                      child: Text(
-                        _localIp.isEmpty ? '---' : _localIp,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontFamily: _PillPalette.mono,
-                          fontSize: 12,
-                          color: _PillPalette.muted,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+          children: [
+            Flexible(
+              child: _chipBadge(
+                idReady ? 'ID' : 'IP',
+                idShown,
+                idReady ? 'Đã sao chép ID!' : 'Đã sao chép IP!',
+              ),
+            ),
+            // Pass chỉ hiện khi có thật — không còn "Pass -" rỗng.
+            if (pass.isNotEmpty && pass != '-') ...[
+              const _ChipSep(),
+              Flexible(
+                child: _chipBadge('Pass', _showPassword ? pass : '••••••',
+                    'Đã sao chép mật khẩu!'),
+              ),
+            ],
+          ],
         ),
       ),
     );
