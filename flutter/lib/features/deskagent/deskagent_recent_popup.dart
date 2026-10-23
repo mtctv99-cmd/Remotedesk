@@ -4,15 +4,15 @@ import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/features/deskagent/deskagent_icons.dart';
-import 'package:flutter_hbb/features/deskagent/deskagent_tokens.dart';
+import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:flutter_hbb/models/state_model.dart';
 
-/// Secondary window of the widget: `Thiết bị gần đây` (380x220, frameless).
+/// Secondary window of the widget: the `Thiết bị gần đây` dropdown of
+/// `showcase/client-widget.html` (`.recent-dropdown`: 356px wide, 8px radius,
+/// light mica surface, uppercase header with a `Xóa` action).
 ///
-/// Design doc (bao-cao-ux): the recent-peers dropdown is its own popup window,
-/// opening upward with its bottom pinned 4px above the input row of the panel.
-/// Tapping a peer starts a session through the main window (`kWindowConnect`).
-/// The main window pushes an updated peer list via `recent-peers-refresh`.
+/// Tapping a peer starts a session through the main window (`kWindowConnect`);
+/// the main window pushes an updated peer list via `recent-peers-refresh`.
 class RecentPeersWindow extends StatefulWidget {
   RecentPeersWindow(this.argument, {Key? key}) : super(key: key);
 
@@ -23,7 +23,16 @@ class RecentPeersWindow extends StatefulWidget {
 }
 
 class _RecentPeersWindowState extends State<RecentPeersWindow> {
-  static const Color _header = Color(0xFF1A1A1E);
+  static const Color _bg = Color(0xFFF9F9F9);
+  static const Color _headerBg = Color(0x08000000);
+  static const Color _border = Color(0x12000000);
+  static const Color _borderStrong = Color(0x24000000);
+  static const Color _text = Color(0xFF1C1C1C);
+  static const Color _muted = Color(0xFF5C5C5C);
+  static const Color _textSubtle = Color(0xFF8A8A8A);
+  static const Color _blue = Color(0xFF0284C7);
+  static const Color _blueLight = Color(0x140284C7);
+  static const Color _green = Color(0xFF10B981);
   static const String _mono = 'Consolas';
 
   List<Map<String, dynamic>> _peers = [];
@@ -52,13 +61,11 @@ class _RecentPeersWindowState extends State<RecentPeersWindow> {
 
   List<Map<String, dynamic>> _parse(dynamic raw) {
     if (raw is! List) return [];
-    return raw
-        .whereType<Map>()
-        .map((m) => m.cast<String, dynamic>())
-        .toList();
+    return raw.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList();
   }
 
   void _closeSelf() {
+    DesktopMultiWindow.invokeMethod(0, 'recent-peers-closed', jsonEncode({}));
     try {
       WindowController.fromWindowId(stateGlobal.windowId).close();
     } catch (_) {}
@@ -84,72 +91,109 @@ class _RecentPeersWindowState extends State<RecentPeersWindow> {
     _closeSelf();
   }
 
+  /// `Xóa` in the mockup header: forget every listed peer through the real
+  /// recent-peers store, then empty the list.
+  Future<void> _clearHistory() async {
+    for (final p in _peers) {
+      final id = '${p['id'] ?? ''}';
+      if (id.isEmpty) continue;
+      try {
+        await bind.mainRemovePeer(id: id);
+      } catch (_) {}
+    }
+    if (mounted) setState(() => _peers = []);
+  }
+
   @override
   Widget build(BuildContext context) {
     final peers = _peers;
     return Scaffold(
-      backgroundColor: DeskAgentFluentColors.window,
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            // Header 26 "Thiết bị gần đây" (client-widget.html:1834).
-            height: 26,
-            padding: const EdgeInsets.fromLTRB(10, 0, 6, 0),
-            color: _header,
-            child: Row(
-              children: [
-                const Text(
-                  'Thiết bị gần đây',
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.4,
-                    color: DeskAgentFluentColors.textPrimary,
-                  ),
-                ),
-                const Spacer(),
-                InkWell(
-                  onTap: _closeSelf,
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: DeskAgentIcons.x(
-                      size: 12,
-                      color: DeskAgentFluentColors.textSecondary,
-                    ),
-                  ),
-                ),
-              ],
+      backgroundColor: Colors.transparent,
+      body: Container(
+        decoration: BoxDecoration(
+          color: _bg,
+          border: Border.all(color: _borderStrong),
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x47000000),
+              blurRadius: 36,
+              offset: Offset(0, 16),
             ),
-          ),
-          Expanded(
-            child: peers.isEmpty
-                ? Center(
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              height: 26,
+              padding: const EdgeInsets.fromLTRB(12, 0, 8, 0),
+              decoration: const BoxDecoration(
+                color: _headerBg,
+                border: Border(bottom: BorderSide(color: _border)),
+              ),
+              child: Row(
+                children: [
+                  const Expanded(
                     child: Text(
-                      'Không có thiết bị gần đây',
-                      style: const TextStyle(
-                        fontSize: 11.5,
-                        color: DeskAgentFluentColors.textSecondary,
+                      'THIẾT BỊ GẦN ĐÂY',
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
+                        color: _textSubtle,
                       ),
                     ),
-                  )
-                : SingleChildScrollView(
-                    child: Column(
+                  ),
+                  InkWell(
+                    onTap: _clearHistory,
+                    borderRadius: BorderRadius.circular(3),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      child: Text(
+                        'Xóa',
+                        style: TextStyle(fontSize: 10.5, color: _muted),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: peers.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'Không có thiết bị gần đây',
+                        style: TextStyle(fontSize: 11.5, color: _textSubtle),
+                      ),
+                    )
+                  : ListView(
+                      padding: const EdgeInsets.all(4),
                       children: [
                         for (final p in peers.take(4))
                           InkWell(
                             onTap: () => _connectPeer('${p['id'] ?? ''}'),
+                            borderRadius: BorderRadius.circular(8),
                             child: Padding(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 7),
+                                  horizontal: 8, vertical: 6),
                               child: Row(
                                 children: [
-                                  DeskAgentIcons.monitor(
-                                    size: 14,
-                                    color: DeskAgentFluentColors.accent,
+                                  Container(
+                                    width: 26,
+                                    height: 26,
+                                    decoration: BoxDecoration(
+                                      color: _blueLight,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Center(
+                                      child: DeskAgentIcons.monitor(
+                                          size: 13, color: _blue),
+                                    ),
                                   ),
-                                  const SizedBox(width: 8),
+                                  const SizedBox(width: 9),
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment:
@@ -163,8 +207,8 @@ class _RecentPeersWindowState extends State<RecentPeersWindow> {
                                           style: const TextStyle(
                                             fontSize: 12,
                                             fontWeight: FontWeight.w600,
-                                            color: DeskAgentFluentColors
-                                                .textPrimary,
+                                            color: _text,
+                                            height: 1.25,
                                           ),
                                         ),
                                         Text(
@@ -172,33 +216,42 @@ class _RecentPeersWindowState extends State<RecentPeersWindow> {
                                           maxLines: 1,
                                           style: const TextStyle(
                                             fontFamily: _mono,
-                                            fontSize: 10.5,
-                                            color: DeskAgentFluentColors
-                                                .textSecondary,
+                                            fontSize: 11,
+                                            color: _muted,
+                                            height: 1.25,
                                           ),
                                         ),
                                       ],
                                     ),
                                   ),
-                                  Container(
-                                    width: 6,
-                                    height: 6,
-                                    margin: const EdgeInsets.only(
-                                        right: 4, left: 8),
-                                    decoration: BoxDecoration(
-                                      color: p['online'] == true
-                                          ? DeskAgentFluentColors.success
-                                          : DeskAgentFluentColors.danger,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  Text(
-                                    p['online'] == true ? 'Online' : 'Offline',
-                                    style: const TextStyle(
-                                      fontSize: 10,
-                                      color: DeskAgentFluentColors
-                                          .textSecondary,
-                                    ),
+                                  const SizedBox(width: 8),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        width: 5,
+                                        height: 5,
+                                        decoration: BoxDecoration(
+                                          color: p['online'] == true
+                                              ? _green
+                                              : _textSubtle,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        p['online'] == true
+                                            ? 'Online'
+                                            : 'Offline',
+                                        style: TextStyle(
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w600,
+                                          color: p['online'] == true
+                                              ? _green
+                                              : _textSubtle,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
@@ -206,9 +259,9 @@ class _RecentPeersWindowState extends State<RecentPeersWindow> {
                           ),
                       ],
                     ),
-                  ),
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }

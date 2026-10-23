@@ -2,6 +2,28 @@ import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
 
+final class _DeskAgentRect extends Struct {
+  @Int32()
+  external int left;
+
+  @Int32()
+  external int top;
+
+  @Int32()
+  external int right;
+
+  @Int32()
+  external int bottom;
+}
+
+final class _DeskAgentPoint extends Struct {
+  @Int32()
+  external int x;
+
+  @Int32()
+  external int y;
+}
+
 /// Window-style surgery for the docked widget.
 ///
 /// `window_manager.setAsFrameless()` alone leaves the caption bits in
@@ -53,6 +75,48 @@ class DeskAgentFrameless {
     }
   }
 
+  /// True when the mouse pointer is more than [buffer] px outside the window
+  /// [windowTitle]. Used by the auto-collapse watchdog: a blur can fire while
+  /// the pointer is still over the card (e.g. right after a resize), so the
+  /// decision is taken on the real cursor position.
+  static bool isCursorOutsideWindow(String windowTitle, {int buffer = 6}) {
+    try {
+      final user32 = DynamicLibrary.open('user32.dll');
+      final findWindowW = user32.lookupFunction<
+          IntPtr Function(Pointer<Utf16>, Pointer<Utf16>),
+          int Function(Pointer<Utf16>, Pointer<Utf16>)>('FindWindowW');
+      final getWindowRect = user32.lookupFunction<
+          Int32 Function(IntPtr, Pointer<_DeskAgentRect>),
+          int Function(int, Pointer<_DeskAgentRect>)>('GetWindowRect');
+      final getCursorPos = user32.lookupFunction<
+          Int32 Function(Pointer<_DeskAgentPoint>),
+          int Function(Pointer<_DeskAgentPoint>)>('GetCursorPos');
+
+      final title = windowTitle.toNativeUtf16();
+      final className = 'FLUTTER_RUNNER_WIN32_WINDOW'.toNativeUtf16();
+      final hwnd = findWindowW(className, title);
+      calloc.free(title);
+      calloc.free(className);
+      if (hwnd == 0) return false;
+
+      final rect = calloc<_DeskAgentRect>();
+      final point = calloc<_DeskAgentPoint>();
+      getWindowRect(hwnd, rect);
+      getCursorPos(point);
+      final r = rect.ref;
+      final p = point.ref;
+      final outside = p.x < r.left - buffer ||
+          p.x > r.right + buffer ||
+          p.y < r.top - buffer ||
+          p.y > r.bottom + buffer;
+      calloc.free(rect);
+      calloc.free(point);
+      return outside;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Strip the caption bits from the main window.
   static void apply(String windowTitle) {
     try {
@@ -68,8 +132,7 @@ class DeskAgentFrameless {
           int Function(int, int, int)>('SetWindowLongPtrW');
       final setWindowPos = user32.lookupFunction<
           Int32 Function(IntPtr, IntPtr, Int32, Int32, Int32, Int32, Uint32),
-          int Function(
-              int, int, int, int, int, int, int)>('SetWindowPos');
+          int Function(int, int, int, int, int, int, int)>('SetWindowPos');
 
       final title = windowTitle.toNativeUtf16();
       final className = 'FLUTTER_RUNNER_WIN32_WINDOW'.toNativeUtf16();
@@ -82,8 +145,8 @@ class DeskAgentFrameless {
       // Keep WS_THICKFRAME: removing it broke the Flutter surface (the window
       // rendered transparent). The caption bits alone are what enforce the
       // 136px minimum track width.
-      final stripped = style &
-          ~(_wsCaption | _wsSysMenu | _wsMinimizeBox | _wsMaximizeBox);
+      final stripped =
+          style & ~(_wsCaption | _wsSysMenu | _wsMinimizeBox | _wsMaximizeBox);
       setWindowLongPtrW(hwnd, _gwlStyle, stripped);
       // WS_EX_NOACTIVATE keeps the widget from ever taking focus, and the
       // click never reaches Flutter. The shipped pill did not have it.
@@ -92,8 +155,18 @@ class DeskAgentFrameless {
       if (exStripped != exStyle) {
         setWindowLongPtrW(hwnd, _gwlExStyle, exStripped);
       }
-      setWindowPos(hwnd, 0, 0, 0, 0, 0,
-          _swpNoMove | _swpNoSize | _swpNoZOrder | _swpNoActivate | _swpFrameChanged);
+      setWindowPos(
+          hwnd,
+          0,
+          0,
+          0,
+          0,
+          0,
+          _swpNoMove |
+              _swpNoSize |
+              _swpNoZOrder |
+              _swpNoActivate |
+              _swpFrameChanged);
     } catch (_) {
       // Non-Windows or an unexpected API shape: keep the normal frame.
     }

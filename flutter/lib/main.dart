@@ -325,14 +325,15 @@ void runMultiWindow(
   // show window from hidden status
   WindowController.fromWindowId(kWindowId!).show();
   if (appType == kAppTypeDesktopRecentPeers) {
-    // Widget recent popup: frameless 380x220, positioned so its bottom sits
-    // 4px above the panel's input row (window top passed from the caller).
+    // Widget recent popup: frameless 356x200 dropdown anchored 12px left of
+    // the card and 83px below its top (under the connect bar, as in the
+    // mockup .recent-dropdown).
     final left = (argument['left'] as num?)?.toDouble() ?? 0;
     final topOffset = (argument['top'] as num?)?.toDouble() ?? 0;
     print('recent-popup child: window shown, setting frame left=$left top=$topOffset');
     final ctl = WindowController.fromWindowId(kWindowId!);
     await ctl
-        .setFrame(Offset(left, topOffset) & const Size(380, 220));
+        .setFrame(Offset(left, topOffset) & const Size(356, 200));
     await ctl.setTitle('DeskAgentRecent');
     await ctl.show();
     print('recent-popup child: frame+title set, body rendered');

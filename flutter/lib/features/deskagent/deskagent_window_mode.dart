@@ -18,7 +18,7 @@ import 'package:window_size/window_size.dart' as window_size;
 enum DeskAgentWindowMode { pill, compact, expanded }
 
 const double _kWidgetWidth = 380;
-const double _kWidgetCompactHeight = 96;
+const double _kWidgetCompactHeight = 140;
 const double _kWidgetPillWidth = 86;
 const double _kWidgetPillHeight = 40;
 const double _kWidgetExpandedBottomGap = 58;
@@ -26,7 +26,8 @@ const double _kWidgetRightMargin = 10;
 const double _kWidgetBottomMargin = 6;
 
 /// Current mode of the main widget window.
-final Rx<DeskAgentWindowMode> deskAgentWindowMode = DeskAgentWindowMode.pill.obs;
+final Rx<DeskAgentWindowMode> deskAgentWindowMode =
+    DeskAgentWindowMode.pill.obs;
 
 /// Set once the window is up and the frameless style has been applied; before
 /// that, stripping WS_CAPTION leaves the Flutter view attached to a surface

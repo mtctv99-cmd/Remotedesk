@@ -3,7 +3,8 @@ import 'dart:ui';
 import 'package:flutter_hbb/features/deskagent/deskagent_window_mode.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-// Sizes from the approved shipped widget (pill 86x40 -> panel 380x96).
+// Sizes from the approved shipped widget (pill 86x40 -> compact card
+// 380x140 per showcase/client-widget.html).
 void main() {
   test('pill is 86x40 regardless of work area', () {
     expect(
@@ -12,10 +13,10 @@ void main() {
     );
   });
 
-  test('compact is 380x96 regardless of work area', () {
+  test('compact is 380x140 regardless of work area', () {
     expect(
       widgetWindowSize(DeskAgentWindowMode.compact, 1040),
-      const Size(380, 96),
+      const Size(380, 140),
     );
   });
 
