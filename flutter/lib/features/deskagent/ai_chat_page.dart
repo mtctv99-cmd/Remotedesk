@@ -8,8 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/features/deskagent/deskagent_config.dart';
-import 'package:flutter_hbb/features/deskagent/deskagent_icons.dart';
-import 'package:flutter_hbb/features/deskagent/deskagent_tokens.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:pasteboard/pasteboard.dart';
 

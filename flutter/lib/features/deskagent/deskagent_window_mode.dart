@@ -96,3 +96,41 @@ Size widgetWindowSize(DeskAgentWindowMode mode, double workAreaHeight) {
   };
   return Size(width, max(height, _kWidgetPillHeight));
 }
+
+/// Resize the docked widget window to [logicalHeight] logical px tall, keeping
+/// the width and the bottom-right anchoring of the mode layouts. The settings
+/// overlay opens with this (taller than the compact panel) and restores the
+/// mode size afterwards via [setDeskAgentWindowMode].
+Future<void> resizeDeskAgentWidgetWindow(double logicalHeight) async {
+  if (!isDesktop || desktopType != DesktopType.main) {
+    return;
+  }
+  if (!isWindows || !deskAgentWindowReady) {
+    return;
+  }
+  try {
+    final screens = await window_size.getScreenList();
+    if (screens.isEmpty) return;
+    final screen = screens.firstWhere(
+      (s) => s.frame.left == 0 && s.frame.top == 0,
+      orElse: () => screens.first,
+    );
+    final work = screen.visibleFrame; // physical px, excludes the taskbar
+    final scale = screen.scaleFactor <= 0 ? 1.0 : screen.scaleFactor;
+    final heightPx = max(logicalHeight, _kWidgetPillHeight) * scale;
+    final widthPx = _kWidgetWidth * scale;
+    final x = work.right - widthPx - _kWidgetRightMargin;
+    final y = work.bottom - heightPx - _kWidgetBottomMargin;
+    await windowManager.setSize(
+      Size(widthPx, heightPx),
+      ignoreDevicePixelRatio: true,
+    );
+    await windowManager.setPosition(
+      Offset(x, y),
+      ignoreDevicePixelRatio: true,
+    );
+  } catch (e) {
+    debugPrint('widget mode: settings resize failed: $e');
+  }
+  await windowManager.setAlwaysOnTop(true);
+}

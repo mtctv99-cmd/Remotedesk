@@ -12,6 +12,7 @@ import 'package:flutter_hbb/common/widgets/autocomplete.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_setting_page.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_tab_page.dart';
+import 'package:flutter_hbb/features/deskagent/deskagent_settings_overlay.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:flutter_hbb/models/server_model.dart';
 import 'package:flutter_hbb/models/state_model.dart';
@@ -85,6 +86,7 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
 
   /// Recent peers popup window (`Thiết bị gần đây`, 380×220 frameless).
   int? _recentPeersWindowId;
+  bool _showSettings = false;
 
   Timer? _statusTimer;
   bool _statusRefreshing = false;
@@ -255,6 +257,19 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
     );
   }
 
+  /// Cài đặt: swap nội dung cửa sổ sang overlay (mockup client-widget.html),
+  /// phóng cửa sổ 380×430; đóng thì trả lại kích thước của mode hiện tại.
+  Future<void> _openSettings() async {
+    _hideRecentPeersPopup();
+    setState(() => _showSettings = true);
+    await resizeDeskAgentWidgetWindow(430);
+  }
+
+  Future<void> _closeSettings() async {
+    setState(() => _showSettings = false);
+    await setDeskAgentWindowMode(deskAgentWindowMode.value);
+  }
+
   bool get _isDockedWidget =>
       isDesktop &&
       desktopType == DesktopType.main &&
@@ -269,9 +284,13 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
       body: Obx(() {
         final mode = deskAgentWindowMode.value;
         if (_isDockedWidget && mode == DeskAgentWindowMode.pill) {
+          if (_showSettings) _showSettings = false;
           return _buildPill(context);
         }
         if (_isDockedWidget) {
+          if (_showSettings) {
+            return DeskAgentSettingsOverlay(onClose: _closeSettings);
+          }
           return Column(
             children: [
               _buildPanel(context),
@@ -470,7 +489,18 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
               height: 38,
               child: Row(
                 children: [
-                  DeskAgentIcons.monitor(size: 16, color: _PillPalette.accent),
+                  Tooltip(
+                    message: 'Cài đặt',
+                    child: InkWell(
+                      onTap: _openSettings,
+                      borderRadius: BorderRadius.circular(6),
+                      child: Padding(
+                        padding: const EdgeInsets.all(3),
+                        child: DeskAgentIcons.monitor(
+                            size: 16, color: _PillPalette.accent),
+                      ),
+                    ),
+                  ),
                   const SizedBox(width: 10),
                   Expanded(child: _buildIpChip()),
                   const SizedBox(width: 8),

@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/chat_page.dart';
 import 'package:flutter_hbb/features/deskagent/ai_chat_page.dart';
 import 'package:flutter_hbb/features/deskagent/deskagent_config.dart';
