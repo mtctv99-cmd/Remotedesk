@@ -80,6 +80,10 @@ Future<void> setDeskAgentWindowMode(DeskAgentWindowMode mode) async {
     debugPrint('widget mode: failed to place the window: $e');
   }
   await windowManager.setAlwaysOnTop(true);
+  // Ẩn khỏi taskbar — DeskAgent chỉ hiển thị icon ở khay hệ thống.
+  if (isWindows) {
+    await windowManager.setSkipTaskbar(true);
+  }
 }
 
 /// Logical size of the widget window for [mode] on a work area
@@ -133,4 +137,7 @@ Future<void> resizeDeskAgentWidgetWindow(double logicalHeight) async {
     debugPrint('widget mode: settings resize failed: $e');
   }
   await windowManager.setAlwaysOnTop(true);
+  if (isWindows) {
+    await windowManager.setSkipTaskbar(true);
+  }
 }

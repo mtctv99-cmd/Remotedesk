@@ -668,15 +668,51 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
     );
   }
 
-  /// Chip hàng 1: `[ID] <id> | [Pass] ••••` — bấm để copy từng phần.
-  /// ID chưa nhận (rỗng hoặc "Generating …") thì rơi về `[IP] <ip>`,
-  /// và Pass rỗng bị ẩn — không còn chi tiết thừa.
+  /// Chip hàng 1 gọn: `IP <ip> · ID <id> · Pass <mask>` — bấm copy từng
+  /// phần; font nhỏ để vừa hàng 380px cạnh logo + nút Hỗ trợ. ID chưa nhận
+  /// (rỗng/"Generating") hiện `---`; Pass rỗng bị ẩn.
   Widget _buildIpChip() {
     final rawId = gFFI.serverModel.serverId.text.trim();
     final pass = gFFI.serverModel.serverPasswd.text.trim();
     final idReady = rawId.isNotEmpty && !rawId.startsWith('Generating');
-    final idShown =
-        idReady ? formatID(rawId) : (_localIp.isEmpty ? '---' : _localIp);
+    final mono = const TextStyle(
+        fontFamily: _PillPalette.mono,
+        fontSize: 9.5,
+        height: 1.1,
+        color: _PillPalette.text);
+    Widget miniBadge(String label) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+          decoration: BoxDecoration(
+            color: _PillPalette.accent,
+            borderRadius: BorderRadius.circular(3),
+          ),
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 8,
+              fontWeight: FontWeight.w800,
+              color: _PillPalette.accentText,
+            ),
+          ),
+        );
+    Widget val(String v, String copyMsg, {bool dim = false, bool copy = true}) {
+      return InkWell(
+        onTap: copy && v.isNotEmpty && v != '---'
+            ? () {
+                Clipboard.setData(ClipboardData(text: v));
+                showToast(copyMsg);
+              }
+            : null,
+        child: Text(
+          v,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: mono.copyWith(
+              color: dim ? _PillPalette.muted : _PillPalette.text),
+        ),
+      );
+    }
+
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
@@ -689,19 +725,37 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            miniBadge('IP'),
+            const SizedBox(width: 3),
             Flexible(
-              child: _chipBadge(
-                idReady ? 'ID' : 'IP',
-                idShown,
-                idReady ? 'Đã sao chép ID!' : 'Đã sao chép IP!',
-              ),
-            ),
-            // Pass chỉ hiện khi có thật — không còn "Pass -" rỗng.
+                child: val(
+                    _localIp.isEmpty ? '---' : _localIp, 'Đã sao chép IP!')),
+            const _ChipSep(),
+            miniBadge('ID'),
+            const SizedBox(width: 3),
+            Flexible(
+                child: val(idReady ? formatID(rawId) : '---', 'Đã sao chép ID!',
+                    dim: !idReady, copy: idReady)),
             if (pass.isNotEmpty && pass != '-') ...[
               const _ChipSep(),
-              Flexible(
-                child: _chipBadge('Pass', _showPassword ? pass : '••••••',
-                    'Đã sao chép mật khẩu!'),
+              InkWell(
+                onTap: () => setState(() => _showPassword = !_showPassword),
+                onLongPress: () {
+                  Clipboard.setData(ClipboardData(text: pass));
+                  showToast('Đã sao chép mật khẩu!');
+                },
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    miniBadge('Pass'),
+                    const SizedBox(width: 3),
+                    Text(
+                      _showPassword ? pass : '••••••',
+                      maxLines: 1,
+                      style: mono,
+                    ),
+                  ],
+                ),
               ),
             ],
           ],
@@ -756,40 +810,32 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
     );
   }
 
-  /// Nút `Hỗ trợ`: copy ID + mật khẩu cho IT rồi mở chat — đúng client
-  /// rollback (nền tối, icon headset cyan, chữ trắng, radius 14).
+  /// Nút `Hỗ trợ` rút gọn (icon-only) để nhường chỗ cho chip IP·ID·Pass.
   Widget _buildHelpButton(String myId, String myPass) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: () {
-        if (myId.isNotEmpty) {
-          Clipboard.setData(ClipboardData(text: 'ID: $myId  |  Pass: $myPass'));
-          showToast('Đã sao chép ID & Mật khẩu để gửi IT!');
-        }
-        setDeskAgentWindowMode(DeskAgentWindowMode.expanded);
-      },
-      child: Container(
-        height: 28,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        decoration: BoxDecoration(
-          color: const Color(0xFF2B2B32),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withOpacity(.07)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DeskAgentIcons.headphones(size: 13, color: _PillPalette.accent),
-            const SizedBox(width: 5),
-            const Text(
-              'Hỗ trợ',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-            ),
-          ],
+    return Tooltip(
+      message: 'Hỗ trợ — gửi ID & mật khẩu cho IT, mở chat',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () {
+          if (myId.isNotEmpty) {
+            Clipboard.setData(
+                ClipboardData(text: 'ID: $myId  |  Pass: $myPass'));
+            showToast('Đã sao chép ID & Mật khẩu để gửi IT!');
+          }
+          setDeskAgentWindowMode(DeskAgentWindowMode.expanded);
+        },
+        child: Container(
+          width: 36,
+          height: 28,
+          decoration: BoxDecoration(
+            color: const Color(0xFF2B2B32),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.white.withOpacity(.07)),
+          ),
+          child: Center(
+            child:
+                DeskAgentIcons.headphones(size: 14, color: _PillPalette.accent),
+          ),
         ),
       ),
     );
