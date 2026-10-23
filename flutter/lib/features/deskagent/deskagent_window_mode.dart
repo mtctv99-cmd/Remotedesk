@@ -35,6 +35,35 @@ final Rx<DeskAgentWindowMode> deskAgentWindowMode =
 /// that never gets sized (the window renders white).
 bool deskAgentWindowReady = false;
 
+/// Option key của wd-trace (cùng một key với watchdog trong modern_home).
+const String kDeskAgentTraceKey = 'wd-trace';
+
+/// Ghi vết UI của widget vào option `wd-trace` — NỐI TIẾP thay vì ghi đè.
+///
+/// Nguyên nhân "panel tự ẩn" (phiên 16:34): key chỉ ghi đè một dòng nên
+/// lịch sử mất, chỉ còn 'schedule(blur)' mà không biết path nào ẩn cửa sổ.
+/// Nối tiếp + mốc giờ giúp tái hiện được chuỗi sự kiện; chuỗi có cap (~2KB)
+/// nên toml không phình ra. Option persist xuyên process (DeskAgent_local
+/// .toml), nên vết còn nhìn thấy từ nhiều lần khởi động trước.
+void wdTraceAppend(String msg) {
+  if (!isDesktop) return;
+  try {
+    final t = DateTime.now();
+    final stamp = '${t.hour.toString().padLeft(2, '0')}'
+        ':${t.minute.toString().padLeft(2, '0')}'
+        ':${t.second.toString().padLeft(2, '0')}'
+        '.${t.millisecond.toString().padLeft(3, '0')}';
+    var entry = '$stamp $msg';
+    final prev = bind.mainGetLocalOption(key: kDeskAgentTraceKey);
+    if (prev.isNotEmpty) entry = '$prev | $entry';
+    const cap = 2400;
+    if (entry.length > cap) entry = entry.substring(entry.length - cap);
+    bind.mainSetLocalOption(key: kDeskAgentTraceKey, value: entry);
+  } catch (_) {
+    // vết chỉ để debug; lỗi trace không được phá luồng UI.
+  }
+}
+
 /// Apply [mode] to the main window: size first, then re-anchor the bottom-right
 /// corner (a resize alone would keep the top-left corner in place).
 /// No-op outside the docked widget window (widget mode off, other windows).
@@ -45,6 +74,9 @@ Future<void> setDeskAgentWindowMode(DeskAgentWindowMode mode) async {
   if (bind.mainGetLocalOption(key: kOptionDeskAgentWidgetMode) == 'N') {
     return;
   }
+  // Mọi thay đổi mode (watchdog, menu, nút thu gọn, startup) đều qua đây —
+  // điểm ghi vết duy nhất để trả lời "ai thu panel về pill".
+  wdTraceAppend('mode→${mode.name}');
   deskAgentWindowMode.value = mode;
   if (isWindows && deskAgentWindowReady) {
     // The plugin's frameless flag alone leaves WS_CAPTION in GWL_STYLE, and

@@ -81,7 +81,9 @@ class _DeskAgentSettingsOverlayState extends State<DeskAgentSettingsOverlay> {
     }
   }
 
-  Future<void> _setAutostart(bool on) async {
+  /// Đặt trạng thái khởi động cùng Windows; true khi reg key thành công
+  /// (trước kia exitCode bị bỏ qua — toggle lỗi vẫn báo "saved").
+  Future<bool> _setAutostart(bool on) async {
     final exe = Platform.resolvedExecutable;
     final args = on
         ? [
@@ -102,25 +104,41 @@ class _DeskAgentSettingsOverlayState extends State<DeskAgentSettingsOverlay> {
             'DeskAgent',
             '/f'
           ];
-    await Process.run('reg', args);
+    try {
+      final res = await Process.run('reg', args);
+      return res.exitCode == 0;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Cài Windows Service qua UAC: bật `--install`, tắt `--uninstall`.
+  /// exitCode != 0 (vd 1223) là người dùng HỦY bảng UAC — phải báo đúng
+  /// thay vì dò lại isInstalled rồi toast sai kết quả.
   Future<void> _setService(bool on) async {
     setState(() => _serviceBusy = true);
     try {
       final exe = Platform.resolvedExecutable;
       final arg = on ? '--install' : '--uninstall';
-      await Process.run('powershell', [
+      final res = await Process.run('powershell', [
         '-NoProfile',
         '-Command',
         'Start-Process -FilePath \'$exe\' -ArgumentList \'$arg\' -Verb RunAs -Wait',
       ]);
-      await Future.delayed(const Duration(seconds: 2));
-      _serviceInstalled = bind.mainIsInstalled();
-      showToast(_serviceInstalled
-          ? 'Windows Service đã bật'
-          : 'Windows Service đã tắt');
+      if (res.exitCode != 0) {
+        showToast('Yêu cầu quyền Administrator bị hủy — dịch vụ không thay đổi');
+      } else {
+        await Future.delayed(const Duration(seconds: 2));
+        _serviceInstalled = bind.mainIsInstalled();
+        if (mounted) setState(() {}); // cập nhật nhãn nút Bật/Tắt theo thật.
+        showToast(on
+            ? (_serviceInstalled
+                ? 'Windows Service đã bật'
+                : 'Windows Service chưa bật được')
+            : (!_serviceInstalled
+                ? 'Windows Service đã tắt'
+                : 'Windows Service chưa tắt được'));
+      }
     } catch (_) {
       showToast(translate('Failed'));
     }
@@ -155,12 +173,16 @@ class _DeskAgentSettingsOverlayState extends State<DeskAgentSettingsOverlay> {
         ],
       ),
     );
-    if (ok == true && controller.text.isNotEmpty) {
-      final success = await bind.mainSetPermanentPasswordWithResult(
-          password: controller.text);
-      showToast(success ? 'Đã đặt mật khẩu Admin' : translate('Failed'));
-    }
+    final pass = controller.text;
     controller.dispose();
+    if (ok != true || pass.isEmpty) return;
+    if (pass.length < 6) {
+      showToast('Mật khẩu Admin cần ít nhất 6 ký tự');
+      return;
+    }
+    final success = await bind.mainSetPermanentPasswordWithResult(
+        password: pass);
+    showToast(success ? 'Đã đặt mật khẩu Admin' : translate('Failed'));
   }
 
   Future<void> _save() async {
@@ -175,8 +197,12 @@ class _DeskAgentSettingsOverlayState extends State<DeskAgentSettingsOverlay> {
         key: kOptionEnableClipboard, value: _enableClipboard ? 'Y' : 'N');
     await bind.mainSetOption(
         key: kOptionEnableAudio, value: _enableAudio ? 'Y' : 'N');
-    await _setAutostart(_autostart);
-    showToast(translate('Settings saved'));
+    final autostartOk = await _setAutostart(_autostart);
+    if (mounted) {
+      showToast(autostartOk
+          ? translate('Settings saved')
+          : 'Đã lưu, nhưng đặt tự khởi động cùng Windows thất bại');
+    }
     if (mounted) setState(() => _saving = false);
   }
 

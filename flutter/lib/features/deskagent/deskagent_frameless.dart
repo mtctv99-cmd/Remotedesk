@@ -29,8 +29,7 @@ final class _DeskAgentPoint extends Struct {
 /// `window_manager.setAsFrameless()` alone leaves the caption bits in
 /// `GWL_STYLE`, so Windows keeps clamping the window to the 136px minimum
 /// track width (the pill is 86px wide). Removing the bits directly is what
-/// the previous shipped build did; `WS_THICKFRAME` has to go too, otherwise
-/// the DWM keeps a resize frame and the same minimum applies.
+/// the previous shipped build did.
 class DeskAgentFrameless {
   DeskAgentFrameless._();
 
@@ -40,7 +39,6 @@ class DeskAgentFrameless {
   static const int _wsSysMenu = 0x00080000;
   static const int _wsMinimizeBox = 0x00020000;
   static const int _wsMaximizeBox = 0x00010000;
-  static const int _wsThickFrame = 0x00040000;
   static const int _wsExNoActivate = 0x08000000;
   static const int _swpNoMove = 0x0002;
   static const int _swpNoSize = 0x0001;

@@ -383,6 +383,10 @@ class _AiChatPageState extends State<AiChatPage> {
     if (image == null || image.isEmpty) return;
     final name = 'clipboard-${DateTime.now().millisecondsSinceEpoch}.png';
     _sending = true;
+    // Đúng 1 bong bóng cho 1 lần Ctrl+V: bong bóng placeholder được THAY
+    // NỘI DUNG (không add thêm) khi có URL — không còn 2 bong bóng user.
+    // _messages chỉ append-only, nên index placeholder luôn đứng yên.
+    final placeholderIndex = _messages.length;
     _messages.add(_ChatMessage('user', '📷 $name'));
     if (mounted) setState(() {});
     try {
@@ -390,10 +394,17 @@ class _AiChatPageState extends State<AiChatPage> {
       final text = '📷 $name\n$url';
       final conversationId = await _ensureConversation();
       await _postMessage(conversationId, text);
-      _messages.add(_ChatMessage('user', text));
+      if (placeholderIndex < _messages.length) {
+        _messages[placeholderIndex] = _ChatMessage('user', text);
+      }
       _waitingReply = true;
       await _poll();
     } catch (e) {
+      if (placeholderIndex < _messages.length &&
+          _messages[placeholderIndex].sender == 'user') {
+        // Upload/gửi hỏng: bỏ bong bóng treo, lỗi hiển thị qua banner.
+        _messages.removeAt(placeholderIndex);
+      }
       if (mounted) {
         setState(() {
           _error = _friendlyError(e);
@@ -431,9 +442,12 @@ class _AiChatPageState extends State<AiChatPage> {
   }
 
   /// Chat title như client rollback: pip xanh + tên kênh, bên phải nút
-  /// "Thu gọn" (thu cửa sổ về pill).
+  /// "Thu gọn" (thu cửa sổ về pill). Nền đậm cùng tông panel — chữ F4F4F5
+  /// và chip 2A2A2E được thiết kế cho nền tối, trước kia row không set màu
+  /// nên bị trắng-trên-trắng khi chủ đề app là light (embedded).
   Widget _chatTitleRow() {
     return Container(
+      color: const Color(0xFF202020),
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
       child: Row(
         children: [

@@ -26,6 +26,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:window_size/window_size.dart' as window_size;
 
 import 'common.dart';
 import 'consts.dart';
@@ -333,7 +334,25 @@ void runMultiWindow(
     print('recent-popup child: setting frame left=$left top=$topOffset');
     final ctl = WindowController.fromWindowId(kWindowId!);
     await ctl.setPreventClose(false);
-    await ctl.setFrame(Offset(left, topOffset) & const Size(356, 200));
+    // Anchor caller đã nhân DPI (356x200 logical → physical); setFrame đi
+    // thẳng MoveWindow không nhân scale (base_flutter_window.cc SetBounds),
+    // nên frame phải nhân cùng scale — không thì tại >100% DPI popup nhỏ
+    // hơn khoảng trống đã chừa và khe hở tới panel phình ra.
+    double dpiScale = 1.0;
+    try {
+      final screens = await window_size.getScreenList();
+      for (final s in screens) {
+        if (left >= s.frame.left &&
+            left <= s.frame.right &&
+            topOffset >= s.frame.top &&
+            topOffset <= s.frame.bottom) {
+          dpiScale = s.scaleFactor <= 0 ? 1.0 : s.scaleFactor;
+          break;
+        }
+      }
+    } catch (_) {}
+    await ctl.setFrame(
+        Offset(left, topOffset) & Size(356 * dpiScale, 200 * dpiScale));
     await ctl.setTitle('DeskAgentRecent');
     DeskAgentFrameless.apply('DeskAgentRecent');
     await ctl.show();
@@ -488,7 +507,7 @@ class _AppState extends State<App> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.window.onPlatformBrightnessChanged = () {
+    WidgetsBinding.instance.platformDispatcher.onPlatformBrightnessChanged = () {
       final userPreference = MyTheme.getThemeModePreference();
       if (userPreference != ThemeMode.system) return;
       WidgetsBinding.instance.handlePlatformBrightnessChanged();
@@ -637,15 +656,15 @@ _registerEventHandler() {
 }
 
 Widget keyListenerBuilder(BuildContext context, Widget? child) {
-  return RawKeyboardListener(
+  return KeyboardListener(
     // `skipTraversal: isWeb` is to fix "Bad state: RenderBox was not laid out: minified:aeL#c19e4"
     focusNode: FocusNode(skipTraversal: isWeb),
     child: child ?? Container(),
-    onKey: (RawKeyEvent event) {
+    onKeyEvent: (KeyEvent event) {
       if (event.logicalKey == LogicalKeyboardKey.shiftLeft) {
-        if (event is RawKeyDownEvent) {
+        if (event is KeyDownEvent) {
           gFFI.peerTabModel.setShiftDown(true);
-        } else if (event is RawKeyUpEvent) {
+        } else if (event is KeyUpEvent) {
           gFFI.peerTabModel.setShiftDown(false);
         }
       }

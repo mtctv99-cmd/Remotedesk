@@ -18,9 +18,11 @@ import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:flutter_hbb/models/server_model.dart';
 import 'package:flutter_hbb/models/state_model.dart';
 import 'package:flutter_hbb/utils/multi_window_manager.dart';
+import 'package:flutter_hbb/utils/platform_channel.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:window_size/window_size.dart' as window_size;
 
 import 'ai_chat_page.dart';
 import 'deskagent_config.dart';
@@ -89,6 +91,20 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
 
   /// Recent peers popup window (`Thiết bị gần đây`, 380×220 frameless).
   int? _recentPeersWindowId;
+
+  /// Popup Recent đang HIỂN THỊ hay đã ẩn. hide() chỉ giấu cửa sổ (cửa sổ
+  /// vẫn sống và getFrame() vẫn thành công) — nếu watchdog coi cửa sổ ẩn này
+  /// là "popup alive" thì panel không bao giờ tự thu về pill nữa (bug A3).
+  bool _recentPeersPopupVisible = false;
+
+  /// Generation chống popup mồ côi (A10): mỗi lần mở/ẩn tăng biến đếm; code
+  /// async sau `await` chỉ nhận kết quả nếu generation còn nguyên.
+  int _recentPeersPopupGen = 0;
+
+  /// Mode pill (auto-collapse / menu "Thu gọn") phải đóng overlay cài đặt —
+  /// logic này từng là phép gán state trong build (anti-pattern).
+  Worker? _modeWorker;
+
   bool _showSettings = false;
 
   Timer? _statusTimer;
@@ -98,12 +114,14 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
   @override
   void initState() {
     super.initState();
-    // The widget-mode main window bypasses DesktopTabPage, which normally
-    // registers the cross-window handler; without this, popup windows (the
-    // recent-peers window) cannot reach the connect flow.
+    // The widget-mode main window bypasses DesktopHomePage (whose full
+    // cross-window handler never mounts), so this handler MUST carry both the
+    // popup's connect flow and the minimal contract the remote-session
+    // windows rely on — otherwise those kWindow* calls are swallowed.
     DesktopMultiWindow.setMethodHandler((call, fromWindowId) async {
+      // Sender (popup Recent) gửi JSON string qua args — decode thống nhất.
+      // (DesktopHomePage's handler assumed raw Map; here both forms arrive.)
       if (call.method == kWindowConnect) {
-        // Sender (popup Recent) gửi JSON string qua args — decode thống nhất.
         final raw = call.arguments;
         final map = raw is Map
             ? raw.cast<dynamic, dynamic>()
@@ -112,7 +130,7 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
                 : <dynamic, dynamic>{});
         final id = '${map['id'] ?? ''}';
         final ctx = this.context;
-        if (ctx != null && ctx.mounted && id.isNotEmpty) {
+        if (ctx.mounted && id.isNotEmpty) {
           await connect(
             ctx,
             id,
@@ -123,8 +141,75 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
           );
           _hideRecentPeersPopup();
         }
+        return null;
+      }
+      // (A8) Phần còn lại của hợp đồng cross-window: các cửa sổ phiên
+      // (remote/file transfer/cm) gọi về main window qua cùng handler này.
+      // DesktopHomePage không mount trong widget mode — chuyển tiếp tại đây
+      // những method trung tính, không phụ thuộc tab của DesktopHomePage.
+      switch (call.method) {
+        case kWindowMainWindowOnTop:
+          await windowOnTop(null);
+          break;
+        case kWindowRefreshCurrentUser:
+          gFFI.userModel.refreshCurrentUser();
+          break;
+        case kWindowGetScreenList:
+          return jsonEncode((await window_size.getScreenList())
+              .map(_deskAgentScreenToMap)
+              .toList());
+        case kWindowActionRebuild:
+          reloadCurrentWindow();
+          break;
+        case kWindowEventShow:
+          final shownId =
+              call.arguments is Map ? call.arguments['id'] as int? : null;
+          if (shownId != null) {
+            await rustDeskWinManager.registerActiveWindow(shownId);
+          }
+          break;
+        case kWindowEventHide:
+          final hiddenId =
+              call.arguments is Map ? call.arguments['id'] as int? : null;
+          if (hiddenId != null) {
+            await rustDeskWinManager.unregisterActiveWindow(hiddenId);
+          }
+          break;
+        case kWindowBumpMouse:
+          // bumpMouse yêu cầu int non-null — parse an toàn khỏi dynamic args.
+          final bumpArgs = call.arguments is Map
+              ? call.arguments as Map
+              : const <dynamic, dynamic>{};
+          final dx = int.tryParse('${bumpArgs['dx']}') ?? 0;
+          final dy = int.tryParse('${bumpArgs['dy']}') ?? 0;
+          return RdPlatformChannel.instance.bumpMouse(dx: dx, dy: dy);
+        case kWindowEventOpenMonitorSession:
+          final rawArgs = call.arguments;
+          final monArgs = rawArgs is String
+              ? (jsonDecode(rawArgs) as Map).cast<String, dynamic>()
+              : (rawArgs as Map?)?.cast<String, dynamic>();
+          if (monArgs == null) break;
+          await rustDeskWinManager.openMonitorSession(
+            monArgs['window_id'] as int,
+            monArgs['peer_id'] as String,
+            monArgs['display'] as int,
+            monArgs['display_count'] as int,
+            parseParamScreenRect(monArgs),
+            monArgs['window_type'] as int,
+          );
+          break;
+        case kWindowEventRemoteWindowCoords:
+          final windowId = int.tryParse('${call.arguments}');
+          if (windowId != null) {
+            return jsonEncode(
+                await rustDeskWinManager.getOtherRemoteWindowCoords(windowId));
+          }
+          return null;
       }
     });
+    // Mode pill (watchdog/menu thu gọn) đóng overlay cài đặt — trước đây là
+    // phép gán trong build ("if (_showSettings) _showSettings = false;").
+    _modeWorker = ever<DeskAgentWindowMode>(deskAgentWindowMode, _onModeChanged);
     _peersLoader.init(setState);
     _remoteIdFocusNode.addListener(() {
       if (_remoteIdFocusNode.hasFocus && _peersLoader.needLoad) {
@@ -166,17 +251,45 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
   Timer? _collapseTimer;
 
   @override
-  void onWindowBlur() => _scheduleAutoCollapse();
+  void onWindowBlur() => _scheduleAutoCollapse('blur');
 
   @override
-  void onWindowFocus() => _cancelAutoCollapse();
+  void onWindowFocus() {
+    _wdTrace('focus: cancel');
+    _cancelAutoCollapse();
+  }
+
+  /// Mọi native window event đều ghi vết (trừ move/resize — phát liên tục
+  /// khi kéo/dời): nếu panel bị ẩn bởi một path KHÔNG thuộc watchdog, vết
+  /// `win/hide` hoặc `win/close` ở đây sẽ chỉ đúng thủ phạm cho lần tái hiện.
+  @override
+  void onWindowEvent(String eventName) {
+    if (eventName != 'move' &&
+        eventName != 'resize' &&
+        eventName != 'moved' &&
+        eventName != 'resized') {
+      _wdTrace('win/$eventName');
+    }
+    super.onWindowEvent(eventName);
+  }
+
+  void _onModeChanged(DeskAgentWindowMode mode) {
+    if (!_showSettings || mode != DeskAgentWindowMode.pill) return;
+    if (!mounted) return;
+    setState(() => _showSettings = false);
+  }
 
   void _cancelAutoCollapse() {
     _collapseTimer?.cancel();
     _collapseTimer = null;
   }
 
-  void _scheduleAutoCollapse() {
+  /// Ghi vết — nối tiếp (giữ lịch sử) chứ không ghi đè; see
+  /// [wdTraceAppend] in deskagent_window_mode.dart.
+  void _wdTrace(String msg) => wdTraceAppend(msg);
+
+  void _scheduleAutoCollapse(String via) {
+    _wdTrace('schedule(' + via + ')');
     if (!_isDockedWidget) return;
     if (deskAgentWindowMode.value == DeskAgentWindowMode.pill) return;
     if (_showSettings) return;
@@ -185,20 +298,41 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
       if (!mounted) return;
       if (deskAgentWindowMode.value == DeskAgentWindowMode.pill) return;
       if (_showSettings) return;
-      // Đang gõ vào ô ID (popup Recent mở kèm) thì không thu gọn.
-      if (_remoteIdFocusNode.hasFocus) return;
-      final popupId = _recentPeersWindowId;
-      if (popupId != null) {
-        try {
-          await WindowController.fromWindowId(popupId).getFrame();
-          return; // popup còn mở
-        } catch (_) {
-          _recentPeersWindowId = null;
-        }
+      // Keep #1: đang gõ vào ô ID (popup Recent mở kèm) thì không thu gọn.
+      if (_remoteIdFocusNode.hasFocus) {
+        _wdTrace('keep: id focus');
+        return;
       }
-      if (!DeskAgentFrameless.isCursorOutsideWindow(getWindowName())) return;
+      // Keep #2: popup Recent còn HIỂN THỊ (cửa sổ ẩn-zombie không tính).
+      if (await _isRecentPeersPopupAlive()) {
+        _wdTrace('keep: popup alive');
+        return;
+      }
+      // Keep #3: con trỏ còn trong rect cửa sổ chính.
+      if (!DeskAgentFrameless.isCursorOutsideWindow(getWindowName())) {
+        _wdTrace('keep: cursor inside');
+        return;
+      }
+      _wdTrace('collapse now');
+      _hideRecentPeersPopup();
       setDeskAgentWindowMode(DeskAgentWindowMode.pill);
     });
+  }
+
+  /// Popup Recent chỉ coi là "còn sống" khi: id chưa stale, cửa sổ vẫn trả
+  /// lời getFrame, và KHÔNG đang ẩn — cửa sổ ẩn còn sống từng khiến getFrame
+  /// luôn thành công → panel không bao giờ tự thu về pill nữa (A3).
+  Future<bool> _isRecentPeersPopupAlive() async {
+    final id = _recentPeersWindowId;
+    if (id == null || !_recentPeersPopupVisible) return false;
+    try {
+      await WindowController.fromWindowId(id).getFrame();
+      return true;
+    } catch (_) {
+      _recentPeersWindowId = null;
+      _recentPeersPopupVisible = false;
+      return false;
+    }
   }
 
   /// Refresh the online badge of the device card.
@@ -278,6 +412,8 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
   void dispose() {
     windowManager.removeListener(this);
     _collapseTimer?.cancel();
+    _modeWorker?.dispose();
+    _modeWorker = null;
     DesktopMultiWindow.setMethodHandler(null);
     _statusTimer?.cancel();
     _remoteIdController.dispose();
@@ -334,13 +470,17 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
       body: Obx(() {
         final mode = deskAgentWindowMode.value;
         if (_isDockedWidget && mode == DeskAgentWindowMode.pill) {
-          if (_showSettings) _showSettings = false;
+          // Overlay cài đặt được đóng qua _onModeChanged (ever) — gán state
+          // ngay trong build là anti-pattern và có thể tranh với setState.
           return _buildPill(context);
         }
         if (_isDockedWidget) {
           return MouseRegion(
-            onEnter: (_) => _cancelAutoCollapse(),
-            onExit: (_) => _scheduleAutoCollapse(),
+            onEnter: (_) {
+              _wdTrace('pointer: enter, cancel');
+              _cancelAutoCollapse();
+            },
+            onExit: (_) => _scheduleAutoCollapse('exit'),
             child: _showSettings
                 ? DeskAgentSettingsOverlay(onClose: _closeSettings)
                 : Column(
@@ -360,8 +500,13 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
 
   /// Show/create the recent-peers popup; its bottom sits 4px above the panel
   /// input row (window top = panel top - 170 for 220 height + 54 offset).
+  ///
+  /// Generation-guard (A10): cả hai chặng `await` (anchor, createWindow) đều
+  /// có cửa sổ blur giữa chừng — nếu field đã mất focus hay đã có lần mở/ẩn
+  /// mới hơn, popup vừa tạo bị đóng ngay thay vì trôi thành window mồ côi.
   Future<void> _openRecentPeersPopup() async {
     if (!_isDockedWidget || !isWindows) return;
+    final gen = ++_recentPeersPopupGen;
     final peers = _peersLoader.peers
         .take(4)
         .map((p) => {
@@ -375,20 +520,29 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
     if (_recentPeersWindowId != null) {
       try {
         WindowController.fromWindowId(_recentPeersWindowId!).show();
+      } catch (_) {
+        // id stale (popup đã bị đóng bằng X ở lần trước): rơi xuống nhánh
+        // tạo mới — thay vì bỏ lỡ nguyên lần mở này (hành vi cũ).
+        _recentPeersWindowId = null;
+      }
+      if (_recentPeersWindowId != null) {
+        _recentPeersPopupVisible = true;
         DesktopMultiWindow.invokeMethod(
           _recentPeersWindowId!,
           'recent-peers-refresh',
           jsonEncode({'peers': peers}),
         );
-      } catch (_) {
-        _recentPeersWindowId = null;
+        _refocusMainAfterPopupShow();
+        return;
       }
-      return;
     }
     // Đặt popup theo toạ độ vật lý trên cùng màn hình, neo phải panel và
     // mở hướng LÊN trên panel — hết lỗi vị trí DPI lệch + chìm dưới mép màn.
     final anchor =
         await recentPeersPopupAnchor(popupWidth: 356, popupHeight: 200);
+    if (gen != _recentPeersPopupGen || !_remoteIdFocusNode.hasFocus) {
+      return; // blur/ẩn giữa chừng trước khi kịp tạo — không mở.
+    }
     try {
       final ctl = await DesktopMultiWindow.createWindow(jsonEncode({
         'type': -2,
@@ -396,16 +550,45 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
         'left': anchor.dx,
         'top': anchor.dy,
       }));
+      if (gen != _recentPeersPopupGen || !_remoteIdFocusNode.hasFocus) {
+        // Popup mồ côi (field đã blur trong lúc createWindow chạy): thu hồi.
+        try {
+          ctl.close();
+        } catch (_) {}
+        return;
+      }
       _recentPeersWindowId = ctl.windowId;
+      _recentPeersPopupVisible = true;
       // Trả focus về ô ID để gõ tiếp không bị nuốt ký tự khi popup lấy
       // foreground (nguyên nhân "ký tự tự biến mất").
-      _remoteIdFocusNode.requestFocus();
+      _refocusMainAfterPopupShow();
     } catch (e) {
       debugPrint('recent popup: create failed: $e');
     }
   }
 
+  /// Popup là cửa sổ chỉ-đọc (danh sách peers) nhưng native Show() vẫn
+  /// SetForegroundWindow — đoạt OS focus khỏi main window (A1: ký tự gõ
+  /// rơi vào popup mù). Child window show sau một nhịp engine, nên hồi phục
+  /// trễ ~200ms và chỉ khi người dùng vẫn đang ở ô ID.
+  void _refocusMainAfterPopupShow() {
+    () async {
+      await Future.delayed(const Duration(milliseconds: 200));
+      if (!mounted) return;
+      if (!_remoteIdFocusNode.hasFocus) return;
+      try {
+        await windowManager.focus();
+        _remoteIdFocusNode.requestFocus();
+      } catch (_) {}
+    }();
+  }
+
+  /// Ẩn popup: giấu cửa sổ + đánh dấu KHÔNG còn hiển thị (cửa sổ ẩn-zombie
+  /// không được tính "alive" trong watchdog), và tăng generation để một lần
+  /// `_openRecentPeersPopup` đang bay biết mình đã bị hủy.
   void _hideRecentPeersPopup() {
+    _recentPeersPopupGen++;
+    _recentPeersPopupVisible = false;
     final id = _recentPeersWindowId;
     if (id == null) return;
     try {
@@ -509,7 +692,11 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
         PopupMenuItem<String>(
           value: 'hide',
           height: 34,
-          onTap: () => windowManager.hide(),
+          onTap: () {
+            _wdTrace('menu: pill → hide (chạy ngầm)');
+            _hideRecentPeersPopup();
+            windowManager.hide();
+          },
           child: Row(
             children: [
               DeskAgentIcons.x(size: 13, color: _PillPalette.text),
@@ -597,77 +784,85 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
                 ),
               ),
               const SizedBox(height: 6),
-              Container(
-                height: 32,
-                padding: const EdgeInsets.only(left: 10, right: 4),
-                decoration: BoxDecoration(
-                  color: _PillPalette.chip,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Row(
-                  children: [
-                    DeskAgentIcons.monitor(
-                        size: 15, color: const Color(0xFFD4D4D8)),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: TextField(
-                        controller: _remoteIdController,
-                        focusNode: _remoteIdFocusNode,
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [IDTextInputFormatter()],
-                        style: const TextStyle(
-                          fontFamily: _PillPalette.mono,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: _PillPalette.text,
-                        ),
-                        decoration: const InputDecoration(
-                          hintText: 'Nhập ID máy cần điều khiển...',
-                          hintStyle: TextStyle(
+              // A14: GestureDetector gốc panel bắt pan toàn panel, kể cả
+              // vùng ô nhập — gõ/bôi đen ID lại thành kéo cửa sổ. Detector
+              // rỗng ở đây là thành viên "thắng" trong arena cho pan nên
+              // nuốt drag của khu vực nhập; tap/chọn text không bị ảnh hưởng.
+              GestureDetector(
+                onPanStart: (_) {},
+                child: Container(
+                  height: 32,
+                  padding: const EdgeInsets.only(left: 10, right: 4),
+                  decoration: BoxDecoration(
+                    color: _PillPalette.chip,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    children: [
+                      DeskAgentIcons.monitor(
+                          size: 15, color: const Color(0xFFD4D4D8)),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: _remoteIdController,
+                          focusNode: _remoteIdFocusNode,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [IDTextInputFormatter()],
+                          style: const TextStyle(
                             fontFamily: _PillPalette.mono,
-                            fontSize: 11.5,
-                            color: _PillPalette.muted,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: _PillPalette.text,
                           ),
-                          isDense: true,
-                          filled: false,
-                          fillColor: Colors.transparent,
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                        onSubmitted: (_) => _onConnect(),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    InkWell(
-                      borderRadius: BorderRadius.circular(8),
-                      onTap: _onConnect,
-                      child: Container(
-                        height: 30,
-                        padding: const EdgeInsets.symmetric(horizontal: 13),
-                        decoration: BoxDecoration(
-                          color: _PillPalette.accent,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            DeskAgentIcons.radio(size: 13, color: Colors.white),
-                            const SizedBox(width: 5),
-                            const Text(
-                              'Kết nối',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.white,
-                              ),
+                          decoration: const InputDecoration(
+                            hintText: 'Nhập ID máy cần điều khiển...',
+                            hintStyle: TextStyle(
+                              fontFamily: _PillPalette.mono,
+                              fontSize: 11.5,
+                              color: _PillPalette.muted,
                             ),
-                          ],
+                            isDense: true,
+                            filled: false,
+                            fillColor: Colors.transparent,
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          onSubmitted: (_) => _onConnect(),
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 4),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: _onConnect,
+                        child: Container(
+                          height: 30,
+                          padding: const EdgeInsets.symmetric(horizontal: 13),
+                          decoration: BoxDecoration(
+                            color: _PillPalette.accent,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              DeskAgentIcons.radio(
+                                  size: 13, color: Colors.white),
+                              const SizedBox(width: 5),
+                              const Text(
+                                'Kết nối',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -722,53 +917,50 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
       );
     }
 
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        height: 27,
-        padding: const EdgeInsets.symmetric(horizontal: 7),
-        decoration: BoxDecoration(
-          color: _PillPalette.chip,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            miniBadge('IP'),
-            const SizedBox(width: 3),
-            Flexible(
-                child: val(
-                    _localIp.isEmpty ? '---' : _localIp, 'Đã sao chép IP!')),
+    return Container(
+      height: 27,
+      padding: const EdgeInsets.symmetric(horizontal: 7),
+      decoration: BoxDecoration(
+        color: _PillPalette.chip,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.max,
+        children: [
+          miniBadge('IP'),
+          const SizedBox(width: 3),
+          Flexible(
+              child:
+                  val(_localIp.isEmpty ? '---' : _localIp, 'Đã sao chép IP!')),
+          const _ChipSep(),
+          miniBadge('ID'),
+          const SizedBox(width: 3),
+          Flexible(
+              child: val(idReady ? formatID(rawId) : '---', 'Đã sao chép ID!',
+                  dim: !idReady, copy: idReady)),
+          if (pass.isNotEmpty && pass != '-') ...[
             const _ChipSep(),
-            miniBadge('ID'),
-            const SizedBox(width: 3),
-            Flexible(
-                child: val(idReady ? formatID(rawId) : '---', 'Đã sao chép ID!',
-                    dim: !idReady, copy: idReady)),
-            if (pass.isNotEmpty && pass != '-') ...[
-              const _ChipSep(),
-              InkWell(
-                onTap: () => setState(() => _showPassword = !_showPassword),
-                onLongPress: () {
-                  Clipboard.setData(ClipboardData(text: pass));
-                  showToast('Đã sao chép mật khẩu!');
-                },
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    miniBadge('Pass'),
-                    const SizedBox(width: 3),
-                    Text(
-                      _showPassword ? pass : '••••••',
-                      maxLines: 1,
-                      style: mono,
-                    ),
-                  ],
-                ),
+            InkWell(
+              onTap: () => setState(() => _showPassword = !_showPassword),
+              onLongPress: () {
+                Clipboard.setData(ClipboardData(text: pass));
+                showToast('Đã sao chép mật khẩu!');
+              },
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  miniBadge('Pass'),
+                  const SizedBox(width: 3),
+                  Text(
+                    _showPassword ? pass : '••••••',
+                    maxLines: 1,
+                    style: mono,
+                  ),
+                ],
               ),
-            ],
+            ),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -869,7 +1061,10 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
         PopupMenuItem<String>(
           value: 'collapse',
           height: 34,
-          onTap: () => setDeskAgentWindowMode(DeskAgentWindowMode.pill),
+          onTap: () {
+            _wdTrace('menu: panel → pill');
+            setDeskAgentWindowMode(DeskAgentWindowMode.pill);
+          },
           child: const Row(
             children: [
               SizedBox(
@@ -887,7 +1082,11 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
         PopupMenuItem<String>(
           value: 'hide',
           height: 34,
-          onTap: () => windowManager.hide(),
+          onTap: () {
+            _wdTrace('menu: panel → hide (chạy ngầm)');
+            _hideRecentPeersPopup();
+            windowManager.hide();
+          },
           child: Row(
             children: [
               DeskAgentIcons.x(size: 13, color: _PillPalette.text),
@@ -1841,3 +2040,22 @@ class _ChipSep extends StatelessWidget {
     );
   }
 }
+
+/// Trả lời kWindowGetScreenList (A8): cùng hình dạng JSON với screenToMap
+/// cục bộ trong desktop_home_page.dart — cửa sổ phiên parse phản hồi dựa
+/// trên các khoá `frame`/`visibleFrame`/`scaleFactor`.
+Map<String, dynamic> _deskAgentScreenToMap(window_size.Screen screen) => {
+      'frame': {
+        'l': screen.frame.left,
+        't': screen.frame.top,
+        'r': screen.frame.right,
+        'b': screen.frame.bottom,
+      },
+      'visibleFrame': {
+        'l': screen.visibleFrame.left,
+        't': screen.visibleFrame.top,
+        'r': screen.visibleFrame.right,
+        'b': screen.visibleFrame.bottom,
+      },
+      'scaleFactor': screen.scaleFactor,
+    };
