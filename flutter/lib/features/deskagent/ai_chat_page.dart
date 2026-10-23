@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/features/deskagent/deskagent_config.dart';
+import 'package:flutter_hbb/features/deskagent/deskagent_window_mode.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:pasteboard/pasteboard.dart';
 
@@ -151,7 +152,8 @@ class _AiChatPageState extends State<AiChatPage> {
 
   // Minimal JSON request helper on top of dart:io HttpClient.
   Future<dynamic> _requestJson(String method, Uri url, {String? body}) async {
-    final request = await _client.openUrl(method, url).timeout(_kRequestTimeout);
+    final request =
+        await _client.openUrl(method, url).timeout(_kRequestTimeout);
     request.headers.contentType = ContentType.json;
     if (body != null) {
       request.write(body);
@@ -307,8 +309,7 @@ class _AiChatPageState extends State<AiChatPage> {
     if (image == null || image.isEmpty) {
       return; // no image on clipboard: let the Flutter paste continue
     }
-    final name =
-        'clipboard-${DateTime.now().millisecondsSinceEpoch}.png';
+    final name = 'clipboard-${DateTime.now().millisecondsSinceEpoch}.png';
     final url = await _uploadBytes(image, name);
     final text = '📷 $name\n$url';
     _messages.add(_ChatMessage('user', text));
@@ -339,7 +340,8 @@ class _AiChatPageState extends State<AiChatPage> {
     final token = bind.mainGetLocalOption(key: 'manager-device-token');
     if (token.isEmpty) {
       setState(() {
-        _error = 'Thiếu manager-device-token: cần client mới đăng ký lại Manager';
+        _error =
+            'Thiếu manager-device-token: cần client mới đăng ký lại Manager';
       });
       return;
     }
@@ -418,6 +420,7 @@ class _AiChatPageState extends State<AiChatPage> {
             ),
       body: Column(
         children: [
+          if (widget.embedded) _chatTitleRow(),
           Expanded(child: _messageList()),
           if (_error != null) _errorBanner(),
           const Divider(height: 1),
@@ -427,34 +430,79 @@ class _AiChatPageState extends State<AiChatPage> {
     );
   }
 
+  /// Chat title như client rollback: pip xanh + tên kênh, bên phải nút
+  /// "Thu gọn" (thu cửa sổ về pill).
+  Widget _chatTitleRow() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
+      child: Row(
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(
+              color: const Color(0xFF22C55E),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(color: const Color(0xFF22C55E).withOpacity(.4)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 7),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Trợ lý AI & Helpdesk Client',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFFF4F4F5),
+                        height: 1.2)),
+                Text('Chat ngoài phiên · Hỗ trợ tự động',
+                    style: TextStyle(
+                        fontSize: 10, color: Color(0xFFA1A1AA), height: 1.2)),
+              ],
+            ),
+          ),
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => setDeskAgentWindowMode(DeskAgentWindowMode.pill),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFF2A2A2E),
+                border: Border.all(color: Colors.white.withOpacity(.08)),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.keyboard_arrow_down,
+                      size: 13, color: Color(0xFFA1A1AA)),
+                  SizedBox(width: 3),
+                  Text('Thu gọn',
+                      style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFFA1A1AA))),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // Reversed list so the newest message (and the typing indicator) stays at
   // the bottom.
   Widget _messageList() {
     if (_messages.isEmpty && !_waitingReply) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.chat_outlined,
-              size: _kIconSize,
-              color: _kAccentColor,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              translate('No messages yet'),
-              style: TextStyle(fontSize: _kTitleFontSize),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              translate('Chat with the AI bot or admin via the Manager'),
-              style: TextStyle(
-                fontSize: _kContentFontSize - 2,
-                color: Theme.of(context).hintColor,
-              ),
-            ),
-          ],
-        ),
+      // Welcome bubble pin ở đầu (như client rollback).
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
+        children: [_welcomeBubble()],
       );
     }
     final itemCount = _messages.length + (_waitingReply ? 1 : 0);
@@ -470,6 +518,69 @@ class _AiChatPageState extends State<AiChatPage> {
             _messages.length - 1 - (index - (_waitingReply ? 1 : 0));
         return _bubble(_messages[messageIndex]);
       },
+    );
+  }
+
+  /// Bong bóng chào mừng của IT Helpdesk (chỉ hiển thị khi chưa có tin nhắn).
+  Widget _welcomeBubble() {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 13,
+            backgroundColor: _kAccentColor.withOpacity(0.15),
+            child: Icon(
+              Icons.support_agent,
+              size: 14,
+              color: _kAccentColor,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+                  decoration: BoxDecoration(
+                    color:
+                        Theme.of(context).colorScheme.surfaceContainerHighest,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(14),
+                      topRight: Radius.circular(14),
+                      bottomLeft: Radius.circular(4),
+                      bottomRight: Radius.circular(14),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SelectableText(
+                        'Chào bạn! Nhập tin nhắn gửi tới Admin IT để được '
+                        'hỗ trợ từ xa.',
+                        style: TextStyle(
+                          fontSize: _kContentFontSize - 3,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.only(top: 3, left: 2),
+                  child: Text('· IT DeskAgent',
+                      style:
+                          TextStyle(fontSize: 9.5, color: Color(0xFF8A8A8A))),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -596,8 +707,7 @@ class _AiChatPageState extends State<AiChatPage> {
                       message.text,
                       style: TextStyle(
                         fontSize: _kContentFontSize,
-                        color:
-                            Theme.of(context).colorScheme.onSurfaceVariant,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -678,14 +788,45 @@ class _AiChatPageState extends State<AiChatPage> {
 
   Widget _inputRow() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
       child: Row(
         children: [
-          IconButton(
-            onPressed: _sending ? null : _uploadAndSendAttachment,
-            tooltip: translate('Attach image'),
-            icon: const Icon(Icons.attach_file, size: 20),
+          // "Yêu cầu IT" — nhãn trạng thái của composer (client rollback).
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFBBF24).withOpacity(.12),
+              border:
+                  Border.all(color: const Color(0xFFFBBF24).withOpacity(.3)),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.support_agent,
+                    size: 12, color: Color(0xFFFBBF24)),
+                const SizedBox(width: 4),
+                const Text('Yêu cầu IT',
+                    style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFFFBBF24))),
+                const SizedBox(width: 3),
+                GestureDetector(
+                  onTap: () {
+                    // Nhãn đồng bộ trạng thái chat; bấm × chỉ ẩn nhãn
+                    // (chức năng chat vẫn chạy).
+                  },
+                  child: const Text('×',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFFFBBF24))),
+                ),
+              ],
+            ),
           ),
+          const SizedBox(width: 8),
           Expanded(
             child: Focus(
               // Ctrl+V: upload a pasted screenshot via the Manager attach API.
@@ -703,16 +844,20 @@ class _AiChatPageState extends State<AiChatPage> {
                 controller: _controller,
                 enabled: !_sending,
                 onSubmitted: (_) => _send(),
+                style: const TextStyle(fontSize: 11.5),
                 decoration: InputDecoration(
-                  hintText: translate('Type a message'),
+                  hintText:
+                      translate('Nhập nội dung cần IT hỗ trợ... (Enter gửi)'),
+                  hintStyle:
+                      const TextStyle(fontSize: 11, color: Color(0xFFA1A1AA)),
                   isDense: true,
                   filled: true,
                   fillColor: Theme.of(context)
                       .colorScheme
                       .surfaceContainerHighest
                       .withOpacity(0.4),
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 10),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(24),
                     borderSide: BorderSide.none,

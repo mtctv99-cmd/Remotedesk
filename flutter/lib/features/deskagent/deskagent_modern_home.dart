@@ -4,7 +4,8 @@ import 'dart:io';
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/gestures.dart' show kPrimaryMouseButton, kSecondaryMouseButton;
+import 'package:flutter/gestures.dart'
+    show kPrimaryMouseButton, kSecondaryMouseButton;
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/formatter/id_formatter.dart';
@@ -23,6 +24,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'ai_chat_page.dart';
 import 'deskagent_config.dart';
+import 'deskagent_frameless.dart';
 import 'deskagent_icons.dart';
 import 'deskagent_window_mode.dart';
 
@@ -57,7 +59,6 @@ class _WidgetPalette {
   static const String mono = 'Consolas';
 }
 
-
 /// Modern DeskAgent Home Widget tailored for the docked bottom-right client window.
 /// Provides a sleek single-column card layout:
 /// - My Device ID & Password (with 1-click copy for IT support)
@@ -72,12 +73,14 @@ class DeskAgentModernHome extends StatefulWidget {
   State<DeskAgentModernHome> createState() => _DeskAgentModernHomeState();
 }
 
-class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
+class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
+    with WindowListener {
   bool _showPassword = true;
 
   final IDTextEditingController _remoteIdController = IDTextEditingController();
   final FocusNode _remoteIdFocusNode = FocusNode();
   final AllPeersLoader _peersLoader = AllPeersLoader();
+
   /// Peers dismissed with "Xóa" in the recent dropdown (this session only).
   final Set<String> _hiddenRecent = <String>{};
 
@@ -151,6 +154,45 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
       _refreshStatus();
     });
     _refreshStatus();
+    windowManager.addListener(this);
+  }
+
+  // --- Auto-collapse: rời chuột/mất focus 650ms → thu về pill (như client
+  // rollback). Bỏ qua khi mở menu, cài đặt hoặc popup Recent.
+  Timer? _collapseTimer;
+
+  @override
+  void onWindowBlur() => _scheduleAutoCollapse();
+
+  @override
+  void onWindowFocus() => _cancelAutoCollapse();
+
+  void _cancelAutoCollapse() {
+    _collapseTimer?.cancel();
+    _collapseTimer = null;
+  }
+
+  void _scheduleAutoCollapse() {
+    if (!_isDockedWidget) return;
+    if (deskAgentWindowMode.value == DeskAgentWindowMode.pill) return;
+    if (_showSettings) return;
+    _collapseTimer?.cancel();
+    _collapseTimer = Timer(const Duration(milliseconds: 650), () async {
+      if (!mounted) return;
+      if (deskAgentWindowMode.value == DeskAgentWindowMode.pill) return;
+      if (_showSettings) return;
+      final popupId = _recentPeersWindowId;
+      if (popupId != null) {
+        try {
+          await WindowController.fromWindowId(popupId).getFrame();
+          return; // popup còn mở
+        } catch (_) {
+          _recentPeersWindowId = null;
+        }
+      }
+      if (!DeskAgentFrameless.isCursorOutsideWindow(getWindowName())) return;
+      setDeskAgentWindowMode(DeskAgentWindowMode.pill);
+    });
   }
 
   /// Refresh the online badge of the device card.
@@ -228,6 +270,8 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
 
   @override
   void dispose() {
+    windowManager.removeListener(this);
+    _collapseTimer?.cancel();
     DesktopMultiWindow.setMethodHandler(null);
     _statusTimer?.cancel();
     _remoteIdController.dispose();
@@ -257,12 +301,12 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
     );
   }
 
-  /// Cài đặt: swap nội dung cửa sổ sang overlay (mockup client-widget.html),
-  /// phóng cửa sổ 380×430; đóng thì trả lại kích thước của mode hiện tại.
+  /// Cài đặt: swap nội dung cửa sổ sang overlay (client rollback 380×620);
+  /// đóng thì trả lại kích thước của mode hiện tại.
   Future<void> _openSettings() async {
     _hideRecentPeersPopup();
     setState(() => _showSettings = true);
-    await resizeDeskAgentWidgetWindow(430);
+    await resizeDeskAgentWidgetWindow(620);
   }
 
   Future<void> _closeSettings() async {
@@ -288,15 +332,18 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
           return _buildPill(context);
         }
         if (_isDockedWidget) {
-          if (_showSettings) {
-            return DeskAgentSettingsOverlay(onClose: _closeSettings);
-          }
-          return Column(
-            children: [
-              _buildPanel(context),
-              if (mode == DeskAgentWindowMode.expanded)
-                Expanded(child: _buildChatBody(context)),
-            ],
+          return MouseRegion(
+            onEnter: (_) => _cancelAutoCollapse(),
+            onExit: (_) => _scheduleAutoCollapse(),
+            child: _showSettings
+                ? DeskAgentSettingsOverlay(onClose: _closeSettings)
+                : Column(
+                    children: [
+                      _buildPanel(context),
+                      if (mode == DeskAgentWindowMode.expanded)
+                        Expanded(child: _buildChatBody(context)),
+                    ],
+                  ),
           );
         }
         // Main window with widget mode off keeps the settings-style home.
@@ -309,13 +356,16 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
   /// input row (window top = panel top - 170 for 220 height + 54 offset).
   Future<void> _openRecentPeersPopup() async {
     if (!_isDockedWidget || !isWindows) return;
-    final peers = _peersLoader.peers.take(4).map((p) => {
-          'id': p.id,
-          'name': p.alias.isNotEmpty
-              ? p.alias
-              : (p.hostname.isNotEmpty ? p.hostname : p.id),
-          'online': p.online,
-        }).toList();
+    final peers = _peersLoader.peers
+        .take(4)
+        .map((p) => {
+              'id': p.id,
+              'name': p.alias.isNotEmpty
+                  ? p.alias
+                  : (p.hostname.isNotEmpty ? p.hostname : p.id),
+              'online': p.online,
+            })
+        .toList();
     if (_recentPeersWindowId != null) {
       try {
         WindowController.fromWindowId(_recentPeersWindowId!).show();
@@ -483,116 +533,137 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
             border: Border.all(color: _PillPalette.border),
           ),
           child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              height: 38,
-              child: Row(
-                children: [
-                  Tooltip(
-                    message: 'Cài đặt',
-                    child: InkWell(
-                      onTap: _openSettings,
-                      borderRadius: BorderRadius.circular(6),
-                      child: Padding(
-                        padding: const EdgeInsets.all(3),
-                        child: DeskAgentIcons.monitor(
-                            size: 16, color: _PillPalette.accent),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(child: _buildIpChip()),
-                  const SizedBox(width: 8),
-                  ChangeNotifierProvider.value(
-                    value: gFFI.serverModel,
-                    child: Consumer<ServerModel>(
-                      builder: (context, serverModel, _) {
-                        final myId = serverModel.serverId.text.trim();
-                        final myPass = serverModel.serverPasswd.text.trim();
-                        return _buildGuiItButton(myId, myPass);
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  _buildMinimizeButton(),
-                ],
-              ),
-            ),
-            const SizedBox(height: 6),
-            SizedBox(
-              height: 32,
-              child: Row(
-                children: [
-                  DeskAgentIcons.monitor(size: 15, color: _PillPalette.muted),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextField(
-                      controller: _remoteIdController,
-                      focusNode: _remoteIdFocusNode,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [IDTextInputFormatter()],
-                      style: const TextStyle(
-                        fontFamily: _PillPalette.mono,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: _PillPalette.text,
-                      ),
-                      decoration: const InputDecoration(
-                        hintText: 'Nhập ID máy cần điều khiển...',
-                        hintStyle: TextStyle(
-                          fontFamily: _PillPalette.mono,
-                          fontSize: 11.5,
-                          color: _PillPalette.muted,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                height: 38,
+                child: Row(
+                  children: [
+                    Tooltip(
+                      message: 'Cài đặt',
+                      child: InkWell(
+                        onTap: _openSettings,
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1E293B),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                                color: Colors.white.withOpacity(.15)),
+                          ),
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Center(
+                                child: DeskAgentIcons.monitor(
+                                    size: 16, color: const Color(0xFF38BDF8)),
+                              ),
+                              const Positioned(
+                                left: 8,
+                                top: 6,
+                                child: Icon(Icons.bolt,
+                                    size: 11, color: Color(0xFFF59E0B)),
+                              ),
+                            ],
+                          ),
                         ),
-                        isDense: true,
-                        filled: false,
-                        fillColor: Colors.transparent,
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      onSubmitted: (_) => _onConnect(),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  InkWell(
-                    borderRadius: BorderRadius.circular(6),
-                    onTap: _onConnect,
-                    child: Container(
-                      height: 30,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        color: _PillPalette.accent,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          DeskAgentIcons.radio(
-                            size: 13,
-                            color: _PillPalette.accentText,
-                          ),
-                          const SizedBox(width: 4),
-                          const Text(
-                            'Kết nối',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: _PillPalette.accentText,
-                            ),
-                          ),
-                        ],
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    Expanded(child: _buildIpChip()),
+                    const SizedBox(width: 8),
+                    ChangeNotifierProvider.value(
+                      value: gFFI.serverModel,
+                      child: Consumer<ServerModel>(
+                        builder: (context, serverModel, _) {
+                          final myId = serverModel.serverId.text.trim();
+                          final myPass = serverModel.serverPasswd.text.trim();
+                          return _buildHelpButton(myId, myPass);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 6),
+              Container(
+                height: 32,
+                padding: const EdgeInsets.only(left: 10, right: 4),
+                decoration: BoxDecoration(
+                  color: _PillPalette.chip,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  children: [
+                    DeskAgentIcons.monitor(
+                        size: 15, color: const Color(0xFFD4D4D8)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: _remoteIdController,
+                        focusNode: _remoteIdFocusNode,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [IDTextInputFormatter()],
+                        style: const TextStyle(
+                          fontFamily: _PillPalette.mono,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: _PillPalette.text,
+                        ),
+                        decoration: const InputDecoration(
+                          hintText: 'Nhập ID máy cần điều khiển...',
+                          hintStyle: TextStyle(
+                            fontFamily: _PillPalette.mono,
+                            fontSize: 11.5,
+                            color: _PillPalette.muted,
+                          ),
+                          isDense: true,
+                          filled: false,
+                          fillColor: Colors.transparent,
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        onSubmitted: (_) => _onConnect(),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: _onConnect,
+                      child: Container(
+                        height: 30,
+                        padding: const EdgeInsets.symmetric(horizontal: 13),
+                        decoration: BoxDecoration(
+                          color: _PillPalette.accent,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            DeskAgentIcons.radio(size: 13, color: Colors.white),
+                            const SizedBox(width: 5),
+                            const Text(
+                              'Kết nối',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
@@ -613,34 +684,50 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
-          children: [
-            _chipBadge('ID', myId.isEmpty ? '---' : formatID(myId), 'Đã sao chép ID!'),
-            if (pass.isNotEmpty) ...[
-              const _ChipSep(),
-              _chipBadge('Pass', _showPassword ? pass : '••••••', 'Đã sao chép mật khẩu!'),
-            ],
-            const _ChipSep(),
-            Flexible(
-              child: InkWell(
-                onTap: _localIp.isEmpty
-                    ? null
-                    : () {
-                        Clipboard.setData(ClipboardData(text: _localIp));
-                        showToast('Đã sao chép IP!');
-                      },
-                child: Text(
-                  _localIp.isEmpty ? '---' : _localIp,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontFamily: _PillPalette.mono,
-                    fontSize: 12,
-                    color: _PillPalette.muted,
+          children: myId.isEmpty
+              ? [
+                  // Chưa nhận ID từ rendezvous: hiện IP như client rollback.
+                  _chipBadge('IP', _localIp.isEmpty ? '---' : _localIp,
+                      'Đã sao chép IP!'),
+                  const _ChipSep(),
+                  const Text(
+                    '-',
+                    style: TextStyle(
+                      fontFamily: _PillPalette.mono,
+                      fontSize: 12,
+                      color: _PillPalette.muted,
+                    ),
                   ),
-                ),
-              ),
-            ),
-          ],
+                ]
+              : [
+                  _chipBadge('ID', formatID(myId), 'Đã sao chép ID!'),
+                  if (pass.isNotEmpty) ...[
+                    const _ChipSep(),
+                    _chipBadge('Pass', _showPassword ? pass : '••••••',
+                        'Đã sao chép mật khẩu!'),
+                  ],
+                  const _ChipSep(),
+                  Flexible(
+                    child: InkWell(
+                      onTap: _localIp.isEmpty
+                          ? null
+                          : () {
+                              Clipboard.setData(ClipboardData(text: _localIp));
+                              showToast('Đã sao chép IP!');
+                            },
+                      child: Text(
+                        _localIp.isEmpty ? '---' : _localIp,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontFamily: _PillPalette.mono,
+                          fontSize: 12,
+                          color: _PillPalette.muted,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
         ),
       ),
     );
@@ -692,11 +779,11 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
     );
   }
 
-  /// Nút `Gửi IT`: copy ID + mật khẩu cho IT rồi mở chat (mockup
-  /// client-widget.html:1803 copyAndSendIT).
-  Widget _buildGuiItButton(String myId, String myPass) {
+  /// Nút `Hỗ trợ`: copy ID + mật khẩu cho IT rồi mở chat — đúng client
+  /// rollback (nền tối, icon headset cyan, chữ trắng, radius 14).
+  Widget _buildHelpButton(String myId, String myPass) {
     return InkWell(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(14),
       onTap: () {
         if (myId.isNotEmpty) {
           Clipboard.setData(ClipboardData(text: 'ID: $myId  |  Pass: $myPass'));
@@ -705,48 +792,27 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
         setDeskAgentWindowMode(DeskAgentWindowMode.expanded);
       },
       child: Container(
-        height: 27,
-        padding: const EdgeInsets.symmetric(horizontal: 9),
+        height: 28,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [_WidgetPalette.orange, _WidgetPalette.orangeDark],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(8),
+          color: const Color(0xFF2B2B32),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white.withOpacity(.07)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            DeskAgentIcons.send(size: 12, color: Colors.white),
-            const SizedBox(width: 4),
+            DeskAgentIcons.headphones(size: 13, color: _PillPalette.accent),
+            const SizedBox(width: 5),
             const Text(
-              'Gửi IT',
+              'Hỗ trợ',
               style: TextStyle(
-                fontSize: 11.5,
+                fontSize: 12,
                 fontWeight: FontWeight.w700,
                 color: Colors.white,
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  /// Nút `–` thu nhỏ cửa sổ (đường thoát nhìn thấy được, P0-3).
-  Widget _buildMinimizeButton() {
-    return InkWell(
-      borderRadius: BorderRadius.circular(6),
-      onTap: () => windowManager.minimize(),
-      child: const SizedBox(
-        width: 27,
-        height: 27,
-        child: Center(
-          child: Text(
-            '–',
-            style: TextStyle(fontSize: 14, color: _PillPalette.muted),
-          ),
         ),
       ),
     );
@@ -774,9 +840,15 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
           onTap: () => setDeskAgentWindowMode(DeskAgentWindowMode.pill),
           child: const Row(
             children: [
-              SizedBox(width: 13, child: Center(child: Text( '–', style: TextStyle(fontSize: 14, color: _PillPalette.muted)))),
+              SizedBox(
+                  width: 13,
+                  child: Center(
+                      child: Text('–',
+                          style: TextStyle(
+                              fontSize: 14, color: _PillPalette.muted)))),
               SizedBox(width: 8),
-              Text('Thu gọn', style: TextStyle(fontSize: 12, color: _PillPalette.text)),
+              Text('Thu gọn',
+                  style: TextStyle(fontSize: 12, color: _PillPalette.text)),
             ],
           ),
         ),
@@ -1015,8 +1087,7 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
           const Spacer(),
           InkWell(
             borderRadius: BorderRadius.circular(6),
-            onTap: () =>
-                setDeskAgentWindowMode(DeskAgentWindowMode.compact),
+            onTap: () => setDeskAgentWindowMode(DeskAgentWindowMode.compact),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
               child: Row(
@@ -1145,9 +1216,8 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
   /// `1 030 636 720 | xdsmkj` — click either half to copy it.
   Widget _buildCredentialGroup(String myId, String myPass) {
     final idText = myId.isNotEmpty ? formatID(myId) : '--- --- ---';
-    final passText = myPass.isNotEmpty
-        ? (_showPassword ? myPass : '••••••')
-        : '------';
+    final passText =
+        myPass.isNotEmpty ? (_showPassword ? myPass : '••••••') : '------';
     return Row(
       children: [
         Flexible(
@@ -1399,7 +1469,8 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
                         'ID DeskAgent',
                         style: TextStyle(
                           fontSize: 10,
-                          color: theme.textTheme.bodySmall?.color?.withOpacity(0.6),
+                          color: theme.textTheme.bodySmall?.color
+                              ?.withOpacity(0.6),
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -1448,7 +1519,8 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
                         'Mật khẩu truy cập',
                         style: TextStyle(
                           fontSize: 10,
-                          color: theme.textTheme.bodySmall?.color?.withOpacity(0.6),
+                          color: theme.textTheme.bodySmall?.color
+                              ?.withOpacity(0.6),
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -1471,7 +1543,8 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
                       : DeskAgentIcons.eye(size: 18),
                   tooltip: _showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu',
                   splashRadius: 16,
-                  onPressed: () => setState(() => _showPassword = !_showPassword),
+                  onPressed: () =>
+                      setState(() => _showPassword = !_showPassword),
                 ),
                 IconButton(
                   icon: DeskAgentIcons.refresh(size: 18),
@@ -1520,11 +1593,14 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
           ),
 
           // Subtle UAC Banner (replaces the old giant pink box)
-          if (Platform.isWindows && !isInstalled && !bind.isDisableInstallation())
+          if (Platform.isWindows &&
+              !isInstalled &&
+              !bind.isDisableInstallation())
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
                   color: Colors.amber.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(8),
@@ -1532,7 +1608,8 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.shield_outlined, size: 16, color: Colors.amber),
+                    const Icon(Icons.shield_outlined,
+                        size: 16, color: Colors.amber),
                     const SizedBox(width: 8),
                     const Expanded(
                       child: Text(
@@ -1546,7 +1623,8 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
                         bind.mainGotoInstall();
                       },
                       child: const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                        padding:
+                            EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                         child: Text(
                           'Cài đặt',
                           style: TextStyle(
@@ -1634,7 +1712,8 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
                       'Chưa có phiên kết nối gần đây',
                       style: TextStyle(
                         fontSize: 12,
-                        color: theme.textTheme.bodySmall?.color?.withOpacity(0.6),
+                        color:
+                            theme.textTheme.bodySmall?.color?.withOpacity(0.6),
                       ),
                     ),
                   ],
@@ -1654,7 +1733,8 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
                     _onConnect();
                   },
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                    padding:
+                        const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
                     child: Row(
                       children: [
                         Container(
@@ -1683,14 +1763,16 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome> {
                                 formatID(p.id),
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: theme.textTheme.bodySmall?.color?.withOpacity(0.6),
+                                  color: theme.textTheme.bodySmall?.color
+                                      ?.withOpacity(0.6),
                                 ),
                               ),
                             ],
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.arrow_forward_ios_rounded, size: 12),
+                          icon: const Icon(Icons.arrow_forward_ios_rounded,
+                              size: 12),
                           splashRadius: 14,
                           onPressed: () {
                             _remoteIdController.id = p.id;
