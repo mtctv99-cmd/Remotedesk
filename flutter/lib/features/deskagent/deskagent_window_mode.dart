@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -26,7 +27,8 @@ const double _kWidgetRightMargin = 10;
 const double _kWidgetBottomMargin = 6;
 
 /// Current mode of the main widget window.
-final Rx<DeskAgentWindowMode> deskAgentWindowMode = DeskAgentWindowMode.pill.obs;
+final Rx<DeskAgentWindowMode> deskAgentWindowMode =
+    DeskAgentWindowMode.pill.obs;
 
 /// Set once the window is up and the frameless style has been applied; before
 /// that, stripping WS_CAPTION leaves the Flutter view attached to a surface
@@ -83,11 +85,50 @@ Future<void> setDeskAgentWindowMode(DeskAgentWindowMode mode) async {
   // Ẩn khỏi taskbar — DeskAgent chỉ hiển thị icon ở khay hệ thống.
   if (isWindows) {
     await windowManager.setSkipTaskbar(true);
+    // setSkipTaskbar ghi đè exstyle và khôi phục WS_EX_NOACTIVATE — bit này
+    // khiến Flutter bỏ qua toàn bộ click, phải strip lại ngay.
+    DeskAgentFrameless.apply(getWindowName());
+    startNoActivateStripper();
   }
+}
+
+/// window_manager (setSkipTaskbar / setAsFrameless, hoặc main.dart) có thể
+/// khôi phục WS_EX_NOACTIVATE một cách ASYNC sau khi mình strip — bit này
+/// khiến Flutter bỏ qua toàn bộ click. Strip định kỳ 1 giây để bit không
+/// bao giờ sống quá 1 giây.
+Timer? _noActivateStripTimer;
+void startNoActivateStripper() {
+  if (!isWindows) return;
+  _noActivateStripTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {
+    DeskAgentFrameless.apply(getWindowName());
+  });
 }
 
 /// Logical size of the widget window for [mode] on a work area
 /// [workAreaHeight] logical px tall.
+/// Toạ độ vật lý (góc trái-trên) đặt popup Recent: neo phải panel,
+/// mở hướng LÊN trên panel — không chìm dưới mép màn hình, hết lệch DPI.
+Future<Offset> recentPeersPopupAnchor(
+    {required double popupWidth, required double popupHeight}) async {
+  final screens = await window_size.getScreenList();
+  if (screens.isEmpty) return const Offset(0, 0);
+  final screen = screens.firstWhere(
+    (s) => s.frame.left == 0 && s.frame.top == 0,
+    orElse: () => screens.first,
+  );
+  final work = screen.visibleFrame; // physical px
+  final scale = screen.scaleFactor <= 0 ? 1.0 : screen.scaleFactor;
+  final panelW = _kWidgetWidth * scale;
+  final panelH = _kWidgetCompactHeight * scale;
+  final panelLeft = work.right - _kWidgetRightMargin * scale - panelW;
+  final panelTop = work.bottom - panelH - _kWidgetBottomMargin * scale;
+  final x = panelLeft + 12 * scale;
+  final y = panelTop - popupHeight * scale - 2;
+  // Màn hình quá thấp: đè lên panel thay vì tràn ra ngoài.
+  final cy = y < work.top ? work.top : y;
+  return Offset(x, cy);
+}
+
 Size widgetWindowSize(DeskAgentWindowMode mode, double workAreaHeight) {
   final height = switch (mode) {
     DeskAgentWindowMode.pill => _kWidgetPillHeight,
@@ -139,5 +180,7 @@ Future<void> resizeDeskAgentWidgetWindow(double logicalHeight) async {
   await windowManager.setAlwaysOnTop(true);
   if (isWindows) {
     await windowManager.setSkipTaskbar(true);
+    DeskAgentFrameless.apply(getWindowName());
+    startNoActivateStripper();
   }
 }

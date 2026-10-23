@@ -64,7 +64,8 @@ Future<void> main(List<String> args) async {
     // DeskAgent widget popup: dispatched BEFORE the WindowType mapping, since
     // type.windowType would throw a RangeError for our negative marker.
     if (type == -2) {
-      print('recent-popup main: launching child, peers=${(argument['peers'] as List?)?.length}');
+      print(
+          'recent-popup main: launching child, peers=${(argument['peers'] as List?)?.length}');
       runMultiWindow(argument, kAppTypeDesktopRecentPeers);
       return;
     }
@@ -323,21 +324,22 @@ void runMultiWindow(
       exit(0);
   }
   // show window from hidden status
-  WindowController.fromWindowId(kWindowId!).show();
   if (appType == kAppTypeDesktopRecentPeers) {
-    // Widget recent popup: frameless 380x220, positioned so its bottom sits
-    // 4px above the panel's input row (window top passed from the caller).
+    // Widget recent popup: đặt frame TRƯỚC khi show — không còn flash trắng
+    // tại góc trái; preventClose=false để click peer / X đóng được popup.
+    // Kích thước 356x200, mở hướng LÊN trên panel (anchor từ caller).
     final left = (argument['left'] as num?)?.toDouble() ?? 0;
     final topOffset = (argument['top'] as num?)?.toDouble() ?? 0;
-    print('recent-popup child: window shown, setting frame left=$left top=$topOffset');
+    print('recent-popup child: setting frame left=$left top=$topOffset');
     final ctl = WindowController.fromWindowId(kWindowId!);
-    await ctl
-        .setFrame(Offset(left, topOffset) & const Size(380, 220));
+    await ctl.setPreventClose(false);
+    await ctl.setFrame(Offset(left, topOffset) & const Size(356, 200));
     await ctl.setTitle('DeskAgentRecent');
-    await ctl.show();
-    print('recent-popup child: frame+title set, body rendered');
     DeskAgentFrameless.apply('DeskAgentRecent');
-    print('recent-popup child: frameless applied');
+    await ctl.show();
+    print('recent-popup child: visible, preventClose off');
+  } else {
+    WindowController.fromWindowId(kWindowId!).show();
   }
 }
 

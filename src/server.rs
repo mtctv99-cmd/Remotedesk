@@ -169,7 +169,9 @@ pub fn new() -> ServerPtr {
                 )));
             }
             Err(e) => {
-                log::error!("printer service init failed: {}", e);
+                // Chức năng in là optional — dll thiếu (bản per-user) chỉ là
+                // cảnh báo, không phải lỗi khởi động server.
+                log::warn!("printer service init skipped: {}", e);
             }
         }
     }

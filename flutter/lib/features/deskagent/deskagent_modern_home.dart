@@ -103,9 +103,13 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
     // recent-peers window) cannot reach the connect flow.
     DesktopMultiWindow.setMethodHandler((call, fromWindowId) async {
       if (call.method == kWindowConnect) {
-        final map = call.arguments is Map
-            ? call.arguments as Map<dynamic, dynamic>
-            : <dynamic, dynamic>{};
+        // Sender (popup Recent) gửi JSON string qua args — decode thống nhất.
+        final raw = call.arguments;
+        final map = raw is Map
+            ? raw.cast<dynamic, dynamic>()
+            : (raw is String
+                ? (jsonDecode(raw) as Map).cast<dynamic, dynamic>()
+                : <dynamic, dynamic>{});
         final id = '${map['id'] ?? ''}';
         final ctx = this.context;
         if (ctx != null && ctx.mounted && id.isNotEmpty) {
@@ -181,6 +185,8 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
       if (!mounted) return;
       if (deskAgentWindowMode.value == DeskAgentWindowMode.pill) return;
       if (_showSettings) return;
+      // Đang gõ vào ô ID (popup Recent mở kèm) thì không thu gọn.
+      if (_remoteIdFocusNode.hasFocus) return;
       final popupId = _recentPeersWindowId;
       if (popupId != null) {
         try {
@@ -379,18 +385,21 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
       }
       return;
     }
-    final pos = await windowManager.getPosition();
-    final left = pos.dx;
-    var top = pos.dy + 54 - 220 - 4; // bottom == row2Top - 4, opens upward
-    if (top < 0) top = pos.dy + 54 + 4; // tiny screens: fall below the input
+    // Đặt popup theo toạ độ vật lý trên cùng màn hình, neo phải panel và
+    // mở hướng LÊN trên panel — hết lỗi vị trí DPI lệch + chìm dưới mép màn.
+    final anchor =
+        await recentPeersPopupAnchor(popupWidth: 356, popupHeight: 200);
     try {
       final ctl = await DesktopMultiWindow.createWindow(jsonEncode({
         'type': -2,
         'peers': peers,
-        'left': left,
-        'top': top,
+        'left': anchor.dx,
+        'top': anchor.dy,
       }));
       _recentPeersWindowId = ctl.windowId;
+      // Trả focus về ô ID để gõ tiếp không bị nuốt ký tự khi popup lấy
+      // foreground (nguyên nhân "ký tự tự biến mất").
+      _remoteIdFocusNode.requestFocus();
     } catch (e) {
       debugPrint('recent popup: create failed: $e');
     }

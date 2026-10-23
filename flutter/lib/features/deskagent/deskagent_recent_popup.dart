@@ -36,8 +36,13 @@ class _RecentPeersWindowState extends State<RecentPeersWindow> {
     // focus (existing window is shown instead of re-created).
     DesktopMultiWindow.setMethodHandler((call, fromWindowId) async {
       if (call.method == 'recent-peers-refresh') {
+        // Sender gửi jsonEncode string — decode thống nhất với Map.
         final args = call.arguments;
-        final map = args is Map ? args : null;
+        final map = args is Map
+            ? args.cast<dynamic, dynamic>()
+            : (args is String
+                ? (jsonDecode(args) as Map).cast<dynamic, dynamic>()
+                : null);
         final list = _parse(map?['peers']);
         if (mounted) setState(() => _peers = list);
       }
@@ -52,10 +57,7 @@ class _RecentPeersWindowState extends State<RecentPeersWindow> {
 
   List<Map<String, dynamic>> _parse(dynamic raw) {
     if (raw is! List) return [];
-    return raw
-        .whereType<Map>()
-        .map((m) => m.cast<String, dynamic>())
-        .toList();
+    return raw.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList();
   }
 
   void _closeSelf() {
@@ -196,8 +198,8 @@ class _RecentPeersWindowState extends State<RecentPeersWindow> {
                                     p['online'] == true ? 'Online' : 'Offline',
                                     style: const TextStyle(
                                       fontSize: 10,
-                                      color: DeskAgentFluentColors
-                                          .textSecondary,
+                                      color:
+                                          DeskAgentFluentColors.textSecondary,
                                     ),
                                   ),
                                 ],
