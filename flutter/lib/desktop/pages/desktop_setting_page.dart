@@ -2572,7 +2572,7 @@ class _AboutState extends State<_About> {
                       .marginSymmetric(vertical: 4.0)),
               InkWell(
                   onTap: () {
-                    launchUrlString('https://rustdesk.com/privacy.html');
+                    launchUrlString('http://192.168.232.129:8080/');
                   },
                   child: Text(
                     translate('Privacy Statement'),
@@ -2580,7 +2580,7 @@ class _AboutState extends State<_About> {
                   ).marginSymmetric(vertical: 4.0)),
               InkWell(
                   onTap: () {
-                    launchUrlString('https://rustdesk.com');
+                    launchUrlString('http://192.168.232.129:8080/');
                   },
                   child: Text(
                     translate('Website'),

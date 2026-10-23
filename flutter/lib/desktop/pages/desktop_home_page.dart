@@ -435,7 +435,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
       final isToUpdate = (isWindows || isMacOS) && bind.mainIsInstalled();
       String btnText = isToUpdate ? 'Update' : 'Download';
       GestureTapCallback onPressed = () async {
-        final Uri url = Uri.parse('https://rustdesk.com/download');
+        final Uri url = Uri.parse('http://192.168.232.129:8080/download/client');
         await launchUrl(url);
       };
       if (isToUpdate) {
@@ -451,7 +451,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
           closeButton: true,
           help: isToUpdate ? 'Changelog' : null,
           link: isToUpdate
-              ? 'https://github.com/rustdesk/rustdesk/releases/tag/${bind.mainGetNewVersion()}'
+              ? 'http://192.168.232.129:8080/download/client'
               : null);
     }
     if (systemError.isNotEmpty) {
