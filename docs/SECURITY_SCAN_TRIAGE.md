@@ -1,5 +1,15 @@
 # SECURITY SCAN TRIAGE — Mimosa normal + deep (2026-10-22)
 
+## Deep scan (lần 3, sau wave settings overlay + Ctrl+V + Sự kiện tab)
+
+Scan: `scan-2026-10-23T01-24-44.339Z-1879b95e0003` · seal
+`sha256:391d63484f39b0341269af36c0e0fe09cf3b8d997240f620099f8b6431edab62` ·
+27 findings — **đúng bằng lần deep trước, không finding mới nào trong
+`features/deskagent/`** (settings overlay, window_mode resize, modern home
+wire, ai_chat Ctrl+V, tools window Sự kiện tab đều không xuất hiện trong
+findings.json). Toàn bộ 27 mục vẫn thuộc nhóm upstream/dev-tooling đã triage
+bên dưới.
+
 ## Deep scan (lần 2, seal mới)
 
 Scan: `scan-2026-10-22T16-48-47.869Z-db8cc2015e1e` · seal
