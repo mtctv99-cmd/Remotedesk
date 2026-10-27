@@ -89,6 +89,9 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
   /// First non-loopback IPv4 of this machine, shown in the panel's IP chip.
   String _localIp = '';
 
+  /// Chế độ hiển thị của chip: 0=IP, 1=ID, 2=Pass (nút ⇄ chuyển qua lại).
+  int _chipMode = 0;
+
   /// Recent peers popup window (`Thiết bị gần đây`, 380×220 frameless).
   int? _recentPeersWindowId;
 
@@ -209,7 +212,8 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
     });
     // Mode pill (watchdog/menu thu gọn) đóng overlay cài đặt — trước đây là
     // phép gán trong build ("if (_showSettings) _showSettings = false;").
-    _modeWorker = ever<DeskAgentWindowMode>(deskAgentWindowMode, _onModeChanged);
+    _modeWorker =
+        ever<DeskAgentWindowMode>(deskAgentWindowMode, _onModeChanged);
     _peersLoader.init(setState);
     _remoteIdFocusNode.addListener(() {
       if (_remoteIdFocusNode.hasFocus && _peersLoader.needLoad) {
@@ -879,9 +883,12 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
     final rawId = gFFI.serverModel.serverId.text.trim();
     final pass = gFFI.serverModel.serverPasswd.text.trim();
     final idReady = rawId.isNotEmpty && !rawId.startsWith('Generating');
+    final idShown = idReady ? formatID(rawId) : '---';
+    final values = [_localIp, idShown, pass];
+
     final mono = const TextStyle(
         fontFamily: _PillPalette.mono,
-        fontSize: 9.5,
+        fontSize: 10,
         height: 1.1,
         color: _PillPalette.text);
     Widget miniBadge(String label) => Container(
@@ -899,23 +906,18 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
             ),
           ),
         );
-    Widget val(String v, String copyMsg, {bool dim = false, bool copy = true}) {
-      return InkWell(
-        onTap: copy && v.isNotEmpty && v != '---'
-            ? () {
-                Clipboard.setData(ClipboardData(text: v));
-                showToast(copyMsg);
-              }
-            : null,
-        child: Text(
-          v,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: mono.copyWith(
-              color: dim ? _PillPalette.muted : _PillPalette.text),
-        ),
-      );
-    }
+
+    final rowIndex = _chipMode.clamp(0, 2);
+    final labels = const ['IP', 'ID', 'Pass'];
+    final copyMsgs = const [
+      'Đã sao chép IP!',
+      'Đã sao chép ID!',
+      'Đã sao chép mật khẩu!',
+    ];
+    final shown = values[rowIndex].isEmpty ? '---' : values[rowIndex];
+    final copyable = rowIndex == 2
+        ? pass.isNotEmpty && pass != '-'
+        : values[rowIndex].isNotEmpty;
 
     return Container(
       height: 27,
@@ -925,41 +927,42 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.max,
         children: [
-          miniBadge('IP'),
-          const SizedBox(width: 3),
-          Flexible(
-              child:
-                  val(_localIp.isEmpty ? '---' : _localIp, 'Đã sao chép IP!')),
-          const _ChipSep(),
-          miniBadge('ID'),
-          const SizedBox(width: 3),
-          Flexible(
-              child: val(idReady ? formatID(rawId) : '---', 'Đã sao chép ID!',
-                  dim: !idReady, copy: idReady)),
-          if (pass.isNotEmpty && pass != '-') ...[
-            const _ChipSep(),
-            InkWell(
-              onTap: () => setState(() => _showPassword = !_showPassword),
-              onLongPress: () {
-                Clipboard.setData(ClipboardData(text: pass));
-                showToast('Đã sao chép mật khẩu!');
-              },
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  miniBadge('Pass'),
-                  const SizedBox(width: 3),
-                  Text(
-                    _showPassword ? pass : '••••••',
-                    maxLines: 1,
-                    style: mono,
-                  ),
-                ],
+          miniBadge(labels[rowIndex]),
+          const SizedBox(width: 4),
+          Expanded(
+            child: InkWell(
+              onTap: copyable
+                  ? () {
+                      Clipboard.setData(ClipboardData(text: values[rowIndex]));
+                      showToast(copyMsgs[rowIndex]);
+                    }
+                  : null,
+              onLongPress: rowIndex == 2
+                  ? () => setState(() => _showPassword = !_showPassword)
+                  : null,
+              child: Text(
+                rowIndex == 2 && !_showPassword ? '••••••' : shown,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: mono.copyWith(
+                    color: rowIndex == 2 && copyable
+                        ? _PillPalette.text
+                        : _PillPalette.muted),
               ),
             ),
-          ],
+          ),
+          const SizedBox(width: 4),
+          // Nút ⇄ chuyển qua lại IP -> ID -> Pass
+          InkWell(
+            borderRadius: BorderRadius.circular(4),
+            onTap: () => setState(() => _chipMode = (rowIndex + 1) % 3),
+            child: Padding(
+              padding: const EdgeInsets.all(2),
+              child:
+                  Icon(Icons.swap_horiz, size: 11, color: _PillPalette.muted),
+            ),
+          ),
         ],
       ),
     );
