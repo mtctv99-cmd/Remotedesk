@@ -40,6 +40,10 @@ class DeskAgentFrameless {
   static const int _wsMinimizeBox = 0x00020000;
   static const int _wsMaximizeBox = 0x00010000;
   static const int _wsExNoActivate = 0x08000000;
+  /// WS_EX_NOACTIVATE is bit 0x00080000. The 0x08000000 constant used before
+  /// was WS_EX_LAYERED — stripping it changed nothing and the real bit kept
+  /// swallowing every click.
+  static const int _wsExNoActivateBit = 0x00080000;
   static const int _swpNoMove = 0x0002;
   static const int _swpNoSize = 0x0001;
   static const int _swpNoZOrder = 0x0004;
@@ -149,7 +153,7 @@ class DeskAgentFrameless {
       // WS_EX_NOACTIVATE keeps the widget from ever taking focus, and the
       // click never reaches Flutter. The shipped pill did not have it.
       final exStyle = getWindowLongPtrW(hwnd, _gwlExStyle);
-      final exStripped = exStyle & ~_wsExNoActivate;
+      final exStripped = exStyle & ~_wsExNoActivateBit;
       if (exStripped != exStyle) {
         setWindowLongPtrW(hwnd, _gwlExStyle, exStripped);
       }

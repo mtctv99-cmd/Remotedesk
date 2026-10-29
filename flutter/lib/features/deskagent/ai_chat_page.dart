@@ -860,8 +860,9 @@ class _AiChatPageState extends State<AiChatPage> {
                 onSubmitted: (_) => _send(),
                 style: const TextStyle(fontSize: 11.5),
                 decoration: InputDecoration(
-                  hintText:
-                      translate('Nhập nội dung cần IT hỗ trợ... (Enter gửi)'),
+                  // Ngắn gọn để không bị cắt "...(Enter ..." khi composer
+                  // chỉ còn ~200px sau nhãn "Yêu cầu IT" và nút gửi.
+                  hintText: translate('Nhập nội dung cho IT... Enter gửi'),
                   hintStyle:
                       const TextStyle(fontSize: 11, color: Color(0xFFA1A1AA)),
                   isDense: true,

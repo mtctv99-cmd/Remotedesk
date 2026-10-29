@@ -112,14 +112,18 @@ class _DeskAgentSettingsOverlayState extends State<DeskAgentSettingsOverlay> {
     }
   }
 
-  /// Cài Windows Service qua UAC: bật `--install`, tắt `--uninstall`.
+  /// Cài Windows Service qua UAC: bật `--install-service`, tắt
+  /// `--uninstall-service` — đúng tên nhánh ở src/core_main.rs:388 và :392.
+  /// Trước đây gửi `--install`/`--uninstall`: không khớp nhánh nào nên tiến
+  /// trình con rơi xuống khởi động server + mở GUI, không bao giờ thoát, và
+  /// `-Wait` chờ mãi (nút quay spinner vô hạn, service không đổi).
   /// exitCode != 0 (vd 1223) là người dùng HỦY bảng UAC — phải báo đúng
   /// thay vì dò lại isInstalled rồi toast sai kết quả.
   Future<void> _setService(bool on) async {
     setState(() => _serviceBusy = true);
     try {
       final exe = Platform.resolvedExecutable;
-      final arg = on ? '--install' : '--uninstall';
+      final arg = on ? '--install-service' : '--uninstall-service';
       final res = await Process.run('powershell', [
         '-NoProfile',
         '-Command',
@@ -220,11 +224,18 @@ class _DeskAgentSettingsOverlayState extends State<DeskAgentSettingsOverlay> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _header(),
+                // Cuộn khi cần: cửa sổ cao bằng nội dung (~620) nên bình
+                // thường không có thanh cuộn; màn hình thấp hơn hoặc thêm mục
+                // mới thì vẫn đọc hết được thay vì bị cắt.
                 Expanded(
                   child: SingleChildScrollView(
+                    child: Padding(
                     padding: const EdgeInsets.only(top: 4, bottom: 6),
+                    // Bắt đầu từ trên, không rải đều: spaceBetween làm các
+                    // nhóm bị đẩy xa nhau khi cửa sổ cao bằng cả màn hình.
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisAlignment: MainAxisAlignment.start,
                       children: [
                         _sectionHeader(
                             Icons.desktop_windows_outlined, 'Hệ thống'),
@@ -275,6 +286,7 @@ class _DeskAgentSettingsOverlayState extends State<DeskAgentSettingsOverlay> {
                       ],
                     ),
                   ),
+                ),
                 ),
                 _footer(),
               ],
