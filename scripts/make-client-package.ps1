@@ -31,7 +31,10 @@ try {
 
 $release = Join-Path $root 'flutter\build\windows\x64\runner\Release'
 $stage = Join-Path $env:TEMP "pkg\DeskAgent-Windows-x64"
-$zip = Join-Path $env:TEMP 'DeskAgent-Windows-x64.zip'
+$version = (Select-String -Path (Join-Path $root 'Cargo.toml') -Pattern '^version = "([^"]+)"').Matches[0].Groups[1].Value
+if (-not $version) { throw 'Cannot read package version from Cargo.toml' }
+# The versioned file name is what the Manager auto-deploy watcher parses.
+$zip = Join-Path $env:TEMP "deskagent-$version-install.zip"
 
 if (-not (Test-Path (Join-Path $release 'deskagent.exe'))) {
     Write-Host "No client build in $release. Run scripts\deskagent-build.cmd first." -ForegroundColor Red
@@ -42,23 +45,26 @@ Remove-Item (Split-Path $stage -Parent) -Recurse -Force -ErrorAction SilentlyCon
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 Copy-Item "$release\*" $stage -Recurse -Force
 
-# The zero config installer, so a fresh machine can be set up from the
-# download: it writes the server address and the key into every user
-# profile, registers the service, opens the firewall and sets the password.
-Copy-Item (Join-Path $root 'scripts\install-client.ps1') $stage -Force
+# The zero config installer is optional: auto-update only needs the files
+# below, while a fresh machine still uses install-client.ps1 when present.
+$installScript = Join-Path $root 'scripts\install-client.ps1'
+if (Test-Path $installScript) {
+    Copy-Item $installScript $stage -Force
+}
 
 @"
-DeskAgent v1.5.2 - client package for Windows x64.
+DeskAgent v$version - client package for Windows x64.
 
 Fresh install:
   1. Unpack this archive anywhere.
-  2. Run install-client.ps1 as Administrator.
+  2. Run install-client.ps1 as Administrator (when included).
   3. The client registers itself with the manager and starts reporting its
      inventory and its events.
 
 Upgrade of an existing install:
-  The admin console unpacks this archive over the running client and
-  restarts it; nothing else is needed.
+  Copy this zip into the Manager data directory. The Manager publishes it
+  through /api/version/latest and installed clients update automatically on
+  their next one-minute check (no active remote session).
 "@ | Set-Content "$stage\README.txt" -Encoding utf8
 
 Remove-Item $zip -Force -ErrorAction SilentlyContinue

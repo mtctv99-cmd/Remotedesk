@@ -788,7 +788,7 @@ fn execute_auto_update(
 
     #[cfg(target_os = "windows")]
     {
-        launch_silent_update(&target_file)?;
+        launch_silent_update(&target_file, &latest.version)?;
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -799,7 +799,14 @@ fn execute_auto_update(
 }
 
 #[cfg(target_os = "windows")]
-fn launch_silent_update(installer: &Path) -> ResultType<()> {
+fn launch_silent_update(installer: &Path, version: &str) -> ResultType<()> {
+    if installer
+        .extension()
+        .and_then(|e| e.to_str())
+        .map_or(false, |e| e.eq_ignore_ascii_case("zip"))
+    {
+        return launch_zip_update(installer, version);
+    }
     let p = match installer.to_str() {
         Some(s) => s,
         None => bail!("invalid installer path"),
@@ -837,6 +844,82 @@ fn launch_silent_update(installer: &Path) -> ResultType<()> {
     cmd.args(["/C", "start", "", p, "--silent-install"]);
     hide_window(&mut cmd);
     cmd.spawn()?;
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+const ZIP_UPDATE_SCRIPT: &str = r#"param([string]$Zip,[string]$Dest,[string]$Work)
+$ErrorActionPreference = 'Continue'
+$log = Join-Path $Work 'update.log'
+function Log($m) { "$(Get-Date -Format o) $m" | Out-File $log -Append -Encoding utf8 }
+try {
+    Log "starting $Zip"
+    Start-Sleep -Seconds 2
+    Get-Process deskagent -ErrorAction SilentlyContinue | ForEach-Object {
+        try { if ($_.Path -like "$Dest*") { Stop-Process -Id $_.ProcessId -Force } } catch {}
+    }
+    Start-Sleep -Seconds 3
+    $extract = Join-Path $Work 'extract'
+    Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
+    Expand-Archive -LiteralPath $Zip -DestinationPath $extract -Force
+    $exe = Get-ChildItem $extract -Recurse -Filter deskagent.exe | Select-Object -First 1
+    if (-not $exe) { Log 'deskagent.exe not found'; exit 2 }
+    $src = $exe.Directory.FullName
+    Log "copying $src -> $Dest"
+    Get-ChildItem $src -Force | Where-Object { $_.Name -notin @('.mimosa', '.zcode') } | ForEach-Object {
+        Copy-Item $_.FullName $Dest -Recurse -Force
+    }
+    Log 'starting'
+    Start-Process -FilePath (Join-Path $Dest 'deskagent.exe') -ArgumentList '--tray'
+    Start-Sleep -Seconds 2
+    Start-Process -FilePath (Join-Path $Dest 'deskagent.exe') -ArgumentList '--server'
+    Log 'done'
+} catch {
+    Log "fatal: $_"
+    exit 1
+}
+"#;
+
+#[cfg(target_os = "windows")]
+fn launch_zip_update(zip: &Path, version: &str) -> ResultType<()> {
+    let exe = std::env::current_exe()?;
+    let dest = match exe.parent() {
+        Some(p) => p,
+        None => bail!("no install dir"),
+    };
+    let work = std::env::temp_dir()
+        .join("DeskAgent")
+        .join("update")
+        .join(format!("zip-{}", sanitize_path_component(version)));
+    std::fs::create_dir_all(&work)?;
+    let script = work.join("install-update.ps1");
+    std::fs::write(&script, ZIP_UPDATE_SCRIPT)?;
+
+    let cmd = format!(
+        "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"{}\" -Zip \"{}\" -Dest \"{}\" -Work \"{}\"",
+        script.display(),
+        zip.display(),
+        dest.display(),
+        work.display()
+    );
+    if crate::platform::is_root() {
+        let mut c = Command::new("cmd");
+        c.arg("/C").arg(&cmd);
+        hide_window(&mut c);
+        c.spawn()?;
+        return Ok(());
+    }
+    if let Some(session_id) = crate::platform::get_current_process_session_id() {
+        match crate::platform::launch_privileged_process(session_id, &cmd) {
+            Ok(h) if !h.is_null() => return Ok(()),
+            Err(e) => log::warn!("zip update: privileged launch failed: {e}"),
+            _ => log::warn!("zip update: privileged launch returned null handle"),
+        }
+    }
+    let mut c = Command::new("cmd");
+    c.arg("/C").arg(&cmd);
+    hide_window(&mut c);
+    c.spawn()?;
     Ok(())
 }
 
