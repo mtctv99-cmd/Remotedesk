@@ -45,11 +45,13 @@ Remove-Item (Split-Path $stage -Parent) -Recurse -Force -ErrorAction SilentlyCon
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 Copy-Item "$release\*" $stage -Recurse -Force
 
-# The zero config installer is optional: auto-update only needs the files
-# below, while a fresh machine still uses install-client.ps1 when present.
-$installScript = Join-Path $root 'scripts\install-client.ps1'
-if (Test-Path $installScript) {
-    Copy-Item $installScript $stage -Force
+# Fresh-install bootstrap: installs under Program Files and registers the
+# SYSTEM service in one step. Auto-update does not depend on this script.
+foreach ($name in @('install-client.ps1', 'install-client.cmd')) {
+    $path = Join-Path $root "scripts\$name"
+    if (Test-Path $path) {
+        Copy-Item $path $stage -Force
+    }
 }
 
 @"
@@ -57,7 +59,9 @@ DeskAgent v$version - client package for Windows x64.
 
 Fresh install:
   1. Unpack this archive anywhere.
-  2. Run install-client.ps1 as Administrator (when included).
+  2. Double-click install-client.cmd and accept the UAC prompt.
+     It installs to Program Files and registers the SYSTEM service, so
+     auto-update works without an interactive admin session.
   3. The client registers itself with the manager and starts reporting its
      inventory and its events.
 

@@ -884,6 +884,11 @@ try {
     Get-ChildItem $src -Force | Where-Object { $_.Name -notin @('.mimosa', '.zcode') } | ForEach-Object {
         Copy-Item $_.FullName $Dest -Recurse -Force
     }
+    if (-not (Get-Service -Name DeskAgent -ErrorAction SilentlyContinue)) {
+        Log 'installing service'
+        & (Join-Path $Dest 'deskagent.exe') --install-service 2>&1 | Out-File $log -Append -Encoding utf8
+        Start-Sleep -Seconds 4
+    }
     Log 'starting'
     Start-Process -FilePath (Join-Path $Dest 'deskagent.exe') -ArgumentList '--tray'
     Start-Sleep -Seconds 2
