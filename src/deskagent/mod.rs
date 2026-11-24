@@ -45,15 +45,33 @@ fn apply_smooth_defaults() {
 /// the GUI process (the `--tray` and `--server` companions would only
 /// duplicate its work). Other platforms have a single long-lived process.
 fn should_start_daemon() -> bool {
-    #[cfg(not(target_os = "windows"))]
-    return true;
-    #[cfg(target_os = "windows")]
-    {
-        let args: Vec<String> = std::env::args().skip(1).collect();
-        if args.iter().any(|a| a == "--tray" || a == "--server") {
+    // Every role may host the daemon; a process-wide named mutex below keeps
+    // exactly one of GUI / --tray / --server doing the work. The old role
+    // filter meant a headless tray+server install never checked for updates.
+    true
+}
+
+#[cfg(target_os = "windows")]
+fn acquire_daemon_mutex() -> bool {
+    use winapi::um::handleapi::CloseHandle;
+    use winapi::um::synchapi::CreateMutexW;
+
+    static HANDLE: std::sync::Mutex<Option<isize>> = std::sync::Mutex::new(None);
+    let name: Vec<u16> = "Global\\DeskAgentDaemon\0".encode_utf16().collect();
+    unsafe {
+        let h = CreateMutexW(std::ptr::null_mut(), 0, name.as_ptr());
+        if h.is_null() {
             return false;
         }
-        !(crate::platform::is_self_service_running() && !crate::platform::is_root())
+        if std::io::Error::last_os_error().raw_os_error() == Some(183) {
+            // ERROR_ALREADY_EXISTS: another process owns the daemon.
+            CloseHandle(h);
+            return false;
+        }
+        if let Ok(mut slot) = HANDLE.lock() {
+            *slot = Some(h as isize);
+        }
+        true
     }
 }
 
@@ -69,6 +87,11 @@ pub fn start_background() {
         apply_smooth_defaults();
         if !should_start_daemon() {
             log::debug!("deskagent daemon not started in this process role");
+            return;
+        }
+        #[cfg(target_os = "windows")]
+        if !acquire_daemon_mutex() {
+            log::debug!("deskagent daemon already hosted by another process");
             return;
         }
         let spawned = std::thread::Builder::new()
