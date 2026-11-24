@@ -24,7 +24,7 @@ const double _kWidgetWidth = 380;
 /// Panel sát nội dung: 2 hàng 32px + gap 6 + padding trên/dưới 10 = 90.
 /// (Từng thử 18% chiều cao màn hình nhưng panel thành 154px toàn khoảng
 /// trống — nội dung chỉ có 2 hàng.)
-const double _kWidgetCompactHeight = 90;
+const double _kWidgetCompactHeight = 96;
 const double _kWidgetPillWidth = 86;
 const double _kWidgetPillHeight = 40;
 const double _kWidgetRightMargin = 10;

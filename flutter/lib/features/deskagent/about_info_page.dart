@@ -40,10 +40,10 @@ class _InfoGroupSpec {
 
 const List<_InfoGroupSpec> _kGroupSpecs = [
   _InfoGroupSpec('Operating System', Icons.desktop_windows_outlined,
-      Colors.blue, ['hostname', 'os', 'os_version']),
-  _InfoGroupSpec(
-      'Hardware', Icons.memory_outlined, Colors.teal, ['arch', 'cpu', 'processor']),
-  _InfoGroupSpec('Memory & Drives', Icons.storage_outlined, Colors.orange, [
+      _kAccentColor, ['hostname', 'os', 'os_version']),
+  _InfoGroupSpec('Hardware', Icons.memory_outlined, _kAccentColor,
+      ['arch', 'cpu', 'processor']),
+  _InfoGroupSpec('Memory & Drives', Icons.storage_outlined, _kAccentColor, [
     'memory',
     'total_memory',
     'ram',
@@ -56,7 +56,7 @@ const List<_InfoGroupSpec> _kGroupSpecs = [
 
 // Catch-all card for keys the specs above do not cover.
 const _InfoGroupSpec _kOtherGroupSpec =
-    _InfoGroupSpec('Other', Icons.info_outline, Colors.grey, []);
+    _InfoGroupSpec('Other', Icons.info_outline, _kAccentColor, []);
 
 // Friendly labels for the well-known keys; unknown keys fall back to a
 // prettified version of the raw key.
@@ -267,13 +267,12 @@ class _AboutInfoPageState extends State<AboutInfoPage> {
     return Column(children: cards);
   }
 
-  Widget _groupCard(
-      _InfoGroupSpec spec, List<MapEntry<String, String>> rows) {
+  Widget _groupCard(_InfoGroupSpec spec, List<MapEntry<String, String>> rows) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Column(

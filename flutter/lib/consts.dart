@@ -281,11 +281,11 @@ const double kDesktopFileTransferRowHeight = 30.0;
 const double kDesktopFileTransferHeaderHeight = 25.0;
 
 const double kMinFps = 5;
-const double kDefaultFps = 30;
+const double kDefaultFps = 60;
 const double kMaxFps = 120;
 
 const double kMinQuality = 10;
-const double kDefaultQuality = 50;
+const double kDefaultQuality = 80;
 const double kMaxQuality = 100;
 const double kMaxMoreQuality = 2000;
 
@@ -352,8 +352,8 @@ extension StringExtension on String {
   String get nonBreaking => replaceAll(' ', String.fromCharCode($nbsp));
 }
 
-const Size kConnectionManagerWindowSizeClosedChat = Size(300, 490);
-const Size kConnectionManagerWindowSizeOpenChat = Size(700, 490);
+const Size kConnectionManagerWindowSizeClosedChat = Size(320, 420);
+const Size kConnectionManagerWindowSizeOpenChat = Size(720, 420);
 // Tabbar transition duration, now we remove the duration
 const Duration kTabTransitionDuration = Duration.zero;
 const double kEmptyMarginTop = 50;

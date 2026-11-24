@@ -13,6 +13,22 @@
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
+$uiTag = 'deskagent-ui-stable-20261124'
+
+Push-Location $root
+try {
+    & git diff --exit-code $uiTag -- flutter/lib 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "UI has drifted from $uiTag. Restore it or create a new baseline tag before packaging."
+    }
+    $untracked = & git ls-files --others --exclude-standard flutter/lib
+    if ($untracked) {
+        throw "Untracked UI files found: $($untracked -join ', ')"
+    }
+} finally {
+    Pop-Location
+}
+
 $release = Join-Path $root 'flutter\build\windows\x64\runner\Release'
 $stage = Join-Path $env:TEMP "pkg\DeskAgent-Windows-x64"
 $zip = Join-Path $env:TEMP 'DeskAgent-Windows-x64.zip'
@@ -32,7 +48,7 @@ Copy-Item "$release\*" $stage -Recurse -Force
 Copy-Item (Join-Path $root 'scripts\install-client.ps1') $stage -Force
 
 @"
-DeskAgent v1.5.0 - client package for Windows x64.
+DeskAgent v1.5.2 - client package for Windows x64.
 
 Fresh install:
   1. Unpack this archive anywhere.

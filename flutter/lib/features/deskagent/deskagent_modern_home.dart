@@ -43,20 +43,18 @@ class _PillPalette {
   static const String mono = 'Consolas';
 }
 
-/// Client widget palette, taken from `showcase/client-widget.html`
-/// ("Trắng – Cam – Xanh"): a light mica surface with a blue primary and an
-/// orange call-to-action. Kept local to the widget so the app-wide theme (which
-/// also serves the dark remote session and dialogs) stays untouched.
+/// Client widget palette, Fluent Dark from `popup-windows-goc.html`: acrylic
+/// `#202020`, `#272727` surface, 12% white border and `#60CDFF` accent.
 class _WidgetPalette {
-  static const Color bg = Color(0xFFF9F9F9);
-  static const Color card = Color(0xFFFFFFFF);
-  static const Color text = Color(0xFF1A1A1A);
-  static const Color muted = Color(0xFF6B7280);
-  static const Color border = Color(0x24000000); // black 14%
-  static const Color blue = Color(0xFF0284C7);
-  static const Color blueDark = Color(0xFF0369A1);
-  static const Color orange = Color(0xFFF97316);
-  static const Color orangeDark = Color(0xFFEA580C);
+  static const Color bg = Color(0xFF202020);
+  static const Color card = Color(0xFF272727);
+  static const Color text = Color(0xFFF4F4F5);
+  static const Color muted = Color(0xFFA1A1AA);
+  static const Color border = Color(0x1FFFFFFF); // white 12%
+  static const Color blue = Color(0xFF60CDFF);
+  static const Color blueDark = Color(0xFF0284C7);
+  static const Color orange = Color(0xFF60CDFF);
+  static const Color orangeDark = Color(0xFF7CD5FF);
   static const Color green = Color(0xFF34D399); // semantic success (bao-cao-ux)
   static const String mono = 'Consolas';
 }
@@ -115,7 +113,6 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
   /// Hẹn đóng danh sách gợi ý khi ô ID mất focus. Hoãn 180ms để tap trên
   /// một dòng thiết bị kịp chạy trước khi dòng bị gỡ khỏi tree.
   Timer? _recentListCloseTimer;
-
 
   final IDTextEditingController _remoteIdController = IDTextEditingController();
   final FocusNode _remoteIdFocusNode = FocusNode();
@@ -276,8 +273,7 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
         // tự đóng — trước đây nó kẹt lại vì chỉ tắt khi chọn peer/Kết nối.
         if (_recentListOpen) {
           _recentListCloseTimer?.cancel();
-          _recentListCloseTimer =
-              Timer(const Duration(milliseconds: 180), () {
+          _recentListCloseTimer = Timer(const Duration(milliseconds: 180), () {
             if (!mounted) return;
             if (_remoteIdFocusNode.hasFocus) return;
             setState(() => _recentListOpen = false);
@@ -595,61 +591,61 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
         if (_isDockedWidget) {
           return _ClosingSlide(
             child: MouseRegion(
-            onEnter: (_) {
-              _wdTrace('pointer: enter, cancel');
-              _cancelAutoCollapse();
-            },
-            onExit: (_) {
-              // onExit bắn giả trong hai tình huống: (a) cửa sổ vừa resize
-              // nên Flutter chưa cập nhật hit-test, (b) focus vào TextField
-              // làm subtree đổi cấu trúc. Kiểm tra con trỏ thật sự ngoài
-              // trước khi hẹn thu gọn, chậm 120ms để qua frame resize.
-              Future.delayed(const Duration(milliseconds: 120), () {
-                if (!mounted) return;
-                if (!DeskAgentFrameless.isCursorOutsideWindow(
-                    getWindowName())) {
-                  _wdTrace('exit: cursor still inside, ignore');
-                  return;
-                }
-                _scheduleAutoCollapse('exit');
-              });
-            },
-            child: _showSettings
-                ? DeskAgentSettingsOverlay(onClose: _closeSettings)
-                : Stack(
-                    // Stack phải phủ hết cửa sổ: dropdown neo ở top:92, nằm
-                    // dưới panel 90px, và mặc định Stack co theo Column nên
-                    // phần đó ngoài hộp hit-test (bấm không ăn).
-                    fit: StackFit.expand,
-                    children: [
-                      // Column dồn lên trên, KHÔNG giãn: nếu để Column nhận
-                      // hết chiều cao cửa sổ thì panel 90px nằm trên cùng còn
-                      // phần dưới là khoảng trong suốt — cửa sổ đã nới cho
-                      // dropdown sẽ lộ nền sáng ở đó. Chế độ expanded vẫn cần
-                      // Expanded nên chỉ ép min ở compact.
-                      Align(
-                        alignment: Alignment.topCenter,
-                        child: Column(
-                          mainAxisSize: mode == DeskAgentWindowMode.expanded
-                              ? MainAxisSize.max
-                              : MainAxisSize.min,
-                          children: [
-                            _buildPanel(context),
-                            if (mode == DeskAgentWindowMode.expanded)
-                              Expanded(child: _buildChatBody(context)),
-                          ],
+              onEnter: (_) {
+                _wdTrace('pointer: enter, cancel');
+                _cancelAutoCollapse();
+              },
+              onExit: (_) {
+                // onExit bắn giả trong hai tình huống: (a) cửa sổ vừa resize
+                // nên Flutter chưa cập nhật hit-test, (b) focus vào TextField
+                // làm subtree đổi cấu trúc. Kiểm tra con trỏ thật sự ngoài
+                // trước khi hẹn thu gọn, chậm 120ms để qua frame resize.
+                Future.delayed(const Duration(milliseconds: 120), () {
+                  if (!mounted) return;
+                  if (!DeskAgentFrameless.isCursorOutsideWindow(
+                      getWindowName())) {
+                    _wdTrace('exit: cursor still inside, ignore');
+                    return;
+                  }
+                  _scheduleAutoCollapse('exit');
+                });
+              },
+              child: _showSettings
+                  ? DeskAgentSettingsOverlay(onClose: _closeSettings)
+                  : Stack(
+                      // Stack phải phủ hết cửa sổ: dropdown neo ở top:92, nằm
+                      // dưới panel 90px, và mặc định Stack co theo Column nên
+                      // phần đó ngoài hộp hit-test (bấm không ăn).
+                      fit: StackFit.expand,
+                      children: [
+                        // Column dồn lên trên, KHÔNG giãn: nếu để Column nhận
+                        // hết chiều cao cửa sổ thì panel 90px nằm trên cùng còn
+                        // phần dưới là khoảng trong suốt — cửa sổ đã nới cho
+                        // dropdown sẽ lộ nền sáng ở đó. Chế độ expanded vẫn cần
+                        // Expanded nên chỉ ép min ở compact.
+                        Align(
+                          alignment: Alignment.topCenter,
+                          child: Column(
+                            mainAxisSize: mode == DeskAgentWindowMode.expanded
+                                ? MainAxisSize.max
+                                : MainAxisSize.min,
+                            children: [
+                              _buildPanel(context),
+                              if (mode == DeskAgentWindowMode.expanded)
+                                Expanded(child: _buildChatBody(context)),
+                            ],
+                          ),
                         ),
-                      ),
-                      // Gợi ý thiết bị gần đây: dropdown Flutter thuần, KHÔNG
-                      // mở cửa sổ riêng nữa. Bản cũ dùng
-                      // DesktopMultiWindow.createWindow và làm cửa sổ chính
-                      // deadlock (process còn 1 thread, mất cửa sổ) ngay khi
-                      // ô ID lấy focus.
-                      if (_showRecentDropdown &&
-                          mode != DeskAgentWindowMode.expanded)
-                        _buildRecentDropdown(),
-                    ],
-                  ),
+                        // Gợi ý thiết bị gần đây: dropdown Flutter thuần, KHÔNG
+                        // mở cửa sổ riêng nữa. Bản cũ dùng
+                        // DesktopMultiWindow.createWindow và làm cửa sổ chính
+                        // deadlock (process còn 1 thread, mất cửa sổ) ngay khi
+                        // ô ID lấy focus.
+                        if (_showRecentDropdown &&
+                            mode != DeskAgentWindowMode.expanded)
+                          _buildRecentDropdown(),
+                      ],
+                    ),
             ),
           );
         }
@@ -1135,8 +1131,8 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
               child: SizedBox(
                 width: 18,
                 height: 22,
-                child: Icon(Icons.swap_horiz,
-                    size: 13, color: _PillPalette.muted),
+                child:
+                    Icon(Icons.swap_horiz, size: 13, color: _PillPalette.muted),
               ),
             ),
           ),
@@ -1161,9 +1157,8 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
                       // Chữ thường thấp hơn chữ số cùng cỡ (x-height), nên
                       // Pass phải nhỉnh hơn để trông cân với IP phía trước.
                       style: mono.copyWith(
-                          color: passSet
-                              ? _PillPalette.text
-                              : _PillPalette.muted),
+                          color:
+                              passSet ? _PillPalette.text : _PillPalette.muted),
                     ),
                   ),
                 ],
@@ -1326,9 +1321,11 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
   /// Chiều cao khung danh sách gợi ý (không tính header). Cố định để cửa sổ
   /// không nhảy kích thước khi số thiết bị thay đổi; nhiều hơn thì cuộn.
   static const double _kRecentRowHeight = 28;
+
   /// Khoảng cách từ mép trên panel tới dropdown (dưới hàng nhập ID).
   /// Ngay dưới card panel (panel cao 90 + 6px khe), không đè lên hàng nhập.
   static const double _kRecentDropdownTop = 96;
+
   /// Panel compact chỉ 90px: dropdown nằm đè lên hai hàng, cần vừa trong
   /// khung nên tối đa 2 dòng hiển thị (phần còn lại cuộn).
   static const int _kRecentMaxRows = 3;
@@ -1421,86 +1418,86 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
       child: _RecentSlideIn(
         shown: _recentListShown,
         child: Material(
-        color: _PillPalette.chip,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-        height: rows * _kRecentRowHeight + 4,
-        decoration: BoxDecoration(
+          color: _PillPalette.chip,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: _PillPalette.border),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: peers.isEmpty
-            ? Center(
-                child: Text(
-                  'Chưa có thiết bị',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    color: _PillPalette.muted,
-                  ),
-                ),
-              )
-            : ListView.builder(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                itemExtent: _kRecentRowHeight,
-                itemCount: peers.length,
-                itemBuilder: (context, i) {
-                  final p = peers[i];
-                  // Mỗi dòng chỉ: tên máy (hoặc IP) và ID.
-                  final name = p.alias.isNotEmpty
-                      ? p.alias
-                      : (p.hostname.isNotEmpty ? p.hostname : p.id);
-                  // GestureDetector thay InkWell: dropdown nằm ngoài Material
-                  // của panel nên ripple/ink không cần thiết, và GestureDetector
-                  // nhận tap chắc chắn hơn khi bị Stack phủ.
-                  return GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () {
-                      _wdTrace('recent: tap ${p.id}');
-                      _remoteIdController.id = p.id;
-                      _remoteIdFocusNode.unfocus();
-                      setState(() => _recentListOpen = false);
-                      _onConnect();
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      child: Row(
-                        children: [
-                          DeskAgentIcons.monitor(
-                            size: 14,
-                            color: p.online
-                                ? _PillPalette.accent
-                                : _PillPalette.muted,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: _PillPalette.text,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            formatID(p.id),
-                            style: const TextStyle(
-                              fontFamily: _PillPalette.mono,
-                              fontSize: 11,
-                              color: _PillPalette.muted,
-                            ),
-                          ),
-                        ],
+          child: Container(
+            height: rows * _kRecentRowHeight + 4,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: _PillPalette.border),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: peers.isEmpty
+                ? Center(
+                    child: Text(
+                      'Chưa có thiết bị',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: _PillPalette.muted,
                       ),
                     ),
-                  );
-                },
-              ),
-        ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    itemExtent: _kRecentRowHeight,
+                    itemCount: peers.length,
+                    itemBuilder: (context, i) {
+                      final p = peers[i];
+                      // Mỗi dòng chỉ: tên máy (hoặc IP) và ID.
+                      final name = p.alias.isNotEmpty
+                          ? p.alias
+                          : (p.hostname.isNotEmpty ? p.hostname : p.id);
+                      // GestureDetector thay InkWell: dropdown nằm ngoài Material
+                      // của panel nên ripple/ink không cần thiết, và GestureDetector
+                      // nhận tap chắc chắn hơn khi bị Stack phủ.
+                      return GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          _wdTrace('recent: tap ${p.id}');
+                          _remoteIdController.id = p.id;
+                          _remoteIdFocusNode.unfocus();
+                          setState(() => _recentListOpen = false);
+                          _onConnect();
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          child: Row(
+                            children: [
+                              DeskAgentIcons.monitor(
+                                size: 14,
+                                color: p.online
+                                    ? _PillPalette.accent
+                                    : _PillPalette.muted,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: _PillPalette.text,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                formatID(p.id),
+                                style: const TextStyle(
+                                  fontFamily: _PillPalette.mono,
+                                  fontSize: 11,
+                                  color: _PillPalette.muted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
         ),
       ),
     );
@@ -1810,24 +1807,21 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
         height: 26,
         padding: const EdgeInsets.symmetric(horizontal: 9),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [_WidgetPalette.orange, _WidgetPalette.orangeDark],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(8),
+          color: _WidgetPalette.orange.withOpacity(0.18),
+          border: Border.all(color: _WidgetPalette.orange.withOpacity(0.30)),
+          borderRadius: BorderRadius.circular(4),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            DeskAgentIcons.send(size: 12, color: Colors.white),
+            DeskAgentIcons.send(size: 12, color: _WidgetPalette.orange),
             const SizedBox(width: 4),
-            const Text(
+            Text(
               'Gửi IT',
               style: TextStyle(
                 fontSize: 11.5,
                 fontWeight: FontWeight.w700,
-                color: Colors.white,
+                color: _WidgetPalette.orange,
               ),
             ),
           ],
@@ -1847,13 +1841,6 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
         color: _WidgetPalette.card,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: _WidgetPalette.border),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0A000000),
-            blurRadius: 3,
-            offset: Offset(0, 1),
-          ),
-        ],
       ),
       child: Row(
         children: [

@@ -29,7 +29,8 @@ final class _DeskAgentPoint extends Struct {
 /// `window_manager.setAsFrameless()` alone leaves the caption bits in
 /// `GWL_STYLE`, so Windows keeps clamping the window to the 136px minimum
 /// track width (the pill is 86px wide). Removing the bits directly is what
-/// the previous shipped build did.
+/// the previous shipped build did; `WS_THICKFRAME` has to go too, otherwise
+/// the DWM keeps a resize frame and the same minimum applies.
 class DeskAgentFrameless {
   DeskAgentFrameless._();
 
@@ -40,15 +41,40 @@ class DeskAgentFrameless {
   static const int _wsMinimizeBox = 0x00020000;
   static const int _wsMaximizeBox = 0x00010000;
   static const int _wsExNoActivate = 0x08000000;
-  /// WS_EX_NOACTIVATE is bit 0x00080000. The 0x08000000 constant used before
-  /// was WS_EX_LAYERED — stripping it changed nothing and the real bit kept
-  /// swallowing every click.
-  static const int _wsExNoActivateBit = 0x00080000;
   static const int _swpNoMove = 0x0002;
   static const int _swpNoSize = 0x0001;
   static const int _swpNoZOrder = 0x0004;
   static const int _swpNoActivate = 0x0010;
   static const int _swpFrameChanged = 0x0020;
+  static const int _wdaNone = 0x00000000;
+  static const int _wdaExcludeFromCapture = 0x00000011;
+
+  /// Exclude window from screen capture (DXGI Desktop Duplication, BitBlt, Magnification).
+  /// Supported on Windows 10 version 2004 (Build 19041) and newer.
+  static bool setExcludeFromCapture(String windowTitle, {bool exclude = true}) {
+    try {
+      final user32 = DynamicLibrary.open('user32.dll');
+      final findWindowW = user32.lookupFunction<
+          IntPtr Function(Pointer<Utf16>, Pointer<Utf16>),
+          int Function(Pointer<Utf16>, Pointer<Utf16>)>('FindWindowW');
+      final setWindowDisplayAffinity = user32.lookupFunction<
+          Int32 Function(IntPtr, Uint32),
+          int Function(int, int)>('SetWindowDisplayAffinity');
+
+      final title = windowTitle.toNativeUtf16();
+      final className = 'FLUTTER_RUNNER_WIN32_WINDOW'.toNativeUtf16();
+      final hwnd = findWindowW(className, title);
+      calloc.free(title);
+      calloc.free(className);
+      if (hwnd == 0) return false;
+
+      final res = setWindowDisplayAffinity(
+          hwnd, exclude ? _wdaExcludeFromCapture : _wdaNone);
+      return res != 0;
+    } catch (_) {
+      return false;
+    }
+  }
 
   /// Move/resize the main window through Win32.
   ///
@@ -153,7 +179,7 @@ class DeskAgentFrameless {
       // WS_EX_NOACTIVATE keeps the widget from ever taking focus, and the
       // click never reaches Flutter. The shipped pill did not have it.
       final exStyle = getWindowLongPtrW(hwnd, _gwlExStyle);
-      final exStripped = exStyle & ~_wsExNoActivateBit;
+      final exStripped = exStyle & ~_wsExNoActivate;
       if (exStripped != exStyle) {
         setWindowLongPtrW(hwnd, _gwlExStyle, exStripped);
       }

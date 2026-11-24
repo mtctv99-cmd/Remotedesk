@@ -997,8 +997,8 @@ class _RemotePageState extends State<RemotePage>
             QualityMonitor(_ffi.qualityMonitorModel), null, null),
       ),
     );
-    // DeskAgent Tools overlay (Trợ lý AI / Chat IT) — toggled by the toolbar
-    // Tool button (DeskAgentTools.visible).
+    // DeskAgent Tools (Trợ lý AI / Chat IT) — opened from the remote titlebar
+    // Tool button via DeskAgentTools.visible. Presentation overlay only.
     paints.add(
       Positioned.fill(
         child: ValueListenableBuilder<bool>(

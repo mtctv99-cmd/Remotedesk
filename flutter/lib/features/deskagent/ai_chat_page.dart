@@ -16,6 +16,11 @@ const double _kIconSize = 72;
 const double _kTitleFontSize = 20;
 const double _kContentFontSize = 15;
 const Color _kAccentColor = MyTheme.accent;
+// Dark AI-chat palette of remote-session-goc.html (.msg-ai, .ai-send-btn).
+const Color _kAiPurple = Color(0xFF9333EA);
+const Color _kAiBubbleBg = Color(0xFF241E30);
+const Color _kAiText = Color(0xFFE2E8F0);
+const Color _kSurfaceDark = Color(0xFF222222);
 const Duration _kPollInterval = Duration(seconds: 3);
 const Duration _kRequestTimeout = Duration(seconds: 10);
 
@@ -614,12 +619,13 @@ class _AiChatPageState extends State<AiChatPage> {
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 4),
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
-          decoration: const BoxDecoration(
-            color: _kAccentColor,
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(14),
-              topRight: Radius.circular(14),
-              bottomLeft: Radius.circular(14),
+          decoration: BoxDecoration(
+            color: _kAccentColor.withOpacity(0.18),
+            border: Border.all(color: _kAccentColor.withOpacity(0.25)),
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(8),
+              topRight: Radius.circular(8),
+              bottomLeft: Radius.circular(8),
               bottomRight: Radius.circular(4),
             ),
           ),
@@ -650,7 +656,7 @@ class _AiChatPageState extends State<AiChatPage> {
   }
 
   Widget _botBubble(_ChatMessage message, bool isBot) {
-    final badgeColor = isBot ? _kAccentColor : Colors.blueGrey;
+    final badgeColor = isBot ? _kAiPurple : _kAccentColor;
     return Align(
       alignment: Alignment.centerLeft,
       child: ConstrainedBox(
@@ -678,12 +684,13 @@ class _AiChatPageState extends State<AiChatPage> {
                 margin: const EdgeInsets.symmetric(vertical: 4),
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  color: _kAiBubbleBg,
+                  border: Border.all(color: badgeColor.withOpacity(0.25)),
                   borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(14),
-                    topRight: Radius.circular(14),
+                    topLeft: Radius.circular(8),
+                    topRight: Radius.circular(8),
                     bottomLeft: Radius.circular(4),
-                    bottomRight: Radius.circular(14),
+                    bottomRight: Radius.circular(8),
                   ),
                 ),
                 child: Column(
@@ -709,9 +716,9 @@ class _AiChatPageState extends State<AiChatPage> {
                         const SizedBox(width: 6),
                         Text(
                           _formatTime(message.time),
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 10,
-                            color: Theme.of(context).hintColor,
+                            color: Color(0xAAFFFFFF),
                           ),
                         ),
                       ],
@@ -719,9 +726,9 @@ class _AiChatPageState extends State<AiChatPage> {
                     const SizedBox(height: 4),
                     SelectableText(
                       message.text,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: _kContentFontSize,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        color: _kAiText,
                       ),
                     ),
                   ],
@@ -743,11 +750,11 @@ class _AiChatPageState extends State<AiChatPage> {
         children: [
           CircleAvatar(
             radius: 14,
-            backgroundColor: _kAccentColor.withOpacity(0.15),
+            backgroundColor: _kAiPurple.withOpacity(0.15),
             child: Icon(
               Icons.smart_toy_outlined,
               size: 16,
-              color: _kAccentColor,
+              color: _kAiPurple,
             ),
           ),
           const SizedBox(width: 8),
@@ -755,12 +762,13 @@ class _AiChatPageState extends State<AiChatPage> {
             margin: const EdgeInsets.symmetric(vertical: 4),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              color: _kAiBubbleBg,
+              border: Border.all(color: _kAiPurple.withOpacity(0.25)),
               borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(14),
-                topRight: Radius.circular(14),
+                topLeft: Radius.circular(8),
+                topRight: Radius.circular(8),
                 bottomLeft: Radius.circular(4),
-                bottomRight: Radius.circular(14),
+                bottomRight: Radius.circular(8),
               ),
             ),
             child: const SizedBox(
@@ -791,11 +799,12 @@ class _AiChatPageState extends State<AiChatPage> {
   Widget _errorBanner() {
     return Container(
       width: double.infinity,
-      color: Colors.red.withOpacity(0.15),
+      color: const Color(0x1FF87171),
       padding: const EdgeInsets.all(8),
       child: Text(
         _error!,
-        style: TextStyle(fontSize: _kContentFontSize, color: Colors.red),
+        style: const TextStyle(
+            fontSize: _kContentFontSize, color: Color(0xFFF87171)),
       ),
     );
   }
@@ -867,15 +876,20 @@ class _AiChatPageState extends State<AiChatPage> {
                       const TextStyle(fontSize: 11, color: Color(0xFFA1A1AA)),
                   isDense: true,
                   filled: true,
-                  fillColor: Theme.of(context)
-                      .colorScheme
-                      .surfaceContainerHighest
-                      .withOpacity(0.4),
+                  fillColor: _kSurfaceDark,
                   contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide.none,
+                    borderRadius: BorderRadius.circular(4),
+                    borderSide: const BorderSide(color: Color(0x1AFFFFFF)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(4),
+                    borderSide: const BorderSide(color: Color(0x1AFFFFFF)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(4),
+                    borderSide: const BorderSide(color: _kAiPurple),
                   ),
                 ),
               ),
@@ -890,22 +904,25 @@ class _AiChatPageState extends State<AiChatPage> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                 )
-              : IconButton(
-                  onPressed: _send,
-                  // Filled circular send button to match the bubble accent.
-                  icon: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: _kAccentColor,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.send,
-                      size: 16,
-                      color: Colors.white,
+              : Material(
+                  color: _kAiPurple,
+                  borderRadius: BorderRadius.circular(4),
+                  child: InkWell(
+                    onTap: _send,
+                    borderRadius: BorderRadius.circular(4),
+                    hoverColor: const Color(0xFFA855F7),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      child: Text(
+                        translate('Send'),
+                        style: const TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white),
+                      ),
                     ),
                   ),
-                  tooltip: translate('Send'),
                 ),
         ],
       ),

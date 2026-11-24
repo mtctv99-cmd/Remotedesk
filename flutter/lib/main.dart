@@ -26,7 +26,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
-import 'package:window_size/window_size.dart' as window_size;
 
 import 'common.dart';
 import 'consts.dart';
@@ -65,8 +64,6 @@ Future<void> main(List<String> args) async {
     // DeskAgent widget popup: dispatched BEFORE the WindowType mapping, since
     // type.windowType would throw a RangeError for our negative marker.
     if (type == -2) {
-      print(
-          'recent-popup main: launching child, peers=${(argument['peers'] as List?)?.length}');
       runMultiWindow(argument, kAppTypeDesktopRecentPeers);
       return;
     }
@@ -177,6 +174,11 @@ void runMainApp(bool startService) async {
     if (widgetMode) {
       await _applyMainWindowWidgetMode();
     }
+    // Register the main window for cross-window calls BEFORE dispatching a
+    // deeplink/--connect: that path hides the main window, so registering only
+    // in the else branch left child windows unable to reach main and the
+    // remote session stalled right after the first video frame.
+    rustDeskWinManager.registerActiveWindow(kWindowMainId);
     // Check the startup argument, if we successfully handle the argument, we keep the main window hidden.
     final handledByUniLinks = await initUniLinks();
     debugPrint("handled by uni links: $handledByUniLinks");
@@ -185,8 +187,6 @@ void runMainApp(bool startService) async {
     } else {
       windowManager.show();
       windowManager.focus();
-      // Move registration of active main window here to prevent from async visible check.
-      rustDeskWinManager.registerActiveWindow(kWindowMainId);
     }
     windowManager.setOpacity(1);
     windowManager.setTitle(getWindowName());
@@ -202,17 +202,13 @@ void runMainApp(bool startService) async {
 /// Size and anchor live in [setDeskAgentWindowMode].
 Future<void> _applyMainWindowWidgetMode() async {
   await windowManager.setAsFrameless();
-  // Every launch starts collapsed: the restored window frame (or a stale mode
-  // from an earlier session) must not leave the panel open.
-  deskAgentWindowMode.value = DeskAgentWindowMode.pill;
-  await setDeskAgentWindowMode(DeskAgentWindowMode.pill);
-  // Startup calls setResizable(true) after this block, which re-adds
-  // WS_THICKFRAME, and the style strip must land only once the view is up.
+  deskAgentWindowMode.value = DeskAgentWindowMode.compact;
+  await setDeskAgentWindowMode(DeskAgentWindowMode.compact);
   Future.delayed(const Duration(milliseconds: 900), () async {
     DeskAgentFrameless.apply(getWindowName());
     deskAgentWindowReady = true;
-    deskAgentWindowMode.value = DeskAgentWindowMode.pill;
-    await setDeskAgentWindowMode(DeskAgentWindowMode.pill);
+    deskAgentWindowMode.value = DeskAgentWindowMode.compact;
+    await setDeskAgentWindowMode(DeskAgentWindowMode.compact);
   });
 }
 
@@ -324,40 +320,21 @@ void runMultiWindow(
       // no such appType
       exit(0);
   }
-  // show window from hidden status
   if (appType == kAppTypeDesktopRecentPeers) {
-    // Widget recent popup: đặt frame TRƯỚC khi show — không còn flash trắng
-    // tại góc trái; preventClose=false để click peer / X đóng được popup.
-    // Kích thước 356x200, mở hướng LÊN trên panel (anchor từ caller).
+    // Widget recent popup: frameless 356x200 dropdown anchored 12px left of
+    // the card and 83px below its top (under the connect bar, as in the
+    // mockup .recent-dropdown). Position before showing so it never flashes
+    // at the default location/size.
     final left = (argument['left'] as num?)?.toDouble() ?? 0;
     final topOffset = (argument['top'] as num?)?.toDouble() ?? 0;
-    print('recent-popup child: setting frame left=$left top=$topOffset');
     final ctl = WindowController.fromWindowId(kWindowId!);
-    await ctl.setPreventClose(false);
-    // Anchor caller đã nhân DPI (356x200 logical → physical); setFrame đi
-    // thẳng MoveWindow không nhân scale (base_flutter_window.cc SetBounds),
-    // nên frame phải nhân cùng scale — không thì tại >100% DPI popup nhỏ
-    // hơn khoảng trống đã chừa và khe hở tới panel phình ra.
-    double dpiScale = 1.0;
-    try {
-      final screens = await window_size.getScreenList();
-      for (final s in screens) {
-        if (left >= s.frame.left &&
-            left <= s.frame.right &&
-            topOffset >= s.frame.top &&
-            topOffset <= s.frame.bottom) {
-          dpiScale = s.scaleFactor <= 0 ? 1.0 : s.scaleFactor;
-          break;
-        }
-      }
-    } catch (_) {}
-    await ctl.setFrame(
-        Offset(left, topOffset) & Size(356 * dpiScale, 200 * dpiScale));
+    await ctl.hide();
+    await ctl.setFrame(Offset(left, topOffset) & const Size(356, 200));
     await ctl.setTitle('DeskAgentRecent');
-    DeskAgentFrameless.apply('DeskAgentRecent');
     await ctl.show();
-    print('recent-popup child: visible, preventClose off');
+    DeskAgentFrameless.apply('DeskAgentRecent');
   } else {
+    // show window from hidden status
     WindowController.fromWindowId(kWindowId!).show();
   }
 }
@@ -507,7 +484,7 @@ class _AppState extends State<App> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.platformDispatcher.onPlatformBrightnessChanged = () {
+    WidgetsBinding.instance.window.onPlatformBrightnessChanged = () {
       final userPreference = MyTheme.getThemeModePreference();
       if (userPreference != ThemeMode.system) return;
       WidgetsBinding.instance.handlePlatformBrightnessChanged();
@@ -576,7 +553,7 @@ class _AppState extends State<App> with WidgetsBindingObserver {
           navigatorKey: globalKey,
           debugShowCheckedModeBanner: false,
           title: isWeb
-              ? '${bind.mainGetAppNameSync()} Web Client V2 (Preview)'
+              ? '${bind.mainGetAppNameSync()} Web Client'
               : bind.mainGetAppNameSync(),
           theme: MyTheme.lightTheme,
           darkTheme: MyTheme.darkTheme,
@@ -656,15 +633,15 @@ _registerEventHandler() {
 }
 
 Widget keyListenerBuilder(BuildContext context, Widget? child) {
-  return KeyboardListener(
+  return RawKeyboardListener(
     // `skipTraversal: isWeb` is to fix "Bad state: RenderBox was not laid out: minified:aeL#c19e4"
     focusNode: FocusNode(skipTraversal: isWeb),
     child: child ?? Container(),
-    onKeyEvent: (KeyEvent event) {
+    onKey: (RawKeyEvent event) {
       if (event.logicalKey == LogicalKeyboardKey.shiftLeft) {
-        if (event is KeyDownEvent) {
+        if (event is RawKeyDownEvent) {
           gFFI.peerTabModel.setShiftDown(true);
-        } else if (event is KeyUpEvent) {
+        } else if (event is RawKeyUpEvent) {
           gFFI.peerTabModel.setShiftDown(false);
         }
       }

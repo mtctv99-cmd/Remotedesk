@@ -26,21 +26,21 @@ class DeskAgentHomePage extends StatelessWidget {
         const SizedBox(height: 12),
         _FeatureCard(
           icon: Icons.computer_outlined,
-          iconColor: Colors.blue,
+          iconColor: _kAccentColor,
           title: 'System Info',
           subtitle: 'Host information collected on this machine',
           onTap: () => _open(context, (_) => const AboutInfoPage()),
         ),
         _FeatureCard(
           icon: Icons.event_note_outlined,
-          iconColor: Colors.orange,
+          iconColor: _kAccentColor,
           title: 'Event Viewer',
           subtitle: 'Recent Windows event log warnings and errors',
           onTap: () => _open(context, (_) => const EventViewerPage()),
         ),
         _FeatureCard(
           icon: Icons.chat_outlined,
-          iconColor: Colors.teal,
+          iconColor: _kAccentColor,
           title: 'AI Chat',
           subtitle: 'Chat with the AI bot or admin via the Manager',
           onTap: () => _open(context, (_) => const AiChatPage()),
@@ -67,21 +67,21 @@ class DeskAgentHomePage extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [_kAccentColor, _kAccentColor.withOpacity(0.7)],
         ),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         children: [
           Container(
-            width: 52,
-            height: 52,
+            width: 44,
+            height: 44,
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(8),
             ),
             child: const Icon(
               Icons.support_agent,
               color: Colors.white,
-              size: 30,
+              size: 26,
             ),
           ),
           const SizedBox(width: 14),
@@ -147,41 +147,33 @@ class _FeatureCardState extends State<_FeatureCard> {
         cursor: SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hovering = true),
         onExit: (_) => setState(() => _hovering = false),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOut,
-          transform: Matrix4.translationValues(0, _hovering ? -2 : 0, 0),
+        child: Container(
           decoration: BoxDecoration(
             color: theme.cardColor,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(8),
             border: Border.all(color: theme.dividerColor),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(_hovering ? 0.12 : 0.04),
-                blurRadius: _hovering ? 12 : 6,
-                offset: Offset(0, _hovering ? 4 : 2),
-              ),
-            ],
           ),
           child: Material(
             color: Colors.transparent,
             child: InkWell(
               onTap: widget.onTap,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(8),
+              hoverColor: _kAccentColor.withOpacity(0.06),
+              splashColor: _kAccentColor.withOpacity(0.12),
               child: Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 child: Row(
                   children: [
                     Container(
-                      width: 44,
-                      height: 44,
+                      width: 40,
+                      height: 40,
                       decoration: BoxDecoration(
                         color: widget.iconColor.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(8),
                       ),
                       child:
-                          Icon(widget.icon, color: widget.iconColor, size: 24),
+                          Icon(widget.icon, color: widget.iconColor, size: 22),
                     ),
                     const SizedBox(width: 14),
                     Expanded(
@@ -191,7 +183,7 @@ class _FeatureCardState extends State<_FeatureCard> {
                           Text(
                             translate(widget.title),
                             style: const TextStyle(
-                              fontSize: 15,
+                              fontSize: 14,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -244,7 +236,7 @@ class _WidgetModeCardState extends State<_WidgetModeCard> {
       child: Container(
         decoration: BoxDecoration(
           color: theme.cardColor,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(color: theme.dividerColor),
         ),
         child: Padding(
@@ -252,16 +244,16 @@ class _WidgetModeCardState extends State<_WidgetModeCard> {
           child: Row(
             children: [
               Container(
-                width: 44,
-                height: 44,
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
                   color: _kAccentColor.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
                   Icons.picture_in_picture_alt,
                   color: _kAccentColor,
-                  size: 24,
+                  size: 22,
                 ),
               ),
               const SizedBox(width: 14),
@@ -272,7 +264,7 @@ class _WidgetModeCardState extends State<_WidgetModeCard> {
                     Text(
                       translate('Widget góc dưới phải'),
                       style: const TextStyle(
-                        fontSize: 15,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                       ),
                     ),

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 
 import 'package:back_button_interceptor/back_button_interceptor.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
@@ -249,16 +248,16 @@ class MyTheme {
   MyTheme._();
 
   static const Color grayBg = Color(0xFFEFEFF2);
-  static const Color accent = Color(0xFF60CDFF);
-  static const Color accent50 = Color(0x7760CDFF);
-  static const Color accent80 = Color(0xAA60CDFF);
+  static const Color accent = Color(0xFF0284C7);
+  static const Color accent50 = Color(0x770284C7);
+  static const Color accent80 = Color(0xAA0284C7);
   static const Color canvasColor = Color(0xFF212121);
   static const Color border = Color(0xFFCCCCCC);
-  static const Color idColor = Color(0xFF00B6F0);
+  static const Color idColor = Color(0xFF0284C7);
   static const Color darkGray = Color.fromARGB(255, 148, 148, 148);
-  static const Color cmIdColor = Color(0xFF21790B);
+  static const Color cmIdColor = Color(0xFF10B981);
   static const Color dark = Colors.black87;
-  static const Color button = Color(0xFF2C8CFF);
+  static const Color button = Color(0xFF0284C7);
   static const Color hoverBorder = Color(0xFF999999);
 
   // ListTile
@@ -383,10 +382,10 @@ class MyTheme {
     dialogTheme: DialogTheme(
       elevation: 8,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8.0),
-        side: BorderSide(
+        borderRadius: BorderRadius.circular(10.0),
+        side: const BorderSide(
           width: 1,
-          color: Colors.white12,
+          color: Color(0x1F000000),
         ),
       ),
     ),
@@ -482,10 +481,10 @@ class MyTheme {
     dialogTheme: DialogTheme(
       elevation: 8,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8.0),
-        side: BorderSide(
+        borderRadius: BorderRadius.circular(10.0),
+        side: const BorderSide(
           width: 1,
-          color: Colors.white12,
+          color: Color(0x1F000000),
         ),
       ),
     ),
@@ -2870,7 +2869,7 @@ Future<void> onActiveWindowChanged() async {
     } catch (err) {
       debugPrintStack(label: "$err");
     } finally {
-      debugPrint("Start closing RustDesk...");
+      debugPrint("Start closing DeskAgent...");
       await windowManager.setPreventClose(false);
       await windowManager.close();
       if (isMacOS) {
@@ -3008,26 +3007,43 @@ Widget dialogButton(String text,
     ButtonStyle? buttonStyle}) {
   if (isDesktop || isWebDesktop) {
     if (isOutline) {
+      final outlineStyle = OutlinedButton.styleFrom(
+        foregroundColor: const Color(0xFF374151),
+        side: const BorderSide(color: Color(0xFFD1D5DB)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(6),
+        ),
+      ).merge(buttonStyle);
       return icon == null
           ? OutlinedButton(
+              style: outlineStyle,
               onPressed: onPressed,
               child: Text(translate(text), style: style),
             )
           : OutlinedButton.icon(
+              style: outlineStyle,
               icon: icon,
               onPressed: onPressed,
               label: Text(translate(text), style: style),
             );
     } else {
+      final elevatedStyle = ElevatedButton.styleFrom(
+        elevation: 0,
+        backgroundColor: const Color(0xFF0284C7),
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(6),
+        ),
+      ).merge(buttonStyle);
       return icon == null
           ? ElevatedButton(
-              style: ElevatedButton.styleFrom(elevation: 0).merge(buttonStyle),
+              style: elevatedStyle,
               onPressed: onPressed,
               child: Text(translate(text), style: style),
             )
           : ElevatedButton.icon(
+              style: elevatedStyle,
               icon: icon,
-              style: ElevatedButton.styleFrom(elevation: 0).merge(buttonStyle),
               onPressed: onPressed,
               label: Text(translate(text), style: style),
             );
@@ -3053,13 +3069,13 @@ String getWindowName({WindowType? overrideType}) {
     case WindowType.Main:
       return name;
     case WindowType.FileTransfer:
-      return "File Transfer - $name";
+      return "Chuyển file - $name";
     case WindowType.ViewCamera:
-      return "View Camera - $name";
+      return "Xem camera - $name";
     case WindowType.PortForward:
-      return "Port Forward - $name";
+      return "Chuyển cổng - $name";
     case WindowType.RemoteDesktop:
-      return "Remote Desktop - $name";
+      return "Điều khiển từ xa - $name";
     default:
       break;
   }
@@ -3833,7 +3849,7 @@ Widget loadIcon(double size) {
       width: size,
       height: size,
       errorBuilder: (ctx, error, stackTrace) => SvgPicture.asset(
-            'assets/icon.svg',
+            'assets/icons/deskagent_logo.svg',
             width: size,
             height: size,
           ));

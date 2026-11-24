@@ -33,8 +33,8 @@ class _DeskAgentSettingsOverlayState extends State<DeskAgentSettingsOverlay> {
   static const Color textMain = Color(0xFFF4F4F5);
   static const Color textSub = Color(0xFFA1A1AA);
   static const Color line = Color(0x14FFFFFF); // trắng 8%
-  static const Color blue = Color(0xFF0E8FE8);
-  static const Color blueSoft = Color(0xFF4CC2FF);
+  static const Color blue = Color(0xFF60CDFF);
+  static const Color blueSoft = Color(0xFF7CD5FF);
   static const Color amber = Color(0xFFFBBF24);
 
   bool _autostart = false;
@@ -130,7 +130,8 @@ class _DeskAgentSettingsOverlayState extends State<DeskAgentSettingsOverlay> {
         'Start-Process -FilePath \'$exe\' -ArgumentList \'$arg\' -Verb RunAs -Wait',
       ]);
       if (res.exitCode != 0) {
-        showToast('Yêu cầu quyền Administrator bị hủy — dịch vụ không thay đổi');
+        showToast(
+            'Yêu cầu quyền Administrator bị hủy — dịch vụ không thay đổi');
       } else {
         await Future.delayed(const Duration(seconds: 2));
         _serviceInstalled = bind.mainIsInstalled();
@@ -184,8 +185,8 @@ class _DeskAgentSettingsOverlayState extends State<DeskAgentSettingsOverlay> {
       showToast('Mật khẩu Admin cần ít nhất 6 ký tự');
       return;
     }
-    final success = await bind.mainSetPermanentPasswordWithResult(
-        password: pass);
+    final success =
+        await bind.mainSetPermanentPasswordWithResult(password: pass);
     showToast(success ? 'Đã đặt mật khẩu Admin' : translate('Failed'));
   }
 
@@ -230,63 +231,63 @@ class _DeskAgentSettingsOverlayState extends State<DeskAgentSettingsOverlay> {
                 Expanded(
                   child: SingleChildScrollView(
                     child: Padding(
-                    padding: const EdgeInsets.only(top: 4, bottom: 6),
-                    // Bắt đầu từ trên, không rải đều: spaceBetween làm các
-                    // nhóm bị đẩy xa nhau khi cửa sổ cao bằng cả màn hình.
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      children: [
-                        _sectionHeader(
-                            Icons.desktop_windows_outlined, 'Hệ thống'),
-                        _sectionCard([
-                          _toggleRow(
-                              'Khởi động cùng Windows',
-                              'Tự chạy ngầm khi mở máy tính',
-                              _autostart,
-                              (v) => setState(() => _autostart = v)),
-                          _divider(),
-                          _toggleRow(
-                              'Thu nhỏ vào khay hệ thống (Tray)',
-                              'Không tắt hẳn khi bấm đóng cửa sổ',
-                              _hideToTray,
-                              (v) => setState(() => _hideToTray = v)),
-                          _divider(),
-                          _serviceRow(),
-                        ]),
-                        _sectionHeader(
-                            Icons.lock_outline, 'Mật khẩu & Quyền truy cập'),
-                        _sectionCard([
-                          _toggleRow(
-                              'Chỉ cho phép Admin IT kết nối',
-                              'Chỉ tài khoản công ty mới được điều khiển',
-                              _adminOnly,
-                              (v) => setState(() => _adminOnly = v)),
-                          _divider(),
-                          _toggleRow(
-                              'Điều khiển bàn phím & chuột',
-                              'Cho phép đối tác tương tác máy này',
-                              _enableKeyboard,
-                              (v) => setState(() => _enableKeyboard = v)),
-                          _divider(),
-                          _toggleRow(
-                              'Đồng bộ Clipboard',
-                              'Chia sẻ sao chép/dán giữa 2 máy',
-                              _enableClipboard,
-                              (v) => setState(() => _enableClipboard = v)),
-                          _divider(),
-                          _toggleRow(
-                              'Truyền âm thanh máy tính',
-                              'Phát âm thanh từ máy này sang đối tác',
-                              _enableAudio,
-                              (v) => setState(() => _enableAudio = v)),
-                        ]),
-                        _serverRow(),
-                        _serverCard(),
-                      ],
+                      padding: const EdgeInsets.only(top: 4, bottom: 6),
+                      // Bắt đầu từ trên, không rải đều: spaceBetween làm các
+                      // nhóm bị đẩy xa nhau khi cửa sổ cao bằng cả màn hình.
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisAlignment: MainAxisAlignment.start,
+                        children: [
+                          _sectionHeader(
+                              Icons.desktop_windows_outlined, 'Hệ thống'),
+                          _sectionCard([
+                            _toggleRow(
+                                'Khởi động cùng Windows',
+                                'Tự chạy ngầm khi mở máy tính',
+                                _autostart,
+                                (v) => setState(() => _autostart = v)),
+                            _divider(),
+                            _toggleRow(
+                                'Thu nhỏ vào khay hệ thống (Tray)',
+                                'Không tắt hẳn khi bấm đóng cửa sổ',
+                                _hideToTray,
+                                (v) => setState(() => _hideToTray = v)),
+                            _divider(),
+                            _serviceRow(),
+                          ]),
+                          _sectionHeader(
+                              Icons.lock_outline, 'Mật khẩu & Quyền truy cập'),
+                          _sectionCard([
+                            _toggleRow(
+                                'Chỉ cho phép Admin IT kết nối',
+                                'Chỉ tài khoản công ty mới được điều khiển',
+                                _adminOnly,
+                                (v) => setState(() => _adminOnly = v)),
+                            _divider(),
+                            _toggleRow(
+                                'Điều khiển bàn phím & chuột',
+                                'Cho phép đối tác tương tác máy này',
+                                _enableKeyboard,
+                                (v) => setState(() => _enableKeyboard = v)),
+                            _divider(),
+                            _toggleRow(
+                                'Đồng bộ Clipboard',
+                                'Chia sẻ sao chép/dán giữa 2 máy',
+                                _enableClipboard,
+                                (v) => setState(() => _enableClipboard = v)),
+                            _divider(),
+                            _toggleRow(
+                                'Truyền âm thanh máy tính',
+                                'Phát âm thanh từ máy này sang đối tác',
+                                _enableAudio,
+                                (v) => setState(() => _enableAudio = v)),
+                          ]),
+                          _serverRow(),
+                          _serverCard(),
+                        ],
+                      ),
                     ),
                   ),
-                ),
                 ),
                 _footer(),
               ],

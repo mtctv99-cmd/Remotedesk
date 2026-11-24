@@ -15,6 +15,11 @@ class DeskAgentIcons {
   /// Brand mark: monitor with an orange lightning bolt (from the client mockup).
   static const String logo = 'assets/icons/deskagent_logo.svg';
 
+  /// The brand mark itself (not a Lucide glyph — `icon(logo)` would build the
+  /// wrong asset path).
+  static Widget brandLogo({double size = 28}) =>
+      SvgPicture.asset(logo, width: size, height: size);
+
   /// One Lucide icon from the vendored set.
   static Widget icon(
     String name, {

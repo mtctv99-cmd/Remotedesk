@@ -186,7 +186,10 @@ class GroupModel {
               json['error']
                   .toString()
                   .contains('ambiguous column name: status')) {
-            throw translate('upgrade_rustdesk_server_pro_to_{1.1.10}_tip');
+            // This key is excluded from the global RustDesk -> DeskAgent
+            // replacement, so rebrand it at the call site.
+            throw translate('upgrade_rustdesk_server_pro_to_{1.1.10}_tip')
+                .replaceAll('RustDesk', 'DeskAgent');
           } else {
             throw json['error'];
           }
