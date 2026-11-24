@@ -285,6 +285,7 @@ struct DisplaySessionInfo {
     #[cfg(feature = "vram")]
     gpu_output_ptr: usize,
     notify_render_type: Option<RenderType>,
+    last_rgba: Option<scrap::ImageRgb>,
 }
 
 // Video Texture Renderer in Flutter
@@ -368,12 +369,13 @@ impl VideoRenderer {
                     #[cfg(feature = "vram")]
                     gpu_output_ptr: usize::default(),
                     notify_render_type: None,
+                    last_rgba: None,
                 },
             );
         }
     }
 
-    fn register_pixelbuffer_texture(&self, display: usize, ptr: usize) {
+    fn register_pixelbuffer_texture(&self, display: usize, ptr: usize) -> bool {
         let mut sessions_lock = self.map_display_sessions.write().unwrap();
         if ptr == 0 {
             if let Some(info) = sessions_lock.get_mut(&display) {
@@ -382,11 +384,13 @@ impl VideoRenderer {
                 }
                 #[cfg(feature = "vram")]
                 if info.gpu_output_ptr != usize::default() {
-                    return;
+                    return false;
                 }
             }
             sessions_lock.remove(&display);
+            false
         } else {
+            let mut rendered = false;
             if let Some(info) = sessions_lock.get_mut(&display) {
                 if info.texture_rgba_ptr != usize::default()
                     && info.texture_rgba_ptr != ptr as TextureRgbaPtr
@@ -399,6 +403,24 @@ impl VideoRenderer {
                 }
                 info.texture_rgba_ptr = ptr as _;
                 info.notify_render_type = None;
+                // Replay the one cached frame, then drop it — later frames go
+                // straight through on_rgba now that the texture ptr is known.
+                if let Some(rgba) = info.last_rgba.take() {
+                    if let Some(func) = &self.on_rgba_func {
+                        unsafe {
+                            func(
+                                info.texture_rgba_ptr as _,
+                                rgba.raw.as_ptr() as _,
+                                rgba.raw.len() as _,
+                                rgba.w as _,
+                                rgba.h as _,
+                                rgba.align() as _,
+                            )
+                        };
+                        info.notify_render_type = Some(RenderType::PixelBuffer);
+                        rendered = true;
+                    }
+                }
             } else {
                 if ptr != 0 {
                     sessions_lock.insert(
@@ -409,10 +431,12 @@ impl VideoRenderer {
                             #[cfg(feature = "vram")]
                             gpu_output_ptr: usize::default(),
                             notify_render_type: None,
+                            last_rgba: None,
                         },
                     );
                 }
             }
+            rendered
         }
     }
 
@@ -449,6 +473,7 @@ impl VideoRenderer {
                             size: (0, 0),
                             gpu_output_ptr: ptr,
                             notify_render_type: None,
+                            last_rgba: None,
                         },
                     );
                 }
@@ -460,14 +485,42 @@ impl VideoRenderer {
     pub fn on_rgba(&self, display: usize, rgba: &scrap::ImageRgb) -> bool {
         let mut write_lock = self.map_display_sessions.write().unwrap();
         let opt_info = if !self.is_support_multi_ui_session {
+            if write_lock.is_empty() {
+                write_lock.insert(
+                    display,
+                    DisplaySessionInfo {
+                        texture_rgba_ptr: usize::default(),
+                        size: (rgba.w, rgba.h),
+                        #[cfg(feature = "vram")]
+                        gpu_output_ptr: usize::default(),
+                        notify_render_type: None,
+                        last_rgba: Some(rgba.clone()),
+                    },
+                );
+            }
             write_lock.values_mut().next()
         } else {
-            write_lock.get_mut(&display)
+            Some(write_lock.entry(display).or_insert_with(|| DisplaySessionInfo {
+                texture_rgba_ptr: usize::default(),
+                size: (rgba.w, rgba.h),
+                #[cfg(feature = "vram")]
+                gpu_output_ptr: usize::default(),
+                notify_render_type: None,
+                last_rgba: None,
+            }))
         };
         let Some(info) = opt_info else {
             return false;
         };
         if info.texture_rgba_ptr == usize::default() {
+            // Only cache a frame while the pixelbuffer texture is still
+            // registering — `register_pixelbuffer_texture` replays it once.
+            // Cloning on every steady-state frame doubled the RGBA traffic.
+            info.last_rgba = Some(rgba.clone());
+            log::trace!(
+                "VideoRenderer::on_rgba: cached frame display={}, ptr is default(0)",
+                display
+            );
             return false;
         }
 
@@ -483,8 +536,17 @@ impl VideoRenderer {
             // Allow peer info not set, but not allow wrong width/height for correct local cursor position
             if info.size != (0, 0) {
                 return false;
+            } else {
+                info.size = (rgba.w, rgba.h);
             }
         }
+        log::trace!(
+            "VideoRenderer::on_rgba: calling on_rgba_func display={}, ptr=0x{:x}, size=({},{})",
+            display,
+            info.texture_rgba_ptr,
+            rgba.w,
+            rgba.h
+        );
         if let Some(func) = &self.on_rgba_func {
             unsafe {
                 func(
@@ -1234,6 +1296,12 @@ impl FlutterHandler {
         display: usize,
         rgba: &mut scrap::ImageRgb,
     ) {
+        log::trace!(
+            "on_rgba_flutter_texture_render: use_texture={}, display={}, sessions={}",
+            use_texture_render,
+            display,
+            self.session_handlers.read().unwrap().len()
+        );
         for (_, session) in self.session_handlers.read().unwrap().iter() {
             if use_texture_render || session.displays.len() > 1 {
                 if session.renderer.on_rgba(display, rgba) {
@@ -1738,6 +1806,12 @@ pub fn session_set_size(session_id: SessionID, display: usize, width: usize, hei
 
 #[inline]
 pub fn session_register_pixelbuffer_texture(session_id: SessionID, display: usize, ptr: usize) {
+    log::info!(
+        "session_register_pixelbuffer_texture: session_id={}, display={}, ptr=0x{:x}",
+        session_id,
+        display,
+        ptr
+    );
     for s in sessions::get_sessions() {
         if let Some(h) = s
             .ui_handler
@@ -1746,10 +1820,26 @@ pub fn session_register_pixelbuffer_texture(session_id: SessionID, display: usiz
             .unwrap()
             .get(&session_id)
         {
-            h.renderer.register_pixelbuffer_texture(display, ptr);
-            break;
+            let rendered = h.renderer.register_pixelbuffer_texture(display, ptr);
+            log::info!(
+                "session_register_pixelbuffer_texture: registered, rendered={}",
+                rendered
+            );
+            if ptr != 0 {
+                if rendered {
+                    if let Some(stream) = &h.event_stream {
+                        stream.add(EventToUI::Texture(display, false));
+                    }
+                }
+                s.refresh_video(display as _);
+            }
+            return;
         }
     }
+    log::warn!(
+        "session_register_pixelbuffer_texture: session_id={} NOT FOUND in sessions",
+        session_id
+    );
 }
 
 #[inline]
@@ -1764,6 +1854,9 @@ pub fn session_register_gpu_texture(_session_id: SessionID, _display: usize, _ou
             .get(&_session_id)
         {
             h.renderer.register_gpu_output(_display, _output_ptr);
+            if _output_ptr != 0 {
+                s.refresh_video(_display as _);
+            }
             break;
         }
     }

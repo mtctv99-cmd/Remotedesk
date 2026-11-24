@@ -15,7 +15,7 @@ import 'package:get/get.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:flutter_hbb/utils/http_service.dart' as http;
 
-import '../../common.dart';
+import '../../common.dart' hide Dialog;
 import '../../models/model.dart';
 import '../../models/platform_model.dart';
 import 'address_book.dart';
@@ -969,17 +969,17 @@ _connectDialog(
 }) async {
   final errUsername = ''.obs;
   var rememberPassword = false;
+  final osUserCtl = osUsernameController ?? TextEditingController();
+  final osPassCtl = osPasswordController ?? TextEditingController();
   if (passwordController != null) {
     rememberPassword =
         await bind.sessionGetRemember(sessionId: sessionId) ?? false;
   }
-  if (osUsernameController != null) {
-    osUsernameController.addListener(() {
-      if (errUsername.value.isNotEmpty) {
-        errUsername.value = '';
-      }
-    });
-  }
+  osUserCtl.addListener(() {
+    if (errUsername.value.isNotEmpty) {
+      errUsername.value = '';
+    }
+  });
 
   dialogManager.dismissAll();
   dialogManager.show((setState, close, context) {
@@ -988,47 +988,54 @@ _connectDialog(
       closeConnection();
     }
 
+    var selected = passwordController != null ? 0 : 1;
+    final consoleUser = TextEditingController();
+    final consolePass = TextEditingController();
     submit() {
-      if (osUsernameController != null) {
-        if (osUsernameController.text.trim().isEmpty) {
+      if (selected == 2) {
+        return;
+      }
+      if (selected == 0) {
+        if (passwordController == null) return;
+        final password = passwordController.text.trim();
+        if (password.isEmpty) return;
+        gFFI.login('', '', sessionId, password, rememberPassword);
+      } else {
+        final osUsername = osUserCtl.text.trim();
+        if (osUsername.isEmpty) {
           errUsername.value = translate('Empty Username');
           setState(() {});
           return;
         }
+        gFFI.login(
+          osUsername,
+          osPassCtl.text.trim(),
+          sessionId,
+          '',
+          rememberPassword,
+        );
       }
-      final osUsername = osUsernameController?.text.trim() ?? '';
-      final osPassword = osPasswordController?.text.trim() ?? '';
-      final password = passwordController?.text.trim() ?? '';
-      if (passwordController != null && password.isEmpty) return;
-      gFFI.login(
-        osUsername,
-        osPassword,
-        sessionId,
-        password,
-        rememberPassword,
-      );
       close();
       dialogManager.showLoading(translate('Logging in...'),
           onCancel: closeConnection);
     }
 
+    const accent = Color(0xFF60CDFF);
+    const surface = Color(0xFF1E1E1E);
+    const borderColor = Color(0x1FFFFFFF);
+    const primaryText = Color(0xFFF4F4F5);
+    const secondaryText = Color(0xFFA1A1AA);
+
     descWidget(String text) {
-      return Column(
-        children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              text,
-              maxLines: 3,
-              softWrap: true,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 16),
-            ),
-          ),
-          Container(
-            height: 8,
-          ),
-        ],
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          text,
+          maxLines: 3,
+          softWrap: true,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 11.5, color: secondaryText),
+        ),
       );
     }
 
@@ -1038,25 +1045,28 @@ _connectDialog(
       ValueChanged<bool?>? onChanged,
     ) {
       return CheckboxListTile(
-        contentPadding: const EdgeInsets.all(0),
+        contentPadding: EdgeInsets.zero,
         dense: true,
         controlAffinity: ListTileControlAffinity.leading,
-        title: Text(desc),
+        title: Text(desc,
+            style: const TextStyle(fontSize: 11.5, color: secondaryText)),
+        activeColor: accent,
+        checkColor: const Color(0xFF0B0B0B),
         value: remember,
         onChanged: onChanged,
       );
     }
 
     osAccountWidget() {
-      if (osUsernameController == null || osPasswordController == null) {
-        return Offstage();
-      }
       return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (osAccountDescTip != null) descWidget(translate(osAccountDescTip)),
+          descWidget(translate(osAccountDescTip ??
+              'Nháº­p tÃ i khoáº£n Windows cá»§a mÃ¡y client.')),
+          const SizedBox(height: 8),
           DialogTextField(
             title: translate(DialogTextField.kUsernameTitle),
-            controller: osUsernameController,
+            controller: osUserCtl,
             prefixIcon: DialogTextField.kUsernameIcon,
             errorText: null,
           ),
@@ -1065,15 +1075,16 @@ _connectDialog(
               alignment: Alignment.centerLeft,
               child: SelectableText(
                 errUsername.value,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.error,
-                  fontSize: 12,
+                style: const TextStyle(
+                  color: Color(0xFFF87171),
+                  fontSize: 11.5,
                 ),
                 textAlign: TextAlign.left,
               ).paddingOnly(left: 12, bottom: 2),
             ),
+          const SizedBox(height: 8),
           PasswordWidget(
-            controller: osPasswordController,
+            controller: osPassCtl,
             autoFocus: false,
           ),
         ],
@@ -1082,11 +1093,13 @@ _connectDialog(
 
     passwdWidget() {
       if (passwordController == null) {
-        return Offstage();
+        return const Offstage();
       }
       return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           descWidget(translate('verify_rustdesk_password_tip')),
+          const SizedBox(height: 8),
           PasswordWidget(
             controller: passwordController,
             autoFocus: osUsernameController == null,
@@ -1104,32 +1117,207 @@ _connectDialog(
       );
     }
 
+    Widget actionButton(String label, IconData icon,
+        {required bool primary, required VoidCallback onPressed}) {
+      return Material(
+        color: primary ? accent : Colors.transparent,
+        borderRadius: BorderRadius.circular(4),
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(4),
+          hoverColor: primary ? const Color(0xFF7CD5FF) : borderColor,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(4),
+              border: primary ? null : Border.all(color: borderColor),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon,
+                    size: 14,
+                    color: primary ? const Color(0xFF0B0B0B) : primaryText),
+                const SizedBox(width: 6),
+                Text(label,
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color:
+                            primary ? const Color(0xFF0B0B0B) : primaryText)),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    Widget tabButton(String label, int index, bool enabled) {
+      final active = selected == index;
+      return Expanded(
+        child: Material(
+          color: active ? const Color(0xFF272727) : Colors.transparent,
+          borderRadius: BorderRadius.circular(4),
+          child: InkWell(
+            onTap: enabled ? () => setState(() => selected = index) : null,
+            borderRadius: BorderRadius.circular(4),
+            hoverColor: const Color(0x14FFFFFF),
+            child: Container(
+              height: 30,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(
+                    color:
+                        active ? const Color(0x1FFFFFFF) : Colors.transparent),
+              ),
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: !enabled
+                      ? const Color(0xFF52525B)
+                      : active
+                          ? const Color(0xFF60CDFF)
+                          : secondaryText,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final darkTheme = Theme.of(context).copyWith(
+      colorScheme: Theme.of(context).colorScheme.copyWith(
+            primary: accent,
+            secondary: accent,
+            surface: surface,
+            onSurface: primaryText,
+            error: const Color(0xFFF87171),
+          ),
+      cardColor: const Color(0xFF272727),
+      hintColor: secondaryText,
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: const Color(0xFF272727),
+        hintStyle: const TextStyle(color: secondaryText, fontSize: 11.5),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(4),
+          borderSide: const BorderSide(color: borderColor),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(4),
+          borderSide: const BorderSide(color: borderColor),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(4),
+          borderSide: const BorderSide(color: accent),
+        ),
+      ),
+    );
+
     return CustomAlertDialog(
       title: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.password_rounded, color: MyTheme.accent),
-          Text(translate('Password Required')).paddingOnly(left: 10),
+          const Icon(Icons.password_rounded, size: 16, color: accent),
+          const SizedBox(width: 8),
+          const Text('XÃ¡c thá»±c phiÃªn remote',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: primaryText)),
         ],
       ),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        osAccountWidget(),
-        osUsernameController == null || passwordController == null
-            ? Offstage()
-            : Container(height: 12),
-        passwdWidget(),
-      ]),
-      actions: [
-        dialogButton(
-          'Cancel',
-          icon: Icon(Icons.close_rounded),
-          onPressed: cancel,
-          isOutline: true,
+      backgroundColor: surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: const BorderSide(color: borderColor),
+      ),
+      contentBoxConstraints: const BoxConstraints(maxWidth: 340),
+      content: Theme(
+        data: darkTheme,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                tabButton('Máº­t kháº©u phiÃªn', 0, passwordController != null),
+                const SizedBox(width: 4),
+                tabButton('TÃ i khoáº£n Windows', 1, true),
+                const SizedBox(width: 4),
+                tabButton('TÃ i khoáº£n Console', 2, false),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (selected == 0)
+              passwdWidget()
+            else if (selected == 1)
+              osAccountWidget()
+            else
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  descWidget(
+                      'ÄÄƒng nháº­p báº±ng tÃ i khoáº£n Ä‘Æ°á»£c táº¡o trÃªn Manager console.'),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: consoleUser,
+                    enabled: false,
+                    style:
+                        const TextStyle(fontSize: 11.5, color: secondaryText),
+                    decoration: const InputDecoration(
+                      labelText: 'Console account',
+                      isDense: true,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: consolePass,
+                    enabled: false,
+                    obscureText: true,
+                    style:
+                        const TextStyle(fontSize: 11.5, color: secondaryText),
+                    decoration: const InputDecoration(
+                      labelText: 'Console password',
+                      isDense: true,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'TÃ i khoáº£n console sáº½ Ä‘Æ°á»£c báº­t khi backend há»— trá»£ xÃ¡c thá»±c phiÃªn.',
+                      style:
+                          TextStyle(fontSize: 10.5, color: Color(0xFFFBBF24)),
+                    ),
+                  ),
+                ],
+              ),
+          ],
         ),
-        dialogButton(
-          'OK',
-          icon: Icon(Icons.done_rounded),
-          onPressed: submit,
+      ),
+      actions: [
+        Theme(
+          data: darkTheme,
+          child: actionButton(
+            translate('Cancel'),
+            Icons.close_rounded,
+            primary: false,
+            onPressed: cancel,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Theme(
+          data: darkTheme,
+          child: actionButton(
+            translate('OK'),
+            Icons.done_rounded,
+            primary: true,
+            onPressed: submit,
+          ),
         ),
       ],
       onSubmit: submit,
@@ -1389,206 +1577,449 @@ void showWaitAcceptDialog(SessionID sessionId, String type, String title,
       closeConnection();
     }
 
-    void accept() {
+    void accept(
+        {String password = '',
+        String osUsername = '',
+        String osPassword = ''}) {
       close();
-      // Accept (popup-windows-goc.html:524) is the remote side's approve-click accept, not a
-      // client-side permission grant: a click-mode approval authorizes on Rust's side
-      // (src/server/connection.rs:2997 try_start_cm), and the client only has to (re)send its
-      // LoginRequest, i.e. sessionLogin with empty password (src/client.rs:4818).
       bind.sessionLogin(
           sessionId: sessionId,
-          osUsername: '',
-          osPassword: '',
-          password: '',
+          osUsername: osUsername,
+          osPassword: osPassword,
+          password: password,
           remember: false);
       dialogManager.showLoading(translate('Connecting...'),
           onCancel: closeConnection);
     }
 
     final pi = gFFI.ffiModel.pi;
-    // The nook can precede PeerInfo (it comes before the logon response). The requester ID
-    // captured at connect (CursorModel.peerId, model.dart:4142) goes first; the remote
-    // username is only a fallback, and '-' when neither is known yet.
     final peerId = gFFI.cursorModel.peerId.isNotEmpty
         ? gFFI.cursorModel.peerId
         : pi.username;
     final peerLabel = peerId.isNotEmpty ? peerId : '-';
 
-    // Contract §3.3 (popup-windows-goc.html:435-544); its acrylic-opacity Flutter fallback is
-    // TBD there, so the opaque background is used. Permission cells have no Rust permission API
-    // on this path -> display-only, all on; the click accept grants the whole session.
-    const accent = MyTheme.accent;
-    const borderColor = Color(0x1FFFFFFF);
+    const accent = Color(0xFF60CDFF);
+    const surface = Color(0xFF1E1E1E);
     const card = Color(0xFF272727);
+    const borderColor = Color(0x1FFFFFFF);
+    const primaryText = Color(0xFFF4F4F5);
+    const secondaryText = Color(0xFFA1A1AA);
+    const warning = Color(0xFFFBBF24);
 
-    Widget permCell(String label, IconData icon) => Container(
-          height: 42,
+    String method = 'click';
+    bool busy = false;
+    final userCtl = TextEditingController();
+    final passCtl = TextEditingController();
+
+    Future<void> submit() async {
+      if (busy) return;
+      if (method == 'console') {
+        final u = userCtl.text.trim();
+        final p = passCtl.text;
+        if (u.isEmpty || p.isEmpty) {
+          showToast(translate('Enter the console username and password'));
+          return;
+        }
+        setState(() => busy = true);
+        final err =
+            await bind.mainVerifyConsoleAccount(username: u, password: p);
+        if (err.isNotEmpty) {
+          showToast(err);
+          if (context.mounted) setState(() => busy = false);
+          return;
+        }
+        accept();
+        return;
+      }
+      if (method == 'windows') {
+        final u = userCtl.text.trim();
+        if (u.isEmpty) {
+          showToast(translate('Empty Username'));
+          return;
+        }
+        accept(osUsername: u, osPassword: passCtl.text);
+        return;
+      }
+      if (method == 'password') {
+        if (passCtl.text.isEmpty) return;
+        accept(password: passCtl.text);
+        return;
+      }
+      accept();
+    }
+
+    Widget permCell(String label, IconData icon, bool active) => Container(
+          height: 44,
           decoration: BoxDecoration(
-            color: const Color(0x2E60CDFF),
-            border: Border.all(color: const Color(0x7360CDFF)),
+            color: active ? accent.withOpacity(0.16) : const Color(0x0FFFFFFF),
+            border: Border.all(
+                color: active ? accent.withOpacity(0.45) : borderColor),
             borderRadius: BorderRadius.circular(5),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 14, color: accent),
+              Icon(icon, size: 15, color: active ? accent : secondaryText),
               const SizedBox(height: 2),
-              Text(translate(label),
-                  style: const TextStyle(fontSize: 8.5, color: accent)),
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 8.5,
+                      fontWeight: FontWeight.w600,
+                      color: active ? accent : secondaryText)),
             ],
           ),
         );
 
-    final nameStyle = const TextStyle(
-        fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white);
-
-    return CustomAlertDialog(
-      title: null,
-      // The card is 320px per the incoming mockup; without widening the
-      // content constraint the shared 308px default clamps the row.
-      contentBoxConstraints: const BoxConstraints(minWidth: 320),
-      content: Container(
-        width: 320,
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: const Color(0xFF202020),
-          border: Border.all(color: borderColor),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    Widget methodButton(String id, String label, IconData icon,
+        {bool enabled = true}) {
+      final active = method == id;
+      return Expanded(
+        child: Material(
+          color: active ? accent.withOpacity(0.16) : Colors.transparent,
+          borderRadius: BorderRadius.circular(4),
+          child: InkWell(
+            onTap: enabled ? () => setState(() => method = id) : null,
+            borderRadius: BorderRadius.circular(4),
+            hoverColor: const Color(0x14FFFFFF),
+            child: Container(
+              height: 32,
               decoration: BoxDecoration(
-                color: card,
-                border: Border.all(color: borderColor),
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(
+                    color: active ? accent.withOpacity(0.45) : borderColor),
               ),
-              child: Row(children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E293B),
-                    border: Border.all(color: const Color(0x26FFFFFF)),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: const Icon(Icons.desktop_windows_outlined,
-                      size: 20, color: accent),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(children: [
-                        if (pi.hostname.isNotEmpty) ...[
-                          Flexible(
-                              child: Text(pi.hostname,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: nameStyle)),
-                          const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 5),
-                            child: Text('/',
-                                style: TextStyle(
-                                    color: Color(0xFF64748B),
-                                    fontWeight: FontWeight.w300)),
-                          ),
-                        ],
-                        Text(peerLabel,
-                            style: nameStyle.copyWith(color: accent)),
-                      ]),
-                      const SizedBox(height: 2),
-                      Row(children: [
-                        Container(
-                          width: 6,
-                          height: 6,
-                          decoration: const BoxDecoration(
-                              color: Color(0xFFFBBF24), shape: BoxShape.circle),
-                        ),
-                        const SizedBox(width: 5),
-                        Flexible(
-                          child: Text(
-                            'Yêu cầu quyền truy cập máy của bạn',
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                fontSize: 10.5, color: Color(0xFFFBBF24)),
-                          ),
-                        ),
-                      ]),
-                    ],
-                  ),
-                ),
-              ]),
-            ),
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: card,
-                border: Border.all(color: borderColor),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: GridView.count(
-                crossAxisCount: 4,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                mainAxisSpacing: 6,
-                crossAxisSpacing: 6,
-                childAspectRatio: 73 / 42,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  permCell('Bàn phím', Icons.keyboard_outlined),
-                  permCell('Clipboard', Icons.content_paste_outlined),
-                  permCell('Âm thanh', Icons.volume_up_outlined),
-                  permCell('Tệp tin', Icons.folder_outlined),
-                  permCell('Restart', Icons.restart_alt),
-                  permCell('Ghi hình', Icons.fiber_manual_record_outlined),
-                  permCell('Khóa phím', Icons.keyboard_hide_outlined),
-                  permCell('Che màn', Icons.visibility_off_outlined),
+                  Icon(icon,
+                      size: 13,
+                      color: !enabled
+                          ? const Color(0xFF52525B)
+                          : active
+                              ? accent
+                              : secondaryText),
+                  const SizedBox(width: 4),
+                  Text(label,
+                      style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w600,
+                          color: !enabled
+                              ? const Color(0xFF52525B)
+                              : active
+                                  ? accent
+                                  : secondaryText)),
                 ],
               ),
             ),
-            const SizedBox(height: 10),
-            SizedBox(
-              height: 32,
-              child: Row(children: [
-                Expanded(
-                  child: dialogButton('Chấp nhận',
-                      onPressed: accept,
-                      style: const TextStyle(fontSize: 11.5, color: Colors.black),
-                      buttonStyle: ElevatedButton.styleFrom(
-                        backgroundColor: accent,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(4)),
-                      )),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  // Reject sits beside Accept as a real button (was a dead
-                  // DecoratedBox keeping the 1:1 widths); the duplicated
-                  // actions-row reject is gone.
-                  child: dialogButton('Từ chối',
-                      onPressed: onCancel,
-                      isOutline: true,
-                      style: const TextStyle(
-                          fontSize: 11.5, color: Color(0xFFD4D4D8)),
-                      buttonStyle: OutlinedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2A2A2A),
-                        side: const BorderSide(color: borderColor),
-                        padding: EdgeInsets.zero,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(4)),
-                      )),
-                ),
-              ]),
+          ),
+        ),
+      );
+    }
+
+    Widget authFields() {
+      if (method == 'click') {
+        return const Padding(
+          padding: EdgeInsets.symmetric(vertical: 4),
+          child: Text(
+            'Cháº¥p nháº­n ngay: phiÃªn Ä‘Æ°á»£c duyá»‡t mÃ  khÃ´ng cáº§n nháº­p máº­t kháº©u.',
+            style: TextStyle(fontSize: 10.5, color: secondaryText),
+          ),
+        );
+      }
+      final needsUser = method == 'windows' || method == 'console';
+      final hint = method == 'console'
+          ? 'TÃ i khoáº£n táº¡o trÃªn Manager console'
+          : method == 'windows'
+              ? 'TÃ i khoáº£n Windows cá»§a mÃ¡y client'
+              : 'Máº­t kháº©u phiÃªn do client cung cáº¥p';
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(hint,
+              style: const TextStyle(fontSize: 10.5, color: secondaryText)),
+          const SizedBox(height: 6),
+          if (needsUser) ...[
+            TextField(
+              controller: userCtl,
+              style: const TextStyle(fontSize: 11.5, color: primaryText),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: method == 'console'
+                    ? 'Console account'
+                    : 'TÃªn Ä‘Äƒng nháº­p Windows',
+              ),
             ),
+            const SizedBox(height: 6),
           ],
+          TextField(
+            controller: passCtl,
+            obscureText: true,
+            onSubmitted: (_) => submit(),
+            style: const TextStyle(fontSize: 11.5, color: primaryText),
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: method == 'console'
+                  ? 'Console password'
+                  : method == 'windows'
+                      ? 'Máº­t kháº©u Windows'
+                      : 'Máº­t kháº©u phiÃªn',
+            ),
+          ),
+        ],
+      );
+    }
+
+    final darkTheme = Theme.of(context).copyWith(
+      colorScheme: Theme.of(context).colorScheme.copyWith(
+            primary: accent,
+            secondary: accent,
+            surface: surface,
+            onSurface: primaryText,
+            error: const Color(0xFFF87171),
+          ),
+      cardColor: card,
+      hintColor: secondaryText,
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: card,
+        hintStyle: const TextStyle(color: secondaryText, fontSize: 11.5),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(4),
+          borderSide: const BorderSide(color: borderColor),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(4),
+          borderSide: const BorderSide(color: borderColor),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(4),
+          borderSide: const BorderSide(color: accent),
+        ),
+      ),
+    );
+
+    return CustomAlertDialog(
+      title: null,
+      backgroundColor: surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: const BorderSide(color: borderColor),
+      ),
+      contentBoxConstraints: const BoxConstraints(maxWidth: 420),
+      content: Theme(
+        data: darkTheme,
+        child: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: card,
+                  border: Border.all(color: borderColor),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: accent.withOpacity(0.14),
+                        border: Border.all(color: accent.withOpacity(0.35)),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.desktop_windows_outlined,
+                          size: 21, color: accent),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              if (pi.hostname.isNotEmpty) ...[
+                                Flexible(
+                                    child: Text(pi.hostname,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w700,
+                                            color: primaryText))),
+                                const Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 5),
+                                  child: Text('/',
+                                      style: TextStyle(
+                                          color: Color(0xFF64748B),
+                                          fontWeight: FontWeight.w300)),
+                                ),
+                              ],
+                              Text(peerLabel,
+                                  style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                      color: accent)),
+                            ],
+                          ),
+                          const SizedBox(height: 3),
+                          Row(
+                            children: [
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: const BoxDecoration(
+                                    color: warning, shape: BoxShape.circle),
+                              ),
+                              const SizedBox(width: 5),
+                              const Flexible(
+                                child: Text(
+                                  'YÃªu cáº§u quyá»n truy cáº­p mÃ¡y cá»§a báº¡n',
+                                  overflow: TextOverflow.ellipsis,
+                                  style:
+                                      TextStyle(fontSize: 10.5, color: warning),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        iconSize: 14,
+                        color: secondaryText,
+                        onPressed: onCancel,
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: card,
+                  border: Border.all(color: borderColor),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.only(left: 2, bottom: 6),
+                      child: Text('Permissions',
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: primaryText)),
+                    ),
+                    GridView.count(
+                      crossAxisCount: 4,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      mainAxisSpacing: 6,
+                      crossAxisSpacing: 6,
+                      childAspectRatio: 73 / 44,
+                      children: [
+                        permCell('BÃ n phÃ­m', Icons.keyboard_outlined, true),
+                        permCell(
+                            'Clipboard', Icons.content_paste_outlined, true),
+                        permCell('Ã‚m thanh', Icons.volume_up_outlined, true),
+                        permCell('Tá»‡p tin', Icons.folder_outlined, true),
+                        permCell('Restart', Icons.restart_alt, true),
+                        permCell('Ghi hÃ¬nh',
+                            Icons.fiber_manual_record_outlined, true),
+                        permCell(
+                            'KhÃ³a phÃ­m', Icons.keyboard_hide_outlined, false),
+                        permCell(
+                            'Che mÃ n', Icons.visibility_off_outlined, false),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  methodButton('click', 'Duyá»‡t', Icons.touch_app_outlined),
+                  const SizedBox(width: 4),
+                  methodButton(
+                      'password', 'Máº­t kháº©u', Icons.password_rounded),
+                  const SizedBox(width: 4),
+                  methodButton(
+                      'windows', 'Windows', Icons.person_outline_rounded),
+                  const SizedBox(width: 4),
+                  methodButton('console', 'Console', Icons.cloud_outlined),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: card,
+                  border: Border.all(color: borderColor),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: authFields(),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 32,
+                      child: dialogButton(
+                        busy ? '...' : 'Cháº¥p nháº­n ngay',
+                        onPressed: busy ? null : submit,
+                        style: const TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF0B0B0B)),
+                        buttonStyle: ElevatedButton.styleFrom(
+                          backgroundColor: accent,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(4)),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: SizedBox(
+                      height: 32,
+                      child: dialogButton(
+                        'Tá»« chá»‘i',
+                        onPressed: onCancel,
+                        isOutline: true,
+                        style: const TextStyle(
+                            fontSize: 11.5, color: Color(0xFFD4D4D8)),
+                        buttonStyle: OutlinedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2A2A2A),
+                          side: const BorderSide(color: borderColor),
+                          padding: EdgeInsets.zero,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(4)),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
       onCancel: onCancel,
+      onSubmit: submit,
     );
   });
 }

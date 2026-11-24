@@ -4,6 +4,7 @@ import os
 import glob
 import sys
 import csv
+import re
 
 
 def get_lang(lang):
@@ -73,6 +74,8 @@ def to_csv():
 
 
 def to_rs(lang):
+    if not re.fullmatch(r'[A-Za-z0-9_]+', lang):
+        raise ValueError('Invalid language name')
     csvfile = open('%s.csv' % lang, "rt", encoding='utf8')
     fw = open("./src/lang/%s.rs" % lang, "wt", encoding='utf8')
     fw.write('''lazy_static::lazy_static! {

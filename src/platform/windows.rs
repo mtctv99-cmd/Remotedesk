@@ -1575,10 +1575,11 @@ fn get_after_install(
     reg add HKEY_CLASSES_ROOT\\{ext}\\shell\\open /f
     reg add HKEY_CLASSES_ROOT\\{ext}\\shell\\open\\command /f
     reg add HKEY_CLASSES_ROOT\\{ext}\\shell\\open\\command /f /ve /t REG_SZ /d \"\\\"{nested_exe}\\\" \\\"%%1\\\"\"
-    netsh advfirewall firewall add rule name=\"{app_name} Service\" dir=out action=allow program=\"{exe}\" enable=yes
-    netsh advfirewall firewall add rule name=\"{app_name} Service\" dir=in action=allow program=\"{exe}\" enable=yes
-    {create_service}
-    reg add HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System /f /v SoftwareSASGeneration /t REG_DWORD /d 1
+	    netsh advfirewall firewall add rule name=\"{app_name} Service\" dir=out action=allow program=\"{exe}\" enable=yes
+	    netsh advfirewall firewall add rule name=\"{app_name} Service\" dir=in action=allow program=\"{exe}\" enable=yes
+	    {create_service}
+	    \"{nested_exe}\" --install-idd || ver >nul
+	    reg add HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System /f /v SoftwareSASGeneration /t REG_DWORD /d 1
     ", create_service=get_create_service(&exe))
 }
 
@@ -1776,7 +1777,7 @@ pub fn run_after_install() -> ResultType<()> {
     let (_, _, _, exe) = get_install_info();
     run_cmds(
         get_after_install(&exe, None, None, None),
-        true,
+        false,
         "after_install",
     )
 }
@@ -2783,9 +2784,13 @@ pub fn send_message_to_hnwd(
 }
 
 pub fn get_logon_user_token(user: &str, pwd: &str) -> ResultType<HANDLE> {
-    let user_split = user.split("\\").collect::<Vec<&str>>();
-    let wuser = wide_string(user_split.get(1).unwrap_or(&user));
-    let wpc = wide_string(user_split.get(0).unwrap_or(&""));
+    let (domain, username) = if let Some((d, u)) = user.split_once('\\') {
+        (d, u)
+    } else {
+        (".", user)
+    };
+    let wuser = wide_string(username);
+    let wpc = wide_string(domain);
     let wpwd = wide_string(pwd);
     let mut ph_token: HANDLE = std::ptr::null_mut();
     let res = unsafe {

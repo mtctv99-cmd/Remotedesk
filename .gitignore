@@ -78,3 +78,7 @@ __pycache__/
 /demo-remote-session.html
 # Raw benchmark dumps; the readable summary in reports/ is tracked.
 reports/live_benchmark_*.json
+# Generated portable metadata (timestamp only) and one-off probe dumps.
+libs/portable/app_metadata.toml
+reports/pwprobe.json
+reports/password_check*.json

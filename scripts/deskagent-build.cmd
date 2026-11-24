@@ -7,10 +7,10 @@ set "VCPKG_INSTALLED_ROOT=%TOOLS%\vcpkg\installed"
 set "LIBCLANG_PATH=%TOOLS%\llvm-15\bin"
 set "PATH=%USERPROFILE%\.cargo\bin;%TOOLS%\flutter\bin;%PATH%"
 cd /d "%REPO%"
-echo === UI baseline guard ===
-git diff --exit-code deskagent-ui-stable-20261124 -- flutter/lib >nul
+echo === Source baseline guard ===
+git diff --exit-code deskagent-release-20261124 >nul
 if errorlevel 1 (
-    echo UI has drifted from deskagent-ui-stable-20261124. Restore it or create a new baseline tag before building.
+    echo Source has drifted from deskagent-release-20261124. Restore it or create a new release tag before building.
     exit /b 1
 )
 for /f %%f in ('git ls-files --others --exclude-standard flutter/lib') do (

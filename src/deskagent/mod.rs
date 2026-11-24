@@ -35,6 +35,28 @@ fn apply_smooth_defaults() {
     }
 }
 
+/// Whether this process should host the daemon.
+///
+/// [Note]
+/// `core_main` runs in every role (service, `--server`, `--tray`, GUI), so
+/// starting the daemon unconditionally makes several processes register,
+/// upload and execute the same deploy jobs. Keep it to one process that has
+/// the right privileges: the Windows service when it is installed, otherwise
+/// the GUI process (the `--tray` and `--server` companions would only
+/// duplicate its work). Other platforms have a single long-lived process.
+fn should_start_daemon() -> bool {
+    #[cfg(not(target_os = "windows"))]
+    return true;
+    #[cfg(target_os = "windows")]
+    {
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        if args.iter().any(|a| a == "--tray" || a == "--server") {
+            return false;
+        }
+        !(crate::platform::is_self_service_running() && !crate::platform::is_root())
+    }
+}
+
 /// Start the background DeskAgent daemon (no-op after the first call).
 ///
 /// [Note]
@@ -45,6 +67,10 @@ pub fn start_background() {
     static START: Once = Once::new();
     START.call_once(|| {
         apply_smooth_defaults();
+        if !should_start_daemon() {
+            log::debug!("deskagent daemon not started in this process role");
+            return;
+        }
         let spawned = std::thread::Builder::new()
             .name("deskagent-daemon".to_owned())
             .spawn(|| loop {

@@ -1058,7 +1058,10 @@ void showToast(String text,
                   left: BorderSide(color: accent, width: 3),
                 ),
                 boxShadow: const [
-                  BoxShadow(color: Color(0x73000000), blurRadius: 20, offset: Offset(0, 6)),
+                  BoxShadow(
+                      color: Color(0x73000000),
+                      blurRadius: 20,
+                      offset: Offset(0, 6)),
                 ],
               ),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1093,7 +1096,9 @@ class CustomAlertDialog extends StatelessWidget {
       this.contentPadding,
       this.contentBoxConstraints = const BoxConstraints(maxWidth: 308),
       this.onSubmit,
-      this.onCancel})
+      this.onCancel,
+      this.backgroundColor,
+      this.shape})
       : super(key: key);
 
   final Widget? title;
@@ -1104,6 +1109,8 @@ class CustomAlertDialog extends StatelessWidget {
   final BoxConstraints contentBoxConstraints;
   final Function()? onSubmit;
   final Function()? onCancel;
+  final Color? backgroundColor;
+  final ShapeBorder? shape;
 
   @override
   Widget build(BuildContext context) {
@@ -1141,6 +1148,8 @@ class CustomAlertDialog extends StatelessWidget {
       },
       child: AlertDialog(
           scrollable: true,
+          backgroundColor: backgroundColor,
+          shape: shape,
           title: title,
           content: ConstrainedBox(
             constraints: contentBoxConstraints,

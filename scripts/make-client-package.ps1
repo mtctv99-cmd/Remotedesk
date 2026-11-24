@@ -13,13 +13,13 @@
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
-$uiTag = 'deskagent-ui-stable-20261124'
+$releaseTag = 'deskagent-release-20261124'
 
 Push-Location $root
 try {
-    & git diff --exit-code $uiTag -- flutter/lib 2>$null | Out-Null
+    & git diff --exit-code $releaseTag 2>$null | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        throw "UI has drifted from $uiTag. Restore it or create a new baseline tag before packaging."
+        throw "Source has drifted from $releaseTag. Restore it or create a new release tag before packaging."
     }
     $untracked = & git ls-files --others --exclude-standard flutter/lib
     if ($untracked) {

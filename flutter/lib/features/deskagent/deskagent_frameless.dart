@@ -76,6 +76,36 @@ class DeskAgentFrameless {
     }
   }
 
+  /// Ask DWM to render the native titlebar in dark mode (Win10 2004+ / Win11).
+  static bool setDarkTitlebar(String windowTitle, {bool dark = true}) {
+    try {
+      final user32 = DynamicLibrary.open('user32.dll');
+      final dwmapi = DynamicLibrary.open('dwmapi.dll');
+      final findWindowW = user32.lookupFunction<
+          IntPtr Function(Pointer<Utf16>, Pointer<Utf16>),
+          int Function(Pointer<Utf16>, Pointer<Utf16>)>('FindWindowW');
+      final dwmSetWindowAttribute = dwmapi.lookupFunction<
+          Int32 Function(IntPtr, Uint32, Pointer<Void>, Uint32),
+          int Function(int, int, Pointer<Void>, int)>('DwmSetWindowAttribute');
+      final title = windowTitle.toNativeUtf16();
+      final className = 'FLUTTER_RUNNER_WIN32_WINDOW'.toNativeUtf16();
+      final hwnd = findWindowW(className, title);
+      calloc.free(title);
+      calloc.free(className);
+      if (hwnd == 0) return false;
+      // DWMWA_USE_IMMERSIVE_DARK_MODE = 20 (19 on older Win10 builds).
+      final value = calloc<Int32>()..value = dark ? 1 : 0;
+      final attr = calloc<Uint32>()..value = 20;
+      final res = dwmSetWindowAttribute(
+          hwnd, attr.value, value.cast<Void>(), sizeOf<Int32>());
+      calloc.free(value);
+      calloc.free(attr);
+      return res == 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Move/resize the main window through Win32.
   ///
   /// The window_manager channel does not resize reliably once the caption

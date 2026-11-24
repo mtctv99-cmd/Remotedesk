@@ -73,11 +73,25 @@ pub fn router(state: SharedState) -> Router {
         .route("/download/client", get(download_client))
         .route("/api/download/client", get(download_client))
         .route("/api/discover", get(discover))
+        .route("/api/version/latest", get(version_latest))
         .nest("/api/auth", auth_routes())
         .nest("/api/client", client_routes())
         .nest("/api/conversations", conversation_routes())
         .nest("/api/admin", admin_routes())
         .with_state(state)
+}
+
+async fn version_latest(
+    State(state): State<SharedState>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let conn = state.db.lock().map_err(|_| db_poisoned())?;
+    let all = db::get_all_settings(&conn).map_err(internal_error)?;
+    Ok(Json(json!({
+        "version": all.get("update_latest").cloned().unwrap_or_default(),
+        "url": all.get("update_url").cloned().unwrap_or_default(),
+        "sha256": all.get("update_sha256").cloned().unwrap_or_default(),
+        "notes": all.get("update_notes").cloned().unwrap_or_default(),
+    })))
 }
 
 /// Serve client application package for easy download and installation.
@@ -385,10 +399,12 @@ struct LoginIn {
     password: String,
 }
 
+
 async fn login(
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     State(state): State<SharedState>,
     Json(payload): Json<LoginIn>,
+
 ) -> Result<Json<Value>, (StatusCode, String)> {
     // Brute-force guard: fixed window of failures per source IP.
     if login_limiter().blocked(peer.ip()) {
@@ -439,6 +455,14 @@ async fn auth_me(
 
 // ---------- payload types ----------
 
+fn valid_mac(value: &str) -> bool {
+    let parts: Vec<_> = value.split(':').collect();
+    parts.len() == 6
+        && parts.iter().all(|p| p.len() == 2 && p.chars().all(|c| c.is_ascii_hexdigit()))
+        && parts[0].as_bytes().first().map(|b| b & 1 == 0).unwrap_or(false)
+        && value != "00:00:00:00:00:00"
+}
+
 #[derive(Deserialize)]
 struct RegisterIn {
     client_id: String,
@@ -457,6 +481,9 @@ struct RegisterIn {
     /// per-user-context duplicate rows a single machine used to accumulate.
     #[serde(default)]
     machine_id: Option<String>,
+    /// Physical MAC secondary identity; never used alone for destructive merge.
+    #[serde(default)]
+    mac_address: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -497,6 +524,8 @@ struct JobIn {
     package_url: Option<String>,
     package_path: Option<String>,
     silent_cmd: String,
+    #[serde(default)]
+    checksum: String,
 }
 
 #[derive(Deserialize)]
@@ -541,6 +570,13 @@ async fn register_client(
     let client_ip = peer.ip().to_string();
     let _ = payload.ip;
     let client_version = payload.version.clone().unwrap_or_default();
+    let mac_address = payload
+        .mac_address
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| valid_mac(s))
+        .unwrap_or("")
+        .to_owned();
     let machine_id = payload
         .machine_id
         .as_deref()
@@ -640,6 +676,7 @@ async fn register_client(
         &client_ip,
         &client_version,
         &machine_id,
+        &mac_address,
     )
     .map_err(internal_error)?;
     if !machine_id.is_empty() {
@@ -667,7 +704,7 @@ async fn register_client(
     // caller's identity was just merged away) mint a new token bound to the
     // canonical row and hand it back so the client re-anchors itself.
     if presented_binds_to.as_deref() == Some(target_id.as_str()) {
-        return Ok(Json(json!({ "ok": true, "client_id": target_id })));
+        return Ok(Json(json!({ "ok": true, "client_id": target_id, "mac_address": mac_address })));
     }
     let rng = SystemRandom::new();
     let mut bytes = [0u8; 32];
@@ -679,7 +716,7 @@ async fn register_client(
     }
     db::create_device_token(&conn, &crate::crypto::hash_token(&tok), &target_id)
         .map_err(internal_error)?;
-    Ok(Json(json!({ "ok": true, "device_token": tok, "client_id": target_id })))
+    Ok(Json(json!({ "ok": true, "device_token": tok, "client_id": target_id, "mac_address": mac_address })))
 }
 
 /// Target resolution for a register that found no machine/hostname row to
@@ -1371,6 +1408,7 @@ async fn admin_create_job(
         payload.package_path.as_deref(),
         &payload.silent_cmd,
         &sig,
+        &payload.checksum,
     )
     .map_err(internal_error)?;
     Ok(Json(json!({ "job_id": id, "signature": sig })))
@@ -1559,7 +1597,7 @@ async fn admin_save_settings(
     }
     if let Some(ref s) = payload.update_url {
         let t = s.trim();
-        if !t.is_empty() {
+        if !t.is_empty() && !t.starts_with('/') {
             ai::validate_outbound_url(t).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
         }
         db::set_setting(&conn, "update_url", t).map_err(internal_error)?;
@@ -1789,6 +1827,24 @@ mod tests {
             assert!(id.starts_with(prefix));
             assert!(ids.insert(id), "id collision detected");
         }
+    }
+
+    #[tokio::test]
+    async fn version_latest_returns_configured_update_metadata() {
+        let state = test_state();
+        {
+            let conn = state.db.lock().unwrap();
+            db::set_setting(&conn, "update_latest", "1.2.3").unwrap();
+            db::set_setting(&conn, "update_url", "https://example.invalid/app.zip").unwrap();
+            db::set_setting(&conn, "update_sha256", "abc123").unwrap();
+            db::set_setting(&conn, "update_notes", "Bug fixes").unwrap();
+        }
+        let (status, body) = oneshot_json(&state, "GET", "/api/version/latest", &[], None, peer([127, 0, 0, 2], 1001)).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["version"], "1.2.3");
+        assert_eq!(body["url"], "https://example.invalid/app.zip");
+        assert_eq!(body["sha256"], "abc123");
+        assert_eq!(body["notes"], "Bug fixes");
     }
 
     #[tokio::test]
@@ -2152,7 +2208,7 @@ mod tests {
         // True legacy row: written before machine_id existed, no token ever.
         {
             let conn = state.db.lock().unwrap();
-            db::upsert_client(&conn, "c-legacy", "host-l", "Windows", "10", "x86_64", "", "", "")
+            db::upsert_client(&conn, "c-legacy", "host-l", "Windows", "10", "x86_64", "", "", "", "")
                 .unwrap();
         }
         let (status, v) = oneshot_json(
@@ -2237,9 +2293,9 @@ mod tests {
         // Two machine rows of the SAME machine (per-context duplicates).
         {
             let conn = state.db.lock().unwrap();
-            db::upsert_client(&conn, "c-m1", "host-m", "Windows", "11", "x86_64", "", "", "M-same")
+            db::upsert_client(&conn, "c-m1", "host-m", "Windows", "11", "x86_64", "", "", "M-same", "")
                 .unwrap();
-            db::upsert_client(&conn, "c-m2", "host-m", "Windows", "11", "x86_64", "", "", "M-same")
+            db::upsert_client(&conn, "c-m2", "host-m", "Windows", "11", "x86_64", "", "", "M-same", "")
                 .unwrap();
             conn.execute("UPDATE clients SET last_seen = 1000 WHERE id = 'c-m1'", []).unwrap();
             conn.execute("UPDATE clients SET last_seen = 2000 WHERE id = 'c-m2'", []).unwrap();
@@ -2336,7 +2392,7 @@ mod tests {
         // Newest row wins when several rows share a hostname.
         {
             let conn = state.db.lock().unwrap();
-            db::upsert_client(&conn, "c-pd-3", "host-a", "Windows", "11", "x86_64", "", "", "M3")
+            db::upsert_client(&conn, "c-pd-3", "host-a", "Windows", "11", "x86_64", "", "", "M3", "")
                 .unwrap();
             conn.execute(
                 "UPDATE clients SET last_seen = 99999 WHERE id = 'c-pd-3'",
@@ -2469,7 +2525,7 @@ mod tests {
     fn ai_context_includes_inventory_and_events_and_caps_length() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         db::init(&conn).unwrap();
-        db::upsert_client(&conn, "c-ai", "h", "W", "11", "x86_64", "", "", "M").unwrap();
+        db::upsert_client(&conn, "c-ai", "h", "W", "11", "x86_64", "", "", "M", "").unwrap();
         db::save_inventory(&conn, "c-ai", "{\"cpu\":8}").unwrap();
         db::insert_events(
             &conn,
@@ -2484,7 +2540,7 @@ mod tests {
         assert!(ctx.contains("svc"), "event source in context");
 
         // A client with neither inventory nor events gets no context block.
-        db::upsert_client(&conn, "c-empty", "h2", "W", "11", "x86_64", "", "", "M").unwrap();
+        db::upsert_client(&conn, "c-empty", "h2", "W", "11", "x86_64", "", "", "M", "").unwrap();
         assert!(build_ai_context(&conn, "c-empty").is_none());
 
         // Hard cap respected (inventory alone is larger than the cap).

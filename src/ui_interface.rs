@@ -205,7 +205,7 @@ pub fn use_texture_render() -> bool {
         if default_texture {
             LocalConfig::get_option(keys::OPTION_TEXTURE_RENDER) != "N"
         } else {
-            return LocalConfig::get_option(keys::OPTION_TEXTURE_RENDER) == "Y";
+            LocalConfig::get_option(keys::OPTION_TEXTURE_RENDER) == "Y"
         }
     }
 }
@@ -1145,6 +1145,46 @@ pub fn deploy_device(token: String, new_id: Option<String>) -> DeployResult {
                 DeployResult::Error("Unknown response.".to_owned())
             } else {
                 DeployResult::Error(text)
+            }
+        }
+    }
+}
+
+/// Kiểm tra một tài khoản web console (manager) có hợp lệ không.
+///
+/// Dùng cho hộp thoại xác thực phiên: người dùng máy đích có thể duyệt phiên
+/// bằng chính tài khoản admin của console thay vì mật khẩu phiên.
+/// Token trả về bị bỏ ngay — máy đích không được giữ phiên admin của manager,
+/// vì console có quyền phát việc chạy từ xa tới mọi thiết bị.
+pub fn verify_console_account(username: String, password: String) -> Result<(), String> {
+    let tr = |key: &str| crate::client::translate(key.to_owned());
+    let username = username.trim();
+    if username.is_empty() || password.is_empty() {
+        return Err(tr("Enter the console username and password"));
+    }
+    let url = get_api_server() + "/api/auth/login";
+    let body = serde_json::json!({ "username": username, "password": password }).to_string();
+    // header rỗng: /api/auth/login là endpoint công khai, tự nó xác thực.
+    match crate::post_request_sync(url, body, "") {
+        Ok(text) => {
+            let parsed: serde_json::Value =
+                serde_json::from_str(&text).unwrap_or(serde_json::Value::Null);
+            if parsed["token"].as_str().unwrap_or("").is_empty() {
+                Err(tr("The console rejected this account"))
+            } else {
+                // token là bí mật; không giữ, không ghi log.
+                Ok(())
+            }
+        }
+        Err(err) => {
+            let msg = err.to_string();
+            // 401 từ console: sai tài khoản/mật khẩu — hiện thông điệp dễ hiểu.
+            if msg.contains("401") {
+                Err(tr("Wrong console username or password"))
+            } else if msg.contains("429") {
+                Err(tr("Console temporarily locked after too many attempts. Try again later."))
+            } else {
+                Err(format!("{}: {msg}", tr("Could not reach the console")))
             }
         }
     }

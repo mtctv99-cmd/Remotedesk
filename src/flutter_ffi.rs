@@ -1186,6 +1186,21 @@ pub fn main_get_api_server() -> String {
     get_api_server()
 }
 
+/// Kiểm tài khoản web console cho hộp thoại xác thực phiên.
+///
+/// Trả chuỗi rỗng khi hợp lệ, hoặc câu lỗi hiển thị thẳng cho người dùng.
+/// Chạy trên thread riêng: hàm này được gọi từ UI isolate, còn
+/// `post_request_sync` cần runtime của riêng nó.
+pub fn main_verify_console_account(username: String, password: String) -> String {
+    let handle =
+        std::thread::spawn(move || ui_interface::verify_console_account(username, password));
+    match handle.join() {
+        Ok(Ok(())) => String::new(),
+        Ok(Err(msg)) => msg,
+        Err(_) => "Lỗi nội bộ khi kiểm tra console.".to_owned(),
+    }
+}
+
 pub fn main_deploy_device(token: String, id: String) -> String {
     #[cfg(target_os = "android")]
     {

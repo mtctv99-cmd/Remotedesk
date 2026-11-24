@@ -22,6 +22,7 @@ import '../../utils/image.dart';
 import '../widgets/remote_toolbar.dart';
 import '../widgets/kb_layout_type_chooser.dart';
 import '../widgets/tabbar_widget.dart';
+import '../../features/deskagent/deskagent_frameless.dart';
 import '../../features/deskagent/deskagent_tools_window.dart';
 import 'macos_full_screen_focus_recovery.dart';
 
@@ -176,6 +177,9 @@ class _RemotePageState extends State<RemotePage>
       displays: widget.displays,
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (isWindows) {
+        DeskAgentFrameless.setDarkTitlebar(getWindowName());
+      }
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
       _ffi.dialogManager
           .showLoading(translate('Connecting...'), onCancel: closeConnection);

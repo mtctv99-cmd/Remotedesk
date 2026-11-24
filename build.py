@@ -979,11 +979,14 @@ def build_flutter_windows(version, features, skip_portable_pack):
                  flutter_build_dir_2)
     if skip_portable_pack:
         return
+    exe_target = 'deskagent.exe' if os.path.exists(f'{flutter_build_dir_2}/deskagent.exe') else 'rustdesk.exe'
+    py_exec = sys.executable or 'python'
     os.chdir('libs/portable')
-    system2('pip3 install -r requirements.txt')
+    system2(f'"{py_exec}" -m pip install -r requirements.txt')
     system2(
-        f'python3 ./generate.py -f ../../{flutter_build_dir_2} -o . -e ../../{flutter_build_dir_2}/rustdesk.exe')
+        f'"{py_exec}" ./generate.py -f ../../{flutter_build_dir_2} -o . -e ../../{flutter_build_dir_2}/{exe_target}')
     os.chdir('../..')
+    out_installer = f'./deskagent-{version}-install.exe' if exe_target == 'deskagent.exe' else f'./rustdesk-{version}-install.exe'
     if os.path.exists('./rustdesk_portable.exe'):
         os.replace('./target/release/rustdesk-portable-packer.exe',
                    './rustdesk_portable.exe')
@@ -992,9 +995,14 @@ def build_flutter_windows(version, features, skip_portable_pack):
                   './rustdesk_portable.exe')
     print(
         f'output location: {os.path.abspath(os.curdir)}/rustdesk_portable.exe')
-    os.rename('./rustdesk_portable.exe', f'./rustdesk-{version}-install.exe')
+    if os.path.exists(out_installer):
+        try:
+            os.remove(out_installer)
+        except Exception:
+            pass
+    os.replace('./rustdesk_portable.exe', out_installer)
     print(
-        f'output location: {os.path.abspath(os.curdir)}/rustdesk-{version}-install.exe')
+        f'output location: {os.path.abspath(os.curdir)}/{out_installer}')
 
 
 def main():

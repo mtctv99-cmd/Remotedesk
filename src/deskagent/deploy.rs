@@ -1,9 +1,12 @@
 use hbb_common::{bail, log, ResultType};
 use serde_derive::{Deserialize, Serialize};
+use std::io::Read;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::path::{Path, PathBuf};
+use sha2::{Digest, Sha256};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::time::Duration;
 use url::{Host, Url};
 use uuid::Uuid;
@@ -19,6 +22,10 @@ const MANAGER_URL_OPTION: &str = "deskagent-manager-url";
 const DEFAULT_MANAGER_URL: &str = "http://127.0.0.1:8080";
 /// Ticks (30s each) between inventory/event uploads: 20 x 30s = 10 min.
 const INVENTORY_INTERVAL_TICKS: u32 = 20;
+/// Ticks (30s each) between auto-update checks: 2 x 30s = 1 min.
+const AUTO_UPDATE_INTERVAL_TICKS: u32 = 2;
+/// Backoff after a failed update before trying the same version again (30 min).
+const UPDATE_FAILURE_BACKOFF_SECS: u64 = 1800;
 /// Cap on the command output posted back per job.
 const MAX_OUTPUT_LEN: usize = 32 * 1024;
 /// Delay before the first registration retry, doubled per failure.
@@ -35,6 +42,9 @@ static NEEDS_REGISTRATION: AtomicBool = AtomicBool::new(false);
 static REGISTER_FAILURES: AtomicU32 = AtomicU32::new(0);
 /// Earliest unix time (seconds) of the next registration attempt.
 static NEXT_REGISTER_AT: AtomicU64 = AtomicU64::new(0);
+/// Track last failed auto-update version to avoid rapid retry loops.
+static LAST_FAILED_UPDATE_VERSION: Mutex<String> = Mutex::new(String::new());
+static LAST_FAILED_UPDATE_AT: AtomicU64 = AtomicU64::new(0);
 
 /// A deploy job advertised by the Manager.
 #[derive(Debug, PartialEq, Default, Serialize, Deserialize, Clone)]
@@ -51,6 +61,15 @@ pub struct DeployJob {
     pub package_path: String,
     #[serde(default)]
     pub silent_cmd: String,
+    /// Expected SHA-256 for downloaded package.
+    #[serde(default, alias = "checksum", alias = "package_checksum")]
+    pub package_sha256: String,
+    /// Ed25519 signature over the complete execution payload.
+    #[serde(default)]
+    pub signature: String,
+    /// Worker version advertised with job, used for safe update commands.
+    #[serde(default, alias = "worker_version")]
+    pub version: String,
 }
 
 /// Response body of `GET /api/client/{id}/jobs`.
@@ -144,7 +163,7 @@ pub fn join_path(base: &Url, path: &str) -> String {
 /// may sit on private hosts, so the strict SSRF guard (no
 /// loopback/private/reserved) is intentionally not applied here; that
 /// guard belongs to the Manager-side AI proxy.
-fn validate_http_url(url: &str) -> ResultType<Url> {
+pub(crate) fn validate_http_url(url: &str) -> ResultType<Url> {
     let parsed = Url::parse(url)?;
     if parsed.scheme() != "http" && parsed.scheme() != "https" {
         bail!("only http/https schemes are allowed: {}", url);
@@ -258,6 +277,17 @@ fn load_device_token() -> String {
     secret::read_secret(&device_token_path()).unwrap_or_default()
 }
 
+/// Forget a device token the Manager refuses, so the next registration is
+/// treated as a fresh client instead of retrying the same rejected token.
+fn discard_device_token() {
+    let _ = std::fs::remove_file(device_token_path());
+    // Also clear the id the rejected row bound us to: the next registration
+    // starts from this machine's own client id again.
+    let _ = std::fs::remove_file(manager_bound_id_path());
+    hbb_common::config::Config::set_option("manager-device-token".into(), String::new());
+    log::warn!("the manager rejected the stored device token; cleared it for re-registration");
+}
+
 /// Whether the Manager is known not to issue device tokens.
 ///
 /// [Note]
@@ -330,6 +360,28 @@ fn machine_id() -> String {
     hbb_common::machine_uid::get().unwrap_or_default().trim().to_owned()
 }
 
+/// Stable physical MAC used only as a secondary Manager identity signal.
+/// MachineGuid remains canonical; MAC never authorizes destructive merges alone.
+fn mac_address() -> String {
+    fn format_valid(bytes: [u8; 6]) -> Option<String> {
+        if bytes.iter().all(|b| *b == 0) || bytes[0] & 1 != 0 {
+            return None;
+        }
+        Some(bytes.iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(":"))
+    }
+
+    if let Ok(iface) = default_net::get_default_interface() {
+        if let Some(mac) = iface.mac_addr.and_then(|mac| format_valid(mac.octets())) {
+            return mac;
+        }
+    }
+    hbb_common::mac_address::get_mac_address()
+        .ok()
+        .flatten()
+        .and_then(|mac| format_valid(mac.bytes()))
+        .unwrap_or_default()
+}
+
 /// Register the client with the Manager and persist the device token it
 /// hands back.
 ///
@@ -355,6 +407,7 @@ fn register_client(
         "arch": info.arch,
         "version": env!("CARGO_PKG_VERSION"),
         "machine_id": machine_id(),
+        "mac_address": mac_address(),
     });
     let resp = with_token(agent.post(&url), token)
         .set("Content-Type", "application/json")
@@ -462,6 +515,17 @@ pub fn tick() -> ResultType<()> {
                 NEXT_REGISTER_AT.store(0, Ordering::Relaxed);
             }
             Err(e) => {
+                // A token the Manager no longer knows (revoked row, wiped DB)
+                // is refused at registration itself; keeping it would make
+                // every retry fail the same way. Drop it so the next attempt
+                // registers as a fresh client and gets a new one.
+                // `register_client` wraps the ureq error in anyhow; unwrap it
+                // before asking whether the Manager refused the credential.
+                if e.downcast_ref::<ureq::Error>()
+                    .map_or(false, is_auth_rejection)
+                {
+                    discard_device_token();
+                }
                 let failures = REGISTER_FAILURES.fetch_add(1, Ordering::Relaxed) + 1;
                 let delay = register_backoff_secs(failures);
                 NEXT_REGISTER_AT.store(unix_now() + delay, Ordering::Relaxed);
@@ -483,14 +547,296 @@ pub fn tick() -> ResultType<()> {
     if n % INVENTORY_INTERVAL_TICKS == 0 {
         upload_inventory(&agent, &base, &client_id, &token);
     }
-    // (b) Job poll on every tick.
-    let jobs = fetch_jobs(&agent, &base, &client_id, &token)?;
-    for job in jobs {
-        if !job.status.eq_ignore_ascii_case("pending") {
-            continue;
-        }
-        process_job(&agent, &base, &client_id, &token, &job);
+    // (b) Auto-update check: poll /api/version/latest every 2 ticks (1 minute).
+    if n % AUTO_UPDATE_INTERVAL_TICKS == 0 {
+        check_auto_update(&agent, &base, &token);
     }
+    // (c) Job poll on every tick.
+    match fetch_jobs(&agent, &base, &client_id, &token) {
+        Ok(jobs) => {
+            for job in jobs {
+                if !job.status.eq_ignore_ascii_case("pending") {
+                    continue;
+                }
+                process_job(&agent, &base, &client_id, &token, &job);
+            }
+        }
+        Err(e) => {
+            log::warn!("failed to fetch jobs: {}", e);
+        }
+    }
+    Ok(())
+}
+
+/// Information returned by `GET /api/version/latest`.
+#[derive(Debug, PartialEq, Default, Serialize, Deserialize, Clone)]
+pub struct LatestVersionInfo {
+    #[serde(default)]
+    pub version: String,
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub sha256: String,
+    #[serde(default)]
+    pub notes: String,
+}
+
+fn is_update_in_backoff(version: &str) -> bool {
+    let failed = LAST_FAILED_UPDATE_VERSION
+        .lock()
+        .map(|v| v.clone())
+        .unwrap_or_default();
+    if failed != version {
+        return false;
+    }
+    unix_now() < LAST_FAILED_UPDATE_AT.load(Ordering::Relaxed) + UPDATE_FAILURE_BACKOFF_SECS
+}
+
+fn record_update_failure(version: &str) {
+    if let Ok(mut lock) = LAST_FAILED_UPDATE_VERSION.lock() {
+        *lock = version.to_string();
+    }
+    LAST_FAILED_UPDATE_AT.store(unix_now(), Ordering::Relaxed);
+}
+
+fn clear_update_backoff() {
+    if let Ok(mut lock) = LAST_FAILED_UPDATE_VERSION.lock() {
+        lock.clear();
+    }
+    LAST_FAILED_UPDATE_AT.store(0, Ordering::Relaxed);
+}
+
+static LAST_TRIGGERED_UPDATE_VERSION: Mutex<String> = Mutex::new(String::new());
+static LAST_TRIGGERED_UPDATE_AT: AtomicU64 = AtomicU64::new(0);
+const UPDATE_TRIGGER_COOLDOWN_SECS: u64 = 600; // 10 minutes
+
+fn is_update_in_cooldown(version: &str) -> bool {
+    let triggered = LAST_TRIGGERED_UPDATE_VERSION
+        .lock()
+        .map(|v| v.clone())
+        .unwrap_or_default();
+    if triggered != version {
+        return false;
+    }
+    unix_now() < LAST_TRIGGERED_UPDATE_AT.load(Ordering::Relaxed) + UPDATE_TRIGGER_COOLDOWN_SECS
+}
+
+fn record_update_triggered(version: &str) {
+    if let Ok(mut lock) = LAST_TRIGGERED_UPDATE_VERSION.lock() {
+        *lock = version.to_string();
+    }
+    LAST_TRIGGERED_UPDATE_AT.store(unix_now(), Ordering::Relaxed);
+}
+
+pub fn version_is_newer(remote: &str, current: &str) -> bool {
+    let parse = |v: &str| {
+        v.trim_start_matches('v')
+            .split(|c: char| c == '.' || c == '-')
+            .filter_map(|x| x.parse::<u64>().ok())
+            .collect::<Vec<_>>()
+    };
+    let r = parse(remote);
+    let c = parse(current);
+    if r.is_empty() || c.is_empty() {
+        return false;
+    }
+    r > c
+}
+
+fn check_auto_update(agent: &ureq::Agent, base: &Url, token: &str) {
+    #[cfg(target_os = "windows")]
+    if !crate::platform::is_installed() {
+        return;
+    }
+
+    #[cfg(target_os = "windows")]
+    if crate::platform::is_self_service_running() && !crate::platform::is_root() {
+        // Windows Service is running and will handle auto-update as SYSTEM in session 0.
+        return;
+    }
+
+    if !crate::updater::has_no_active_conns() {
+        log::debug!("auto-update deferred: active connections present");
+        return;
+    }
+
+    let latest = match fetch_latest_version(agent, base, token) {
+        Ok(Some(v)) => v,
+        Ok(None) => return,
+        Err(e) => {
+            log::debug!("auto-update check failed: {}", e);
+            return;
+        }
+    };
+
+    let current = env!("CARGO_PKG_VERSION");
+    if !version_is_newer(&latest.version, current) {
+        return;
+    }
+
+    if is_update_in_backoff(&latest.version) || is_update_in_cooldown(&latest.version) {
+        return;
+    }
+
+    log::info!(
+        "auto-update: new version {} available (installed: {})",
+        latest.version,
+        current
+    );
+
+    match execute_auto_update(agent, base, token, &latest) {
+        Ok(_) => {
+            log::info!("auto-update: update installer triggered for {}", latest.version);
+            clear_update_backoff();
+            record_update_triggered(&latest.version);
+        }
+        Err(e) => {
+            log::error!("auto-update: failed for {}: {}", latest.version, e);
+            record_update_failure(&latest.version);
+        }
+    }
+}
+
+fn fetch_latest_version(
+    agent: &ureq::Agent,
+    base: &Url,
+    token: &str,
+) -> ResultType<Option<LatestVersionInfo>> {
+    let url = join_path(base, "api/version/latest");
+    let resp = match with_token(agent.get(&url), token).call() {
+        Ok(r) => r,
+        Err(ureq::Error::Status(404, _)) => return Ok(None),
+        Err(e) => return Err(e.into()),
+    };
+    let body = resp.into_string()?;
+    let info: LatestVersionInfo = serde_json::from_str(&body)?;
+    if info.version.trim().is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(info))
+}
+
+fn execute_auto_update(
+    agent: &ureq::Agent,
+    base: &Url,
+    token: &str,
+    latest: &LatestVersionInfo,
+) -> ResultType<()> {
+    // The manager URL can be plain HTTP (localhost by default), so the hash
+    // is the only integrity check before silently executing an installer.
+    if latest.sha256.trim().is_empty() {
+        bail!("auto-update refused: manager did not provide update_sha256");
+    }
+    let download_url = if latest.url.starts_with('/') {
+        join_path(base, latest.url.trim_start_matches('/'))
+    } else if latest.url.starts_with("http://") || latest.url.starts_with("https://") {
+        latest.url.clone()
+    } else {
+        join_path(base, "download/client")
+    };
+
+    let parsed_url = validate_http_url(&download_url)?;
+    let dest_dir = std::env::temp_dir().join("DeskAgent").join("update");
+    std::fs::create_dir_all(&dest_dir)?;
+
+    let mut filename = format!("deskagent-{}-install.exe", latest.version);
+    // Content-Disposition below may rename the package, so keep the resolved
+    // path in one variable and use it for verify + launch. Launching the
+    // pre-CD `dest_file` opened a path that was never created on a fresh
+    // download and the update failed silently.
+    let mut target_file = dest_dir.join(&filename);
+    let mut need_download = true;
+
+    if target_file.is_file() && !latest.sha256.trim().is_empty() {
+        if verify_package_sha256(&target_file, &latest.sha256).is_ok() {
+            need_download = false;
+            log::info!("auto-update: using existing verified package {:?}", target_file);
+        }
+    }
+
+    if need_download {
+        log::info!("auto-update: downloading {} to {:?}", download_url, dest_dir);
+        let resp = with_token(agent.get(parsed_url.as_str()), token).call()?;
+
+        if let Some(cd) = resp.header("content-disposition") {
+            let lower = cd.to_lowercase();
+            if let Some(pos) = lower.find("filename=") {
+                let rest = &cd[pos + 9..].trim().trim_matches('"');
+                let name = rest.split(';').next().unwrap_or("").trim().trim_matches('"');
+                if !name.is_empty() {
+                    let sanitized = sanitize_path_component(name);
+                    if sanitized.to_lowercase().ends_with(".exe") || sanitized.to_lowercase().ends_with(".msi") {
+                        filename = sanitized;
+                    }
+                }
+            }
+        }
+
+        target_file = dest_dir.join(&filename);
+        let mut reader = resp.into_reader();
+        let mut file = std::fs::File::create(&target_file)?;
+        std::io::copy(&mut reader, &mut file)?;
+
+        if !latest.sha256.trim().is_empty() {
+            verify_package_sha256(&target_file, &latest.sha256)?;
+        }
+    }
+
+    if !crate::updater::has_no_active_conns() {
+        bail!("active remote session started during download; update postponed");
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        launch_silent_update(&target_file)?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        log::info!("auto-update: downloaded to {:?}, auto-install skipped on non-windows", target_file);
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn launch_silent_update(installer: &Path) -> ResultType<()> {
+    let p = match installer.to_str() {
+        Some(s) => s,
+        None => bail!("invalid installer path"),
+    };
+
+    // If running as LocalSystem (Windows Service), launch directly via cmd start
+    if crate::platform::is_root() {
+        log::info!("auto-update: launching installer from service as SYSTEM: {}", p);
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/C", "start", "", p, "--silent-install"]);
+        hide_window(&mut cmd);
+        cmd.spawn()?;
+        return Ok(());
+    }
+
+    // If running in user session, try launching privileged process
+    if let Some(session_id) = crate::platform::get_current_process_session_id() {
+        let run_cmd = format!("\"{}\" --silent-install", p);
+        match crate::platform::launch_privileged_process(session_id, &run_cmd) {
+            Ok(h) if !h.is_null() => {
+                log::info!("auto-update: launched privileged installer in session {}", session_id);
+                return Ok(());
+            }
+            Err(e) => {
+                log::warn!("auto-update: launch_privileged_process failed: {}, trying fallback", e);
+            }
+            _ => {
+                log::warn!("auto-update: launch_privileged_process returned null handle, trying fallback");
+            }
+        }
+    }
+
+    // Fallback: spawn via cmd start
+    let mut cmd = Command::new("cmd");
+    cmd.args(["/C", "start", "", p, "--silent-install"]);
+    hide_window(&mut cmd);
+    cmd.spawn()?;
     Ok(())
 }
 
@@ -615,6 +961,7 @@ fn run_job(agent: &ureq::Agent, job: &DeployJob) -> ResultType<String> {
         let parsed = validate_http_url(&job.package_url)?;
         let dest_dir = job_download_dir(&job.id);
         let dest = download_package(agent, &parsed, &dest_dir)?;
+        verify_package_sha256(&dest, &job.package_sha256)?;
         lines.push(format!("downloaded: {}", dest.display()));
         workdir = Some(dest_dir);
     } else if !job.package_path.is_empty() {
@@ -628,6 +975,11 @@ fn run_job(agent: &ureq::Agent, job: &DeployJob) -> ResultType<String> {
     if job.silent_cmd.is_empty() {
         lines.push("no silent_cmd; package prepared only".to_owned());
         return Ok(lines.join("\n"));
+    }
+    // Never launch an update installer while a remote/file/terminal session is alive.
+    // The Manager lease can redeliver this job on a later heartbeat.
+    if !job.version.is_empty() && !crate::updater::has_no_active_conns() {
+        bail!("update deferred: active remote session");
     }
     let (code, stdout, stderr) = run_silent_cmd(&job.silent_cmd, workdir.as_deref())?;
     lines.push(format!("exit_code: {}", code));
@@ -652,13 +1004,17 @@ fn sanitize_path_component(s: &str) -> String {
     let cleaned: String = s
         .chars()
         .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
                 c
             } else {
                 '_'
             }
         })
         .collect();
+    // Keep dots for the ".exe"/".msi" extension, but never allow "." / ".."
+    // (path traversal) or a leading-dot hidden file in a joined component.
+    let cleaned = cleaned.replace("..", "__");
+    let cleaned = cleaned.trim_start_matches('.').to_owned();
     if cleaned.is_empty() {
         "unknown".to_owned()
     } else {
@@ -667,6 +1023,29 @@ fn sanitize_path_component(s: &str) -> String {
 }
 
 /// Download a package into `dest_dir` and return the file path.
+fn verify_package_sha256(path: &Path, expected: &str) -> ResultType<()> {
+    if expected.trim().is_empty() {
+        return Ok(());
+    }
+    let expected = expected.trim().to_ascii_lowercase();
+    if expected.len() != 64 || !expected.bytes().all(|b| b.is_ascii_hexdigit()) {
+        bail!("invalid package SHA-256 checksum");
+    }
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 8192];
+    loop {
+        let n = file.read(&mut buf)?;
+        if n == 0 { break; }
+        hasher.update(&buf[..n]);
+    }
+    let actual = format!("{:x}", hasher.finalize());
+    if actual != expected {
+        bail!("package checksum mismatch: expected {}, got {}", expected, actual);
+    }
+    Ok(())
+}
+
 fn download_package(agent: &ureq::Agent, package: &Url, dest_dir: &Path) -> ResultType<PathBuf> {
     let filename = package
         .path_segments()
@@ -838,8 +1217,9 @@ mod test {
     #[test]
     fn test_sanitize_path_component() {
         assert_eq!(sanitize_path_component("a-b_1"), "a-b_1");
-        // Every non [A-Za-z0-9_-] char, including '..', becomes '_'.
+        // A single dot survives for extensions; '..' is neutralized.
         assert_eq!(sanitize_path_component("../x y"), "___x_y");
+        assert_eq!(sanitize_path_component("setup.exe"), "setup.exe");
         assert_eq!(sanitize_path_component(""), "unknown");
     }
 
@@ -854,6 +1234,16 @@ mod test {
         let wide = "€".repeat(MAX_OUTPUT_LEN);
         let t = truncate_output(&wide);
         assert!(t.ends_with("... (truncated)"));
+    }
+
+    #[test]
+    fn test_verify_package_sha256() {
+        let path = std::env::temp_dir().join(format!("deskagent-checksum-{}", Uuid::new_v4()));
+        std::fs::write(&path, b"hello").unwrap();
+        assert!(verify_package_sha256(&path, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824").is_ok());
+        assert!(verify_package_sha256(&path, "00").is_err());
+        assert!(verify_package_sha256(&path, "0000000000000000000000000000000000000000000000000000000000000000").is_err());
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]
@@ -873,5 +1263,16 @@ mod test {
     fn test_join_path() {
         let base = Url::parse("https://example.com").unwrap();
         assert_eq!(join_path(&base, "api/x"), "https://example.com/api/x");
+    }
+
+    #[test]
+    fn test_version_is_newer() {
+        assert!(version_is_newer("1.5.2", "1.5.0"));
+        assert!(version_is_newer("v1.6.0", "1.5.0"));
+        assert!(version_is_newer("2.0.0", "1.99.99"));
+        assert!(!version_is_newer("1.5.0", "1.5.0"));
+        assert!(!version_is_newer("1.4.9", "1.5.0"));
+        assert!(!version_is_newer("", "1.5.0"));
+        assert!(!version_is_newer("invalid", "1.5.0"));
     }
 }

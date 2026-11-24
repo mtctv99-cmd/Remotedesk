@@ -780,6 +780,16 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("RustDesk could not load a GStreamer component needed for screen capture ({})", "O RustDesk não conseguiu carregar um componente do GStreamer necessário para a captura de tela ({})."),
         ("Relay fallback delay in seconds", "Atraso antes de recorrer ao retransmissor em segundos"),
         ("relay-fallback-delay-tip", "Tempo que a conexão de retransmissão aguarda pela conexão direta WebRTC. Aumente para dar mais tempo a conexões lentas; diminua para usar o retransmissor mais cedo. Deixe vazio para usar o padrão de 2,5 segundos."),
-        ("To start a voice call, enable \"Audio capture\" on the \"Screen share\" page.", "Para iniciar uma chamada de voz, ative \"Captura de áudio\" na página \"Compartilhamento de tela\".")
+        ("To start a voice call, enable \"Audio capture\" on the \"Screen share\" page.", "Para iniciar uma chamada de voz, ative \"Captura de áudio\" na página \"Compartilhamento de tela\"."),
+        ("Enter the console username and password", ""),
+        ("The console rejected this account", ""),
+        ("Wrong console username or password", ""),
+        ("Console temporarily locked after too many attempts. Try again later.", ""),
+        ("Could not reach the console", ""),
+        ("Manager API URL is not configured", ""),
+        ("Verify remote session from {}", ""),
+        ("Console account", ""),
+        ("Console password", ""),
+        ("Verify and accept", ""),
     ].iter().cloned().collect();
 }

@@ -326,13 +326,13 @@ class ToolbarState {
 }
 
 class _ToolbarTheme {
-  static const Color blueColor = Color(0xFF0284C7);
-  static const Color hoverBlueColor = Color(0xFF0369A1);
-  static Color inactiveColor = const Color(0xFF52525B);
-  static Color hoverInactiveColor = const Color(0xFF27272A);
+  static const Color blueColor = Color(0xFF60CDFF);
+  static const Color hoverBlueColor = Color(0xFF7CD5FF);
+  static Color inactiveColor = const Color(0xFFA1A1AA);
+  static Color hoverInactiveColor = const Color(0xFF3F3F46);
 
-  static const Color redColor = Color(0xFFEF4444);
-  static const Color hoverRedColor = Color(0xFFDC2626);
+  static const Color redColor = Color(0xFFF87171);
+  static const Color hoverRedColor = Color(0xFFEF4444);
   // kMinInteractiveDimension
   static const double height = 20.0;
   static const double dividerHeight = 12.0;
@@ -861,6 +861,7 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
       toolbarItems.add(_VoiceCallMenu(id: widget.id, ffi: widget.ffi));
     }
     if (!isWeb) toolbarItems.add(_RecordMenu());
+    if (!isWeb && !isMobile) toolbarItems.add(_DeskAgentToolButton());
     toolbarItems.add(_CloseMenu(id: widget.id, ffi: widget.ffi));
     final toolbarBorderRadius = BorderRadius.all(Radius.circular(4.0));
     // innerAxis: how the toolbar icons themselves flow.
@@ -905,28 +906,10 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
         ? legacyMaterial
         : Theme(
             data: themeData(),
-            child: DeskAgentRemoteTitlebar(
-              ffi: widget.ffi,
-              peerName: widget.id,
-              monitorAction: _MonitorMenu(
-                id: widget.id,
-                ffi: widget.ffi,
-                edge: edge,
-                setRemoteState: widget.setRemoteState,
-              ),
-              displayAction: _DisplayMenu(
-                id: widget.id,
-                ffi: widget.ffi,
-                state: widget.state,
-                setFullscreen: _setFullscreen,
-              ),
-              shortcutAction: _ControlMenu(
-                  id: widget.id, ffi: widget.ffi, state: widget.state),
-              toolsAction: _DeskAgentToolButton(),
-              pinAction: _PinMenu(state: widget.state),
-              closeAction: _CloseMenu(id: widget.id, ffi: widget.ffi),
-              onMinimize: _minimize,
-              onToggleMaximize: () => unawaited(_toggleMaximize()),
+            child: DeskAgentActionBar(
+              items: toolbarItems,
+              isHorizontal: isHorizontal,
+              fps: widget.ffi.qualityMonitorModel.data.fps,
             ),
           );
     final handle = _buildDraggableCollapse(context, edge, isHorizontal);
@@ -944,7 +927,24 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
   }
 
   ThemeData themeData() {
-    return Theme.of(context).copyWith(
+    final base = Theme.of(context);
+    return base.copyWith(
+      colorScheme: base.colorScheme.copyWith(
+        brightness: Brightness.dark,
+        surface: const Color(0xFF272727),
+        onSurface: const Color(0xFFF4F4F5),
+        primary: const Color(0xFF60CDFF),
+        onPrimary: const Color(0xFF0B0B0B),
+      ),
+      canvasColor: const Color(0xFF272727),
+      cardColor: const Color(0xFF272727),
+      dialogBackgroundColor: const Color(0xFF1E1E1E),
+      dividerColor: const Color(0x1FFFFFFF),
+      hintColor: const Color(0xFFA1A1AA),
+      textTheme: base.textTheme.apply(
+        bodyColor: const Color(0xFFF4F4F5),
+        displayColor: const Color(0xFFF4F4F5),
+      ),
       menuButtonTheme: MenuButtonThemeData(
         style: ButtonStyle(
           minimumSize: MaterialStatePropertyAll(Size(64, 32)),
@@ -999,7 +999,8 @@ class _PinMenu extends StatelessWidget {
     return Obx(
       () => _IconMenuButton(
         assetName: state.pin ? "assets/pinned.svg" : "assets/unpinned.svg",
-        tooltip: state.pin ? translate('Unpin Toolbar') : translate('Pin Toolbar'),
+        tooltip:
+            state.pin ? translate('Unpin Toolbar') : translate('Pin Toolbar'),
         onPressed: state.switchPin,
         color:
             state.pin ? _ToolbarTheme.blueColor : _ToolbarTheme.inactiveColor,

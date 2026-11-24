@@ -75,11 +75,12 @@ pub(super) fn start_listening() -> ResultType<()> {
 
 #[tokio::main(flavor = "current_thread")]
 pub async fn discover() -> ResultType<()> {
+    let started = Instant::now();
     let sockets = send_query()?;
     let rx = spawn_wait_responses(sockets);
     handle_received_peers(rx).await?;
 
-    log::info!("discover ping done");
+    log::info!("lan_discovery_done elapsed_ms={}", started.elapsed().as_millis());
     Ok(())
 }
 
