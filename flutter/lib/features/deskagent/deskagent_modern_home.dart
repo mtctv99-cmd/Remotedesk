@@ -1712,7 +1712,7 @@ class _DeskAgentModernHomeState extends State<DeskAgentModernHome>
             clipBehavior: Clip.none,
             children: [
               Positioned.fill(
-                child: DeskAgentIcons.icon(DeskAgentIcons.logo, size: 28),
+                child: DeskAgentIcons.brandLogo(size: 28),
               ),
               Positioned(
                 right: -1,

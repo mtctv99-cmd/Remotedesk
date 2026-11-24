@@ -3857,8 +3857,8 @@ Widget loadIcon(double size) {
   return Image.asset('assets/icon.png',
       width: size,
       height: size,
-      errorBuilder: (ctx, error, stackTrace) => SvgPicture.asset(
-            'assets/icons/deskagent_logo.svg',
+      errorBuilder: (ctx, error, stackTrace) => Image.asset(
+            'assets/icons/deskagent_logo.png',
             width: size,
             height: size,
           ));
