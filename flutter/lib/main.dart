@@ -413,14 +413,18 @@ void _runApp(
   ThemeMode themeMode,
 ) {
   final botToastBuilder = BotToastInit();
+  // The session window always uses the Fluent dark shell from the mockups,
+  // even when the rest of the app runs in light mode. This keeps the toolbar
+  // menus, tooltips and dialogs on the dark palette.
+  final isRemoteWindow = kWindowType == WindowType.RemoteDesktop;
   runApp(RefreshWrapper(
     builder: (context) => GetMaterialApp(
       navigatorKey: globalKey,
       debugShowCheckedModeBanner: false,
       title: title,
       theme: MyTheme.lightTheme,
-      darkTheme: MyTheme.darkTheme,
-      themeMode: themeMode,
+      darkTheme: isRemoteWindow ? MyTheme.remoteDarkTheme : MyTheme.darkTheme,
+      themeMode: isRemoteWindow ? ThemeMode.dark : themeMode,
       home: home,
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,

@@ -89,7 +89,7 @@ class MyPopupMenuItemState<T, W extends PopupMenuChildrenItem<T>>
 
 class MenuConfig {
   // adapt to the screen height
-  static const fontSize = 14.0;
+  static const fontSize = 12.0;
   static const midPadding = 10.0;
   static const iconScale = 0.8;
   static const iconWidth = 12.0;
@@ -102,8 +102,8 @@ class MenuConfig {
 
   const MenuConfig(
       {required this.commonColor,
-      this.height = kMinInteractiveDimension,
-      this.dividerHeight = 16.0,
+      this.height = 30.0,
+      this.dividerHeight = 10.0,
       this.boxWidth});
 }
 

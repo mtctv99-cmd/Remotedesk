@@ -577,6 +577,63 @@ class MyTheme {
     ],
   );
 
+  /// Dark theme for the remote-session window. It keeps the Fluent surfaces
+  /// from the mockups when the app itself runs in light mode, and restyles the
+  /// menus/checkboxes/radios so the session chrome never falls back to the
+  /// stock Material light palette.
+  static final ThemeData remoteDarkTheme = darkTheme.copyWith(
+    textTheme: darkTheme.textTheme.apply(fontFamily: 'Segoe UI'),
+    primaryTextTheme: darkTheme.primaryTextTheme.apply(fontFamily: 'Segoe UI'),
+    popupMenuTheme: PopupMenuThemeData(
+      color: const Color(0xFF202020),
+      surfaceTintColor: Colors.transparent,
+      textStyle: const TextStyle(
+          fontFamily: 'Segoe UI', fontSize: 12, color: Color(0xFFF4F4F5)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: const BorderSide(color: Color(0x14FFFFFF)),
+      ),
+    ),
+    menuTheme: MenuThemeData(
+      style: MenuStyle(
+        backgroundColor:
+            const MaterialStatePropertyAll<Color>(Color(0xFF202020)),
+        surfaceTintColor:
+            const MaterialStatePropertyAll<Color>(Colors.transparent),
+        elevation: const MaterialStatePropertyAll<double>(0),
+        padding: const MaterialStatePropertyAll<EdgeInsetsGeometry>(
+            EdgeInsets.symmetric(horizontal: 4, vertical: 6)),
+        shape: MaterialStatePropertyAll<OutlinedBorder?>(
+            RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: const BorderSide(color: Color(0x14FFFFFF)),
+        )),
+      ),
+    ),
+    menuBarTheme: const MenuBarThemeData(
+      style: MenuStyle(
+        backgroundColor: MaterialStatePropertyAll<Color>(Colors.transparent),
+        elevation: MaterialStatePropertyAll<double>(0),
+      ),
+    ),
+    dividerColor: const Color(0x14FFFFFF),
+    checkboxTheme: CheckboxThemeData(
+      side: const BorderSide(color: Color(0xFFCBD5E1), width: 2),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+      fillColor: MaterialStateProperty.resolveWith((states) =>
+          states.contains(MaterialState.selected)
+              ? const Color(0xFF60CDFF)
+              : Colors.transparent),
+      checkColor: const MaterialStatePropertyAll<Color>(Color(0xFF0B0B0B)),
+    ),
+    radioTheme: RadioThemeData(
+      fillColor: MaterialStateProperty.resolveWith((states) =>
+          states.contains(MaterialState.selected)
+              ? const Color(0xFF60CDFF)
+              : const Color(0xFFCBD5E1)),
+    ),
+  );
+
   static ThemeMode getThemeModePreference() {
     return themeModeFromString(bind.mainGetLocalOption(key: kCommConfKeyTheme));
   }
