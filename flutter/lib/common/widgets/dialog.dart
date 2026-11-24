@@ -989,6 +989,8 @@ _connectDialog(
     }
 
     var selected = passwordController != null ? 0 : 1;
+    var sessionPwVisible = false;
+    var osPwVisible = false;
     final consoleUser = TextEditingController();
     final consolePass = TextEditingController();
     submit() {
@@ -1034,7 +1036,8 @@ _connectDialog(
           maxLines: 3,
           softWrap: true,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 11.5, color: secondaryText),
+          style: const TextStyle(
+              fontFamily: 'Segoe UI', fontSize: 11, color: secondaryText),
         ),
       );
     }
@@ -1044,16 +1047,90 @@ _connectDialog(
       bool remember,
       ValueChanged<bool?>? onChanged,
     ) {
-      return CheckboxListTile(
-        contentPadding: EdgeInsets.zero,
-        dense: true,
-        controlAffinity: ListTileControlAffinity.leading,
-        title: Text(desc,
-            style: const TextStyle(fontSize: 11.5, color: secondaryText)),
-        activeColor: accent,
-        checkColor: const Color(0xFF0B0B0B),
-        value: remember,
-        onChanged: onChanged,
+      return InkWell(
+        onTap: onChanged == null ? null : () => onChanged(!remember),
+        borderRadius: BorderRadius.circular(4),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            children: [
+              Container(
+                width: 17,
+                height: 17,
+                decoration: BoxDecoration(
+                  color: remember ? accent : Colors.transparent,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                      color: remember ? accent : const Color(0xFFCBD5E1),
+                      width: 2),
+                ),
+                child: remember
+                    ? const Icon(Icons.check,
+                        size: 12, color: Color(0xFF0B0B0B))
+                    : null,
+              ),
+              const SizedBox(width: 7),
+              Text(desc,
+                  style: const TextStyle(
+                      fontFamily: 'Segoe UI',
+                      fontSize: 11,
+                      color: primaryText)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    Widget compactInput({
+      required TextEditingController controller,
+      required String hint,
+      required IconData icon,
+      bool obscure = false,
+      bool autofocus = false,
+      VoidCallback? onToggleVisibility,
+    }) {
+      return SizedBox(
+        height: 32,
+        child: TextField(
+          controller: controller,
+          autofocus: autofocus,
+          obscureText: obscure,
+          style: const TextStyle(
+              fontFamily: 'Segoe UI', fontSize: 12, color: primaryText),
+          decoration: InputDecoration(
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+            hintText: hint,
+            hintStyle: const TextStyle(
+                fontFamily: 'Segoe UI', fontSize: 12, color: secondaryText),
+            prefixIcon: Icon(icon, size: 16, color: secondaryText),
+            prefixIconConstraints:
+                const BoxConstraints(minWidth: 30, minHeight: 30),
+            suffixIcon: onToggleVisibility == null
+                ? null
+                : IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints:
+                        const BoxConstraints(minWidth: 30, minHeight: 30),
+                    icon: Icon(
+                        obscure ? Icons.visibility_off : Icons.visibility,
+                        size: 16,
+                        color: accent),
+                    onPressed: onToggleVisibility,
+                  ),
+            filled: true,
+            fillColor: const Color(0xFF25262C),
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: const BorderSide(color: borderColor)),
+            enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: const BorderSide(color: borderColor)),
+            focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: const BorderSide(color: accent)),
+          ),
+        ),
       );
     }
 
@@ -1064,11 +1141,10 @@ _connectDialog(
           descWidget(translate(osAccountDescTip ??
               'Nhập tài khoản Windows của máy client.')),
           const SizedBox(height: 8),
-          DialogTextField(
-            title: translate(DialogTextField.kUsernameTitle),
+          compactInput(
             controller: osUserCtl,
-            prefixIcon: DialogTextField.kUsernameIcon,
-            errorText: null,
+            hint: translate(DialogTextField.kUsernameTitle),
+            icon: Icons.account_circle_outlined,
           ),
           if (errUsername.value.isNotEmpty)
             Align(
@@ -1083,9 +1159,13 @@ _connectDialog(
               ).paddingOnly(left: 12, bottom: 2),
             ),
           const SizedBox(height: 8),
-          PasswordWidget(
+          compactInput(
             controller: osPassCtl,
-            autoFocus: false,
+            hint: translate('Password'),
+            icon: Icons.lock_outline,
+            obscure: !osPwVisible,
+            onToggleVisibility: () =>
+                setState(() => osPwVisible = !osPwVisible),
           ),
         ],
       );
@@ -1100,9 +1180,14 @@ _connectDialog(
         children: [
           descWidget(translate('verify_rustdesk_password_tip')),
           const SizedBox(height: 8),
-          PasswordWidget(
+          compactInput(
             controller: passwordController,
-            autoFocus: osUsernameController == null,
+            hint: translate('Password'),
+            icon: Icons.lock_outline,
+            obscure: !sessionPwVisible,
+            autofocus: osUsernameController == null,
+            onToggleVisibility: () =>
+                setState(() => sessionPwVisible = !sessionPwVisible),
           ),
           rememberWidget(
             translate('Remember password'),
@@ -1127,7 +1212,7 @@ _connectDialog(
           borderRadius: BorderRadius.circular(4),
           hoverColor: primary ? const Color(0xFF7CD5FF) : borderColor,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(4),
               border: primary ? null : Border.all(color: borderColor),
@@ -1141,6 +1226,7 @@ _connectDialog(
                 const SizedBox(width: 6),
                 Text(label,
                     style: TextStyle(
+                        fontFamily: 'Segoe UI',
                         fontSize: 11.5,
                         fontWeight: FontWeight.w600,
                         color:
@@ -1163,7 +1249,7 @@ _connectDialog(
             borderRadius: BorderRadius.circular(4),
             hoverColor: const Color(0x14FFFFFF),
             child: Container(
-              height: 30,
+              height: 28,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(4),
@@ -1173,8 +1259,11 @@ _connectDialog(
               ),
               child: Text(
                 label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 11,
+                  fontFamily: 'Segoe UI',
+                  fontSize: 10.5,
                   fontWeight: FontWeight.w600,
                   color: !enabled
                       ? const Color(0xFF52525B)
@@ -1189,7 +1278,11 @@ _connectDialog(
       );
     }
 
+    const fontFamily = 'Segoe UI';
     final darkTheme = Theme.of(context).copyWith(
+      textTheme: Theme.of(context).textTheme.apply(fontFamily: fontFamily),
+      primaryTextTheme:
+          Theme.of(context).primaryTextTheme.apply(fontFamily: fontFamily),
       colorScheme: Theme.of(context).colorScheme.copyWith(
             primary: accent,
             secondary: accent,
@@ -1197,34 +1290,39 @@ _connectDialog(
             onSurface: primaryText,
             error: const Color(0xFFF87171),
           ),
-      cardColor: const Color(0xFF272727),
+      cardColor: const Color(0xFF25262C),
       hintColor: secondaryText,
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: const Color(0xFF272727),
-        hintStyle: const TextStyle(color: secondaryText, fontSize: 11.5),
+        fillColor: const Color(0xFF25262C),
+        hintStyle: const TextStyle(color: secondaryText, fontSize: 12),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(6),
           borderSide: const BorderSide(color: borderColor),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(6),
           borderSide: const BorderSide(color: borderColor),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(6),
           borderSide: const BorderSide(color: accent),
         ),
       ),
     );
 
-    return CustomAlertDialog(
+    final dialog = CustomAlertDialog(
+      titlePadding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      contentPadding: 16,
+      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+      contentBoxConstraints: const BoxConstraints(maxWidth: 288),
       title: Row(
         children: [
           const Icon(Icons.password_rounded, size: 16, color: accent),
           const SizedBox(width: 8),
           const Text('Xác thực phiên remote',
               style: TextStyle(
+                  fontFamily: 'Segoe UI',
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: primaryText)),
@@ -1235,7 +1333,6 @@ _connectDialog(
         borderRadius: BorderRadius.circular(8),
         side: const BorderSide(color: borderColor),
       ),
-      contentBoxConstraints: const BoxConstraints(maxWidth: 340),
       content: Theme(
         data: darkTheme,
         child: Column(
@@ -1323,6 +1420,7 @@ _connectDialog(
       onSubmit: submit,
       onCancel: cancel,
     );
+    return dialog;
   });
 }
 

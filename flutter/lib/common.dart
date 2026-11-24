@@ -1094,6 +1094,7 @@ class CustomAlertDialog extends StatelessWidget {
       required this.content,
       this.actions,
       this.contentPadding,
+      this.actionsPadding,
       this.contentBoxConstraints = const BoxConstraints(maxWidth: 308),
       this.onSubmit,
       this.onCancel,
@@ -1106,6 +1107,7 @@ class CustomAlertDialog extends StatelessWidget {
   final Widget content;
   final List<Widget>? actions;
   final double? contentPadding;
+  final EdgeInsetsGeometry? actionsPadding;
   final BoxConstraints contentBoxConstraints;
   final Function()? onSubmit;
   final Function()? onCancel;
@@ -1157,9 +1159,11 @@ class CustomAlertDialog extends StatelessWidget {
           ),
           actions: actions,
           titlePadding: titlePadding ?? MyTheme.dialogTitlePadding(),
-          contentPadding:
-              MyTheme.dialogContentPadding(actions: actions is List),
-          actionsPadding: MyTheme.dialogActionsPadding(),
+          contentPadding: contentPadding != null
+              ? EdgeInsets.all(contentPadding!)
+              : MyTheme.dialogContentPadding(actions: actions is List),
+          actionsPadding:
+              actionsPadding ?? MyTheme.dialogActionsPadding(),
           buttonPadding: MyTheme.dialogButtonPadding),
     );
   }
