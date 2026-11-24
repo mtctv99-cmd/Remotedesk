@@ -874,20 +874,32 @@ function Get-AgentService { Get-Service -Name $svcName -ErrorAction SilentlyCont
 # Stop through the SCM so the service stays registered. Only the tray processes
 # are killed directly; the service process exits when Stop-Service returns.
 function Stop-Agent {
-    $svc = Get-AgentService
-    if ($svc -and $svc.Status -ne 'Stopped') {
-        Log "stopping service ($($svc.Status))"
-        Stop-Service -Name $svcName -Force -ErrorAction SilentlyContinue
-        try { (Get-AgentService).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(20)) } catch { Log "service stop wait: $_" }
+    for ($attempt = 1; $attempt -le 4; $attempt++) {
+        $svc = Get-AgentService
+        if ($svc -and $svc.Status -ne 'Stopped') {
+            Log "stopping service ($($svc.Status))"
+            Stop-Service -Name $svcName -Force -ErrorAction SilentlyContinue
+            try { (Get-AgentService).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(20)) } catch { Log "service stop wait: $_" }
+        }
+        # Get-Process cannot read .Path of service-owned processes, so the CIM
+        # pass is required to catch a tray that the service leaves in session 0.
+        Get-Process deskagent -ErrorAction SilentlyContinue | ForEach-Object {
+            try {
+                if ($_.Path -and $_.Path.StartsWith($Dest, 'OrdinalIgnoreCase')) {
+                    Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+                }
+            } catch {}
+        }
+        Get-CimInstance Win32_Process -Filter "Name='deskagent.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($Dest, 'OrdinalIgnoreCase') } |
+            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        Start-Sleep -Seconds 1
+        $alive = @(Get-CimInstance Win32_Process -Filter "Name='deskagent.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($Dest, 'OrdinalIgnoreCase') })
+        if ($alive.Count -eq 0) { return }
+        Log "waiting for $($alive.Count) process(es) holding $Dest (retry $attempt)"
+        Start-Sleep -Seconds 1
     }
-    Get-Process deskagent -ErrorAction SilentlyContinue | ForEach-Object {
-        try {
-            if ($_.Path -and $_.Path.StartsWith($Dest, 'OrdinalIgnoreCase')) {
-                Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
-            }
-        } catch {}
-    }
-    Start-Sleep -Seconds 2
 }
 
 try {
@@ -914,7 +926,7 @@ try {
         }
         New-Item -ItemType Directory -Force -Path $Dest | Out-Null
         Log "copying $src -> $Dest"
-        Get-ChildItem $src -Force | Where-Object { $_.Name -notin @('.mimosa', '.zcode') } | ForEach-Object {
+        Get-ChildItem $src -Force | Where-Object { $_.Name -notin @('.mimosa', '.zcode', 'install-client.ps1', 'install-client.cmd', 'README.txt') } | ForEach-Object {
             Copy-Item $_.FullName $Dest -Recurse -Force
         }
         if ($swapped) {

@@ -32,21 +32,32 @@ $keep = @('meta.toml')
 function Get-AgentService { Get-Service -Name $svcName -ErrorAction SilentlyContinue }
 
 function Stop-Agent {
-    $svc = Get-AgentService
-    if ($svc -and $svc.Status -ne 'Stopped') {
-        Write-Host "Stopping DeskAgent service ($($svc.Status)) ..."
-        Stop-Service -Name $svcName -Force -ErrorAction SilentlyContinue
-        try { (Get-AgentService).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(20)) } catch { Write-Warning "Service stop wait: $_" }
+    for ($attempt = 1; $attempt -le 4; $attempt++) {
+        $svc = Get-AgentService
+        if ($svc -and $svc.Status -ne 'Stopped') {
+            Write-Host "Stopping DeskAgent service ($($svc.Status)) ..."
+            Stop-Service -Name $svcName -Force -ErrorAction SilentlyContinue
+            try { (Get-AgentService).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(20)) } catch { Write-Warning "Service stop wait: $_" }
+        }
+        # Kill every process whose image lives in the install dir. Get-Process
+        # cannot read .Path of service-owned processes, so fall back to CIM.
+        Get-Process deskagent -ErrorAction SilentlyContinue | ForEach-Object {
+            try {
+                if ($_.Path -and $_.Path.StartsWith($dst, 'OrdinalIgnoreCase')) {
+                    Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+                }
+            } catch {}
+        }
+        Get-CimInstance Win32_Process -Filter "Name='deskagent.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($dst, 'OrdinalIgnoreCase') } |
+            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        Start-Sleep -Seconds 1
+        $alive = @(Get-CimInstance Win32_Process -Filter "Name='deskagent.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($dst, 'OrdinalIgnoreCase') })
+        if ($alive.Count -eq 0) { return }
+        Write-Host "Waiting for $($alive.Count) process(es) holding $dst (retry $attempt) ..."
+        Start-Sleep -Seconds 1
     }
-    # Only the tray processes need a direct kill; the service exits via the SCM.
-    Get-Process deskagent -ErrorAction SilentlyContinue | ForEach-Object {
-        try {
-            if ($_.Path -and $_.Path.StartsWith($dst, 'OrdinalIgnoreCase')) {
-                Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
-            }
-        } catch {}
-    }
-    Start-Sleep -Seconds 1
 }
 
 Write-Host "Installing DeskAgent to $dst ..."
