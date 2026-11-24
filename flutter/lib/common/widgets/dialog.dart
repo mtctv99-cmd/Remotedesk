@@ -1062,7 +1062,7 @@ _connectDialog(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           descWidget(translate(osAccountDescTip ??
-              'Nháº­p tÃ i khoáº£n Windows cá»§a mÃ¡y client.')),
+              'Nhập tài khoản Windows của máy client.')),
           const SizedBox(height: 8),
           DialogTextField(
             title: translate(DialogTextField.kUsernameTitle),
@@ -1223,7 +1223,7 @@ _connectDialog(
         children: [
           const Icon(Icons.password_rounded, size: 16, color: accent),
           const SizedBox(width: 8),
-          const Text('XÃ¡c thá»±c phiÃªn remote',
+          const Text('Xác thực phiên remote',
               style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
@@ -1244,11 +1244,11 @@ _connectDialog(
           children: [
             Row(
               children: [
-                tabButton('Máº­t kháº©u phiÃªn', 0, passwordController != null),
+                tabButton('Mật khẩu phiên', 0, passwordController != null),
                 const SizedBox(width: 4),
-                tabButton('TÃ i khoáº£n Windows', 1, true),
+                tabButton('Tài khoản Windows', 1, true),
                 const SizedBox(width: 4),
-                tabButton('TÃ i khoáº£n Console', 2, false),
+                tabButton('Tài khoản Console', 2, false),
               ],
             ),
             const SizedBox(height: 12),
@@ -1261,7 +1261,7 @@ _connectDialog(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   descWidget(
-                      'ÄÄƒng nháº­p báº±ng tÃ i khoáº£n Ä‘Æ°á»£c táº¡o trÃªn Manager console.'),
+                      "Đăng nhập bằng tài khoản được tạo trên Manager console."),
                   const SizedBox(height: 8),
                   TextField(
                     controller: consoleUser,
@@ -1289,7 +1289,7 @@ _connectDialog(
                   const Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      'TÃ i khoáº£n console sáº½ Ä‘Æ°á»£c báº­t khi backend há»— trá»£ xÃ¡c thá»±c phiÃªn.',
+                      "Tài khoản console sẽ được bật khi backend hỗ trợ xác thực phiên.",
                       style:
                           TextStyle(fontSize: 10.5, color: Color(0xFFFBBF24)),
                     ),
@@ -1721,17 +1721,17 @@ void showWaitAcceptDialog(SessionID sessionId, String type, String title,
         return const Padding(
           padding: EdgeInsets.symmetric(vertical: 4),
           child: Text(
-            'Cháº¥p nháº­n ngay: phiÃªn Ä‘Æ°á»£c duyá»‡t mÃ  khÃ´ng cáº§n nháº­p máº­t kháº©u.',
+            "Chấp nhận ngay: phiên được duyệt mà không cần nhập mật khẩu.",
             style: TextStyle(fontSize: 10.5, color: secondaryText),
           ),
         );
       }
       final needsUser = method == 'windows' || method == 'console';
       final hint = method == 'console'
-          ? 'TÃ i khoáº£n táº¡o trÃªn Manager console'
+          ? 'Tài khoản tạo trên Manager console'
           : method == 'windows'
-              ? 'TÃ i khoáº£n Windows cá»§a mÃ¡y client'
-              : 'Máº­t kháº©u phiÃªn do client cung cáº¥p';
+              ? 'Tài khoản Windows của máy client'
+              : 'Mật khẩu phiên do client cung cấp';
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1746,7 +1746,7 @@ void showWaitAcceptDialog(SessionID sessionId, String type, String title,
                 isDense: true,
                 hintText: method == 'console'
                     ? 'Console account'
-                    : 'TÃªn Ä‘Äƒng nháº­p Windows',
+                    : "Tên đăng nhập Windows",
               ),
             ),
             const SizedBox(height: 6),
@@ -1761,8 +1761,8 @@ void showWaitAcceptDialog(SessionID sessionId, String type, String title,
               hintText: method == 'console'
                   ? 'Console password'
                   : method == 'windows'
-                      ? 'Máº­t kháº©u Windows'
-                      : 'Máº­t kháº©u phiÃªn',
+                      ? 'Mật khẩu Windows'
+                      : 'Mật khẩu phiên',
             ),
           ),
         ],
@@ -1877,7 +1877,7 @@ void showWaitAcceptDialog(SessionID sessionId, String type, String title,
                               const SizedBox(width: 5),
                               const Flexible(
                                 child: Text(
-                                  'YÃªu cáº§u quyá»n truy cáº­p mÃ¡y cá»§a báº¡n',
+                                  'Yêu cầu quyền truy cập máy của bạn',
                                   overflow: TextOverflow.ellipsis,
                                   style:
                                       TextStyle(fontSize: 10.5, color: warning),
@@ -1929,18 +1929,18 @@ void showWaitAcceptDialog(SessionID sessionId, String type, String title,
                       crossAxisSpacing: 6,
                       childAspectRatio: 73 / 44,
                       children: [
-                        permCell('BÃ n phÃ­m', Icons.keyboard_outlined, true),
+                        permCell('Bàn phím', Icons.keyboard_outlined, true),
                         permCell(
                             'Clipboard', Icons.content_paste_outlined, true),
-                        permCell('Ã‚m thanh', Icons.volume_up_outlined, true),
-                        permCell('Tá»‡p tin', Icons.folder_outlined, true),
+                        permCell('Âm thanh', Icons.volume_up_outlined, true),
+                        permCell('Tệp tin', Icons.folder_outlined, true),
                         permCell('Restart', Icons.restart_alt, true),
-                        permCell('Ghi hÃ¬nh',
+                        permCell('Ghi hình',
                             Icons.fiber_manual_record_outlined, true),
                         permCell(
-                            'KhÃ³a phÃ­m', Icons.keyboard_hide_outlined, false),
+                            'Khóa phím', Icons.keyboard_hide_outlined, false),
                         permCell(
-                            'Che mÃ n', Icons.visibility_off_outlined, false),
+                            'Che màn', Icons.visibility_off_outlined, false),
                       ],
                     ),
                   ],
@@ -1949,10 +1949,10 @@ void showWaitAcceptDialog(SessionID sessionId, String type, String title,
               const SizedBox(height: 10),
               Row(
                 children: [
-                  methodButton('click', 'Duyá»‡t', Icons.touch_app_outlined),
+                  methodButton('click', 'Duyệt', Icons.touch_app_outlined),
                   const SizedBox(width: 4),
                   methodButton(
-                      'password', 'Máº­t kháº©u', Icons.password_rounded),
+                      'password', 'Mật khẩu', Icons.password_rounded),
                   const SizedBox(width: 4),
                   methodButton(
                       'windows', 'Windows', Icons.person_outline_rounded),
@@ -1977,7 +1977,7 @@ void showWaitAcceptDialog(SessionID sessionId, String type, String title,
                     child: SizedBox(
                       height: 32,
                       child: dialogButton(
-                        busy ? '...' : 'Cháº¥p nháº­n ngay',
+                        busy ? '...' : 'Chấp nhận ngay',
                         onPressed: busy ? null : submit,
                         style: const TextStyle(
                             fontSize: 11.5,
@@ -1997,7 +1997,7 @@ void showWaitAcceptDialog(SessionID sessionId, String type, String title,
                     child: SizedBox(
                       height: 32,
                       child: dialogButton(
-                        'Tá»« chá»‘i',
+                        "Từ chối",
                         onPressed: onCancel,
                         isOutline: true,
                         style: const TextStyle(
