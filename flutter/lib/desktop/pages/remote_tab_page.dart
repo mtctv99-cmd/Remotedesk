@@ -12,6 +12,7 @@ import 'package:flutter_hbb/models/state_model.dart';
 import 'package:flutter_hbb/desktop/pages/remote_page.dart';
 import 'package:flutter_hbb/desktop/widgets/remote_toolbar.dart';
 import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
+import 'package:flutter_hbb/features/deskagent/deskagent_tokens.dart';
 import 'package:flutter_hbb/desktop/widgets/material_mod_popup_menu.dart'
     as mod_menu;
 import 'package:flutter_hbb/desktop/widgets/popup_menu.dart';
@@ -130,8 +131,30 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
 
   @override
   Widget build(BuildContext context) {
+    // The remote-session window keeps the Fluent dark shell from the approved
+    // mockup even when the rest of the app runs in light mode: tab strip,
+    // caption buttons and dialogs all read colors from this theme.
+    return Theme(
+      data: _sessionTheme,
+      child: Builder(builder: (context) => _buildDarkShell(context)),
+    );
+  }
+
+  /// Dark theme for the session shell: the tab strip sits on the same surface
+  /// as the approved mockup instead of the blue-tinted global dark theme.
+  ThemeData get _sessionTheme {
+    final base = MyTheme.darkTheme;
+    return base.copyWith(
+      scaffoldBackgroundColor: DeskAgentFluentColors.window,
+      canvasColor: DeskAgentFluentColors.window,
+      colorScheme:
+          base.colorScheme.copyWith(surface: DeskAgentFluentColors.window),
+    );
+  }
+
+  Widget _buildDarkShell(BuildContext context) {
     final child = Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       body: DesktopTab(
         controller: tabController,
         onWindowCloseButton: handleWindowCloseButton,
@@ -142,7 +165,9 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
             const AddButton(),
           ],
         ),
-        selectedBorderColor: const Color(0xFF0284C7),
+        selectedBorderColor: DeskAgentFluentColors.accent,
+        selectedTabBackgroundColor: DeskAgentFluentColors.card,
+        unSelectedTabBackgroundColor: Colors.transparent,
         pageViewBuilder: (pageView) => pageView,
         labelGetter: DesktopTab.tablabelGetter,
         tabBuilder: (key, icon, label, themeConf) => Obx(() {

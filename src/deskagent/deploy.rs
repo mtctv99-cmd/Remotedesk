@@ -863,36 +863,122 @@ fn launch_silent_update(installer: &Path, version: &str) -> ResultType<()> {
 }
 
 #[cfg(target_os = "windows")]
-const ZIP_UPDATE_SCRIPT: &str = r#"param([string]$Zip,[string]$Dest,[string]$Work)
+const ZIP_UPDATE_SCRIPT: &str = r#"param([string]$Zip,[string]$Dest,[string]$Work,[string]$Version)
 $ErrorActionPreference = 'Continue'
 $log = Join-Path $Work 'update.log'
+$svcName = 'DeskAgent'
+$keep = @('meta.toml')
 function Log($m) { "$(Get-Date -Format o) $m" | Out-File $log -Append -Encoding utf8 }
-try {
-    Log "starting $Zip"
-    Start-Sleep -Seconds 2
-    Get-Process deskagent -ErrorAction SilentlyContinue | ForEach-Object {
-        try { if ($_.Path -like "$Dest*") { Stop-Process -Id $_.ProcessId -Force } } catch {}
+function Get-AgentService { Get-Service -Name $svcName -ErrorAction SilentlyContinue }
+
+# Stop through the SCM so the service stays registered. Only the tray processes
+# are killed directly; the service process exits when Stop-Service returns.
+function Stop-Agent {
+    $svc = Get-AgentService
+    if ($svc -and $svc.Status -ne 'Stopped') {
+        Log "stopping service ($($svc.Status))"
+        Stop-Service -Name $svcName -Force -ErrorAction SilentlyContinue
+        try { (Get-AgentService).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(20)) } catch { Log "service stop wait: $_" }
     }
-    Start-Sleep -Seconds 3
+    Get-Process deskagent -ErrorAction SilentlyContinue | ForEach-Object {
+        try {
+            if ($_.Path -and $_.Path.StartsWith($Dest, 'OrdinalIgnoreCase')) {
+                Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+            }
+        } catch {}
+    }
+    Start-Sleep -Seconds 2
+}
+
+try {
+    Log "starting $Zip (target $Version)"
+    Start-Sleep -Seconds 2
+    Stop-Agent
+
     $extract = Join-Path $Work 'extract'
     Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
     Expand-Archive -LiteralPath $Zip -DestinationPath $extract -Force
     $exe = Get-ChildItem $extract -Recurse -Filter deskagent.exe | Select-Object -First 1
     if (-not $exe) { Log 'deskagent.exe not found'; exit 2 }
     $src = $exe.Directory.FullName
-    Log "copying $src -> $Dest"
-    Get-ChildItem $src -Force | Where-Object { $_.Name -notin @('.mimosa', '.zcode') } | ForEach-Object {
-        Copy-Item $_.FullName $Dest -Recurse -Force
+
+    # Swap the install directory instead of copying over it, so stale files from
+    # the previous build cannot survive. Roll back if the swap fails.
+    $old = Join-Path $Work 'old-install'
+    Remove-Item $old -Recurse -Force -ErrorAction SilentlyContinue
+    $swapped = $false
+    try {
+        if (Test-Path $Dest) {
+            Move-Item -LiteralPath $Dest -Destination $old -ErrorAction Stop
+            $swapped = $true
+        }
+        New-Item -ItemType Directory -Force -Path $Dest | Out-Null
+        Log "copying $src -> $Dest"
+        Get-ChildItem $src -Force | Where-Object { $_.Name -notin @('.mimosa', '.zcode') } | ForEach-Object {
+            Copy-Item $_.FullName $Dest -Recurse -Force
+        }
+        if ($swapped) {
+            foreach ($name in $keep) {
+                $saved = Join-Path $old $name
+                if (Test-Path $saved) { Copy-Item $saved $Dest -Force }
+            }
+        }
+    } catch {
+        Log "swap failed: $_"
+        if ($swapped) {
+            Remove-Item $Dest -Recurse -Force -ErrorAction SilentlyContinue
+            Move-Item -LiteralPath $old -Destination $Dest -ErrorAction SilentlyContinue
+        }
+        exit 4
     }
-    if (-not (Get-Service -Name DeskAgent -ErrorAction SilentlyContinue)) {
+
+    $installed = (& (Join-Path $Dest 'deskagent.exe') --version 2>$null | Select-Object -First 1)
+    Log "installed version: $installed"
+    if ($Version -and $installed -and ($installed.Trim() -ne $Version.Trim())) {
+        Log "version mismatch: expected $Version, got $installed"
+    }
+
+    $svc = Get-AgentService
+    if (-not $svc) {
         Log 'installing service'
         & (Join-Path $Dest 'deskagent.exe') --install-service 2>&1 | Out-File $log -Append -Encoding utf8
-        Start-Sleep -Seconds 4
+        Start-Sleep -Seconds 5
+        $svc = Get-AgentService
+        if ($svc) {
+            try { $svc.WaitForStatus('Running', [TimeSpan]::FromSeconds(30)) } catch { Log "service start wait: $_" }
+        }
+    } else {
+        & sc.exe config $svcName binPath= "`"$(Join-Path $Dest 'deskagent.exe')`" --service" start= auto | Out-Null
+        if ($svc.Status -ne 'Running') {
+            Log 'starting service'
+            Start-Service -Name $svcName -ErrorAction SilentlyContinue
+        }
+        try { (Get-AgentService).WaitForStatus('Running', [TimeSpan]::FromSeconds(30)) } catch { Log "service start wait: $_" }
     }
-    Log 'starting'
-    Start-Process -FilePath (Join-Path $Dest 'deskagent.exe') -ArgumentList '--tray'
-    Start-Sleep -Seconds 2
-    Start-Process -FilePath (Join-Path $Dest 'deskagent.exe') -ArgumentList '--server'
+
+    $running = Get-AgentService
+    if (-not $running -or $running.Status -ne 'Running') {
+        Log 'new build did not start; restoring the previous install'
+        if ($swapped) {
+            Stop-Agent
+            Remove-Item $Dest -Recurse -Force -ErrorAction SilentlyContinue
+            Move-Item -LiteralPath $old -Destination $Dest -ErrorAction SilentlyContinue
+            $restored = Get-AgentService
+            if ($restored -and $restored.Status -ne 'Running') {
+                Start-Service -Name $svcName -ErrorAction SilentlyContinue
+            }
+        }
+        exit 5
+    }
+    Log "service state: $($running.Status)"
+    Remove-Item $old -Recurse -Force -ErrorAction SilentlyContinue
+
+    # A session-0 tray would be invisible; only relaunch it from an interactive
+    # update so the user gets the icon back.
+    if ([System.Diagnostics.Process]::GetCurrentProcess().SessionId -ne 0) {
+        Log 'starting tray'
+        Start-Process -FilePath (Join-Path $Dest 'deskagent.exe') -ArgumentList '--tray'
+    }
     Log 'done'
 } catch {
     Log "fatal: $_"
@@ -916,11 +1002,12 @@ fn launch_zip_update(zip: &Path, version: &str) -> ResultType<()> {
     std::fs::write(&script, ZIP_UPDATE_SCRIPT)?;
 
     let cmd = format!(
-        "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"{}\" -Zip \"{}\" -Dest \"{}\" -Work \"{}\"",
+        "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"{}\" -Zip \"{}\" -Dest \"{}\" -Work \"{}\" -Version \"{}\"",
         script.display(),
         zip.display(),
         dest.display(),
-        work.display()
+        work.display(),
+        version
     );
     if crate::platform::is_root() {
         let mut c = Command::new("cmd");
