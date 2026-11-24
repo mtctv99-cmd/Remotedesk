@@ -765,7 +765,11 @@ fn execute_auto_update(
                 let name = rest.split(';').next().unwrap_or("").trim().trim_matches('"');
                 if !name.is_empty() {
                     let sanitized = sanitize_path_component(name);
-                    if sanitized.to_lowercase().ends_with(".exe") || sanitized.to_lowercase().ends_with(".msi") {
+                    let lower = sanitized.to_lowercase();
+                    if lower.ends_with(".exe")
+                        || lower.ends_with(".msi")
+                        || lower.ends_with(".zip")
+                    {
                         filename = sanitized;
                     }
                 }
@@ -799,11 +803,22 @@ fn execute_auto_update(
 }
 
 #[cfg(target_os = "windows")]
+fn is_zip_archive(path: &Path) -> bool {
+    use std::io::Read;
+    let mut head = [0u8; 4];
+    match std::fs::File::open(path).and_then(|mut f| f.read_exact(&mut head)) {
+        Ok(()) => head == [0x50, 0x4b, 0x03, 0x04],
+        Err(_) => false,
+    }
+}
+
+#[cfg(target_os = "windows")]
 fn launch_silent_update(installer: &Path, version: &str) -> ResultType<()> {
     if installer
         .extension()
         .and_then(|e| e.to_str())
         .map_or(false, |e| e.eq_ignore_ascii_case("zip"))
+        || is_zip_archive(installer)
     {
         return launch_zip_update(installer, version);
     }
