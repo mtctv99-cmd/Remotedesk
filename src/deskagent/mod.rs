@@ -89,6 +89,15 @@ pub fn start_background() {
             log::debug!("deskagent daemon not started in this process role");
             return;
         }
+        // When the Windows service is running, it must be the daemon host.
+        // Letting the user-session tray take the named mutex first leaves the
+        // service unable to host it later (the tray defers while the service
+        // runs), which stalls auto-update after a service restart.
+        #[cfg(target_os = "windows")]
+        if crate::platform::is_self_service_running() && !crate::platform::is_root() {
+            log::debug!("deskagent daemon is hosted by the Windows service");
+            return;
+        }
         #[cfg(target_os = "windows")]
         if !acquire_daemon_mutex() {
             log::debug!("deskagent daemon already hosted by another process");
