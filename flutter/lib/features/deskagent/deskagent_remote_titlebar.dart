@@ -71,25 +71,18 @@ class _FpsBadge extends StatelessWidget {
     final shown = value.isEmpty ? '-- FPS' : '${value.split(' ').first} FPS';
     final success = DeskAgentFluentColors.success;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
       decoration: BoxDecoration(
         color: success.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: success.withOpacity(0.25)),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-              width: 5,
-              height: 5,
-              decoration:
-                  BoxDecoration(color: success, shape: BoxShape.circle)),
-          const SizedBox(width: 4),
-          Text(shown,
-              style: TextStyle(
-                  color: success, fontSize: 10, fontWeight: FontWeight.w600)),
-        ],
-      ),
+      child: Text(shown,
+          style: TextStyle(
+              fontFamily: 'Consolas',
+              color: success,
+              fontSize: 10,
+              fontWeight: FontWeight.w500)),
     );
   }
 }

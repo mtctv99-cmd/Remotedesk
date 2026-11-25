@@ -337,10 +337,11 @@ class _ToolbarTheme {
   static const double height = 20.0;
   static const double dividerHeight = 12.0;
 
-  static const double buttonSize = 32;
+  static const double buttonSize = 24;
+  static const double iconSize = 16;
   static const double buttonHMargin = 2;
-  static const double buttonVMargin = 6;
-  static const double iconRadius = 8;
+  static const double buttonVMargin = 4;
+  static const double iconRadius = 4;
   static const double elevation = 3;
 
   static double dividerSpaceToAction = isWindows ? 8 : 14;
@@ -3092,9 +3093,13 @@ class _IconMenuButtonState extends State<_IconMenuButton> {
         SvgPicture.asset(
           widget.assetName!,
           colorFilter: ColorFilter.mode(Colors.white, BlendMode.srcIn),
-          width: _ToolbarTheme.buttonSize,
-          height: _ToolbarTheme.buttonSize,
+          width: _ToolbarTheme.iconSize,
+          height: _ToolbarTheme.iconSize,
         );
+    final sizedIcon = SizedBox(
+        width: _ToolbarTheme.iconSize,
+        height: _ToolbarTheme.iconSize,
+        child: FittedBox(fit: BoxFit.contain, child: icon));
     var button = SizedBox(
       width: widget.width ?? _ToolbarTheme.buttonSize,
       height: _ToolbarTheme.buttonSize,
@@ -3117,7 +3122,7 @@ class _IconMenuButtonState extends State<_IconMenuButton> {
                           BorderRadius.circular(_ToolbarTheme.iconRadius),
                       color: hover ? widget.hoverColor : widget.color,
                     ),
-                    child: icon)),
+                    child: Center(child: sizedIcon))),
           )),
     ).marginSymmetric(
         horizontal: widget.hMargin ?? _ToolbarTheme.buttonHMargin,
@@ -3177,9 +3182,13 @@ class _IconSubmenuButtonState extends State<_IconSubmenuButton> {
         SvgPicture.asset(
           widget.svg!,
           colorFilter: ColorFilter.mode(Colors.white, BlendMode.srcIn),
-          width: _ToolbarTheme.buttonSize,
-          height: _ToolbarTheme.buttonSize,
+          width: _ToolbarTheme.iconSize,
+          height: _ToolbarTheme.iconSize,
         );
+    final sizedIcon = SizedBox(
+        width: _ToolbarTheme.iconSize,
+        height: _ToolbarTheme.iconSize,
+        child: FittedBox(fit: BoxFit.contain, child: icon));
     final button = SizedBox(
         width: widget.width ?? _ToolbarTheme.buttonSize,
         height: _ToolbarTheme.buttonSize,
@@ -3200,7 +3209,7 @@ class _IconSubmenuButtonState extends State<_IconSubmenuButton> {
                               BorderRadius.circular(_ToolbarTheme.iconRadius),
                           color: hover ? widget.hoverColor : widget.color,
                         ),
-                        child: icon))),
+                        child: Center(child: sizedIcon)))),
             menuChildren: widget
                 .menuChildrenGetter(this)
                 .map((e) => _buildPointerTrackWidget(e, widget.ffi))

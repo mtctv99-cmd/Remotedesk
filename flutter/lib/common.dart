@@ -603,12 +603,32 @@ class MyTheme {
         elevation: const MaterialStatePropertyAll<double>(0),
         padding: const MaterialStatePropertyAll<EdgeInsetsGeometry>(
             EdgeInsets.symmetric(horizontal: 4, vertical: 6)),
+        minimumSize:
+            const MaterialStatePropertyAll<Size>(Size(260, 0)),
+        maximumSize: const MaterialStatePropertyAll<Size>(
+            Size(340, double.infinity)),
         shape: MaterialStatePropertyAll<OutlinedBorder?>(
             RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
           side: const BorderSide(color: Color(0x14FFFFFF)),
         )),
       ),
+    ),
+    menuButtonTheme: const MenuButtonThemeData(
+      style: ButtonStyle(
+        textStyle: MaterialStatePropertyAll<TextStyle>(TextStyle(
+            fontFamily: 'Segoe UI',
+            fontSize: 12,
+            color: Color(0xFFF4F4F5))),
+        minimumSize: MaterialStatePropertyAll<Size>(Size(0, 30)),
+        padding: MaterialStatePropertyAll<EdgeInsetsGeometry>(
+            EdgeInsets.symmetric(horizontal: 10)),
+      ),
+    ),
+    dividerTheme: const DividerThemeData(
+      space: 8,
+      thickness: 1,
+      color: Color(0x14FFFFFF),
     ),
     menuBarTheme: const MenuBarThemeData(
       style: MenuStyle(
