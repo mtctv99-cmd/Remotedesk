@@ -981,6 +981,15 @@ _connectDialog(
     }
   });
 
+  // These must live outside the dialog builder: the manager rebuilds the
+  // builder on every setState, and declarations inside it would reset the
+  // selected tab on each tap.
+  var selected = passwordController != null ? 0 : 1;
+  var sessionPwVisible = false;
+  var osPwVisible = false;
+  final consoleUser = TextEditingController();
+  final consolePass = TextEditingController();
+
   dialogManager.dismissAll();
   dialogManager.show((setState, close, context) {
     cancel() {
@@ -988,11 +997,6 @@ _connectDialog(
       closeConnection();
     }
 
-    var selected = passwordController != null ? 0 : 1;
-    var sessionPwVisible = false;
-    var osPwVisible = false;
-    final consoleUser = TextEditingController();
-    final consolePass = TextEditingController();
     submit() {
       if (selected == 2) {
         return;
