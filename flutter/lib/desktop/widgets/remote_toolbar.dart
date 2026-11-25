@@ -981,8 +981,8 @@ class _DeskAgentToolButton extends StatelessWidget {
     return _IconMenuButton(
       icon: const Icon(Icons.build_outlined, size: 16, color: Colors.white),
       tooltip: 'Tool',
-      color: Colors.white,
-      hoverColor: Colors.white24,
+      color: Colors.transparent,
+      hoverColor: const Color(0x14FFFFFF),
       onPressed: () =>
           DeskAgentTools.visible.value = !DeskAgentTools.visible.value,
     );
@@ -1001,11 +1001,8 @@ class _PinMenu extends StatelessWidget {
         tooltip:
             state.pin ? translate('Unpin Toolbar') : translate('Pin Toolbar'),
         onPressed: state.switchPin,
-        color:
-            state.pin ? _ToolbarTheme.blueColor : _ToolbarTheme.inactiveColor,
-        hoverColor: state.pin
-            ? _ToolbarTheme.hoverBlueColor
-            : _ToolbarTheme.hoverInactiveColor,
+        color: state.pin ? const Color(0x2E60CDFF) : Colors.transparent,
+        hoverColor: const Color(0x14FFFFFF),
       ),
     );
   }
@@ -1024,11 +1021,9 @@ class _MobileActionMenu extends StatelessWidget {
           onPressed: () => ffi.dialogManager.setMobileActionsOverlayVisible(
               !ffi.dialogManager.mobileActionsOverlayVisible.value),
           color: ffi.dialogManager.mobileActionsOverlayVisible.isTrue
-              ? _ToolbarTheme.blueColor
-              : _ToolbarTheme.inactiveColor,
-          hoverColor: ffi.dialogManager.mobileActionsOverlayVisible.isTrue
-              ? _ToolbarTheme.hoverBlueColor
-              : _ToolbarTheme.hoverInactiveColor,
+              ? const Color(0x2E60CDFF)
+              : Colors.transparent,
+          hoverColor: const Color(0x14FFFFFF),
         ));
   }
 }
@@ -1081,8 +1076,8 @@ class _MainMonitorSwitchButton extends StatelessWidget {
 
       return _IconMenuButton(
         tooltip: cycle.tooltip,
-        color: _ToolbarTheme.blueColor,
-        hoverColor: _ToolbarTheme.hoverBlueColor,
+        color: Colors.transparent,
+        hoverColor: const Color(0x14FFFFFF),
         onPressed: cycle.next,
         icon: SizedBox(
           width: _ToolbarTheme.buttonSize,
@@ -1156,8 +1151,8 @@ class _MonitorMenu extends StatelessWidget {
         icon: monitorsIcon,
         ffi: ffi,
         width: width.value,
-        color: _ToolbarTheme.blueColor,
-        hoverColor: _ToolbarTheme.hoverBlueColor,
+        color: Colors.transparent,
+        hoverColor: const Color(0x14FFFFFF),
         menuStyle: MenuStyle(
             padding:
                 MaterialStatePropertyAll(EdgeInsets.symmetric(horizontal: 6))),
@@ -1229,11 +1224,9 @@ class _MonitorMenu extends StatelessWidget {
             vMargin: isMulti ? null : 12,
             topLevel: false,
             color: i == display.value
-                ? _ToolbarTheme.blueColor
-                : _ToolbarTheme.inactiveColor,
-            hoverColor: i == display.value
-                ? _ToolbarTheme.hoverBlueColor
-                : _ToolbarTheme.hoverInactiveColor,
+                ? const Color(0x2E60CDFF)
+                : Colors.transparent,
+            hoverColor: const Color(0x14FFFFFF),
             width: isAllMonitors ? width.value : null,
             icon: isAllMonitors
                 ? monitorsIcon
@@ -1370,8 +1363,8 @@ class _ControlMenu extends StatelessWidget {
     return _IconSubmenuButton(
         tooltip: translate('Control Actions'),
         svg: "assets/actions.svg",
-        color: _ToolbarTheme.blueColor,
-        hoverColor: _ToolbarTheme.hoverBlueColor,
+        color: Colors.transparent,
+        hoverColor: const Color(0x14FFFFFF),
         ffi: ffi,
         menuChildrenGetter: (_) => toolbarControls(context, id, ffi).map((e) {
               if (e.divider) {
@@ -1847,8 +1840,8 @@ class _DisplayMenuState extends State<_DisplayMenu> {
       tooltip: translate('Display Settings'),
       svg: "assets/display.svg",
       ffi: widget.ffi,
-      color: _ToolbarTheme.blueColor,
-      hoverColor: _ToolbarTheme.hoverBlueColor,
+      color: Colors.transparent,
+      hoverColor: const Color(0x14FFFFFF),
       menuChildrenGetter: menuChildrenGetter,
     );
   }
@@ -2609,8 +2602,8 @@ class _KeyboardMenu extends StatelessWidget {
         tooltip: translate('Keyboard Settings'),
         svg: "assets/keyboard_mouse.svg",
         ffi: ffi,
-        color: _ToolbarTheme.blueColor,
-        hoverColor: _ToolbarTheme.hoverBlueColor,
+        color: Colors.transparent,
+        hoverColor: const Color(0x14FFFFFF),
         menuChildrenGetter: (_) => [
               keyboardMode(),
               localKeyboardType(),
@@ -2876,8 +2869,8 @@ class _ChatMenuState extends State<_ChatMenu> {
           key: chatButtonKey,
           svg: 'assets/chat.svg',
           ffi: widget.ffi,
-          color: _ToolbarTheme.blueColor,
-          hoverColor: _ToolbarTheme.hoverBlueColor,
+          color: Colors.transparent,
+          hoverColor: const Color(0x14FFFFFF),
           menuChildrenGetter: (_) => [textChat(), voiceCall()]);
     }
   }
@@ -2888,8 +2881,8 @@ class _ChatMenuState extends State<_ChatMenu> {
       tooltip: translate('Text chat'),
       key: chatButtonKey,
       onPressed: _textChatOnPressed,
-      color: _ToolbarTheme.blueColor,
-      hoverColor: _ToolbarTheme.hoverBlueColor,
+      color: Colors.transparent,
+      hoverColor: const Color(0x14FFFFFF),
     );
   }
 
@@ -2980,8 +2973,8 @@ class _VoiceCallMenu extends StatelessWidget {
             return _IconSubmenuButton(
               tooltip: translate('Voice call'),
               svg: 'assets/voice_call.svg',
-              color: _ToolbarTheme.blueColor,
-              hoverColor: _ToolbarTheme.hoverBlueColor,
+              color: Colors.transparent,
+              hoverColor: const Color(0x14FFFFFF),
               menuChildrenGetter: menuChildrenGetter,
               ffi: ffi,
             );
@@ -3040,7 +3033,8 @@ class _CloseMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _IconMenuButton(
-      assetName: 'assets/close.svg',
+      icon: const Icon(Icons.close_rounded,
+          size: 16, color: _ToolbarTheme.redColor),
       tooltip: translate('Close'),
       onPressed: () async {
         if (await showConnEndAuditDialogCloseCanceled(ffi: ffi)) {

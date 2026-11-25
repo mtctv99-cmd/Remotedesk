@@ -1341,11 +1341,11 @@ _connectDialog(
           children: [
             Row(
               children: [
-                tabButton('Mật khẩu phiên', 0, passwordController != null),
+                tabButton('Mật khẩu', 0, passwordController != null),
                 const SizedBox(width: 4),
-                tabButton('Tài khoản Windows', 1, true),
+                tabButton('Windows', 1, true),
                 const SizedBox(width: 4),
-                tabButton('Tài khoản Console', 2, false),
+                tabButton('Console', 2, false),
               ],
             ),
             const SizedBox(height: 12),
