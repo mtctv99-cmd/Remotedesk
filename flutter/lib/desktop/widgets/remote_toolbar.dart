@@ -252,9 +252,7 @@ class ToolbarState {
   bool _isInitializing = false;
 
   ToolbarState() {
-    // The session command bar stays docked and visible by default; the user
-    // can still unpin it with the pin button.
-    _pin = RxBool(true);
+    _pin = RxBool(false);
     final s = bind.getLocalFlutterOption(k: kOptionRemoteMenubarState);
     if (s.isEmpty) {
       return;
@@ -263,7 +261,7 @@ class ToolbarState {
     try {
       final m = jsonDecode(s);
       if (m != null) {
-        _pin = RxBool(true);
+        _pin = RxBool(m['pin'] ?? false);
       }
     } catch (e) {
       debugPrint('Failed to decode toolbar state ${e.toString()}');
@@ -911,7 +909,6 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
               items: toolbarItems,
               isHorizontal: isHorizontal,
               fps: widget.ffi.qualityMonitorModel.data.fps,
-              docked: edge == _ToolbarEdge.top,
             ),
           );
     final handle = _buildDraggableCollapse(context, edge, isHorizontal);

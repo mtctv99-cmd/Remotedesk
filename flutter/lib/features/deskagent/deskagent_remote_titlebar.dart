@@ -14,46 +14,15 @@ class DeskAgentActionBar extends StatelessWidget {
   final bool isHorizontal;
   final String? fps;
 
-  /// Docks the bar as a full-width command strip under the tab bar (top edge).
-  final bool docked;
-
   const DeskAgentActionBar({
     Key? key,
     required this.items,
     required this.isHorizontal,
     this.fps,
-    this.docked = false,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    if (docked) {
-      return Container(
-        width: double.infinity,
-        height: 36,
-        padding: const EdgeInsets.symmetric(horizontal: 6),
-        decoration: const BoxDecoration(
-          color: DeskAgentFluentColors.deepSurface,
-          border: Border(
-              bottom: BorderSide(color: DeskAgentFluentColors.border8)),
-        ),
-        child: Row(
-          children: [
-            const SizedBox(width: 2),
-            _FpsBadge(fps: fps),
-            const SizedBox(width: 6),
-            _verticalSeparator(),
-            const SizedBox(width: 2),
-            Expanded(
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(mainAxisSize: MainAxisSize.min, children: items),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
     final children = <Widget>[
       const SizedBox(width: 4, height: 4),
       _FpsBadge(fps: fps),
@@ -82,12 +51,6 @@ class DeskAgentActionBar extends StatelessWidget {
       ),
     );
   }
-
-  Widget _verticalSeparator() => Container(
-        width: 1,
-        height: 14,
-        color: DeskAgentFluentColors.border8,
-      );
 
   Widget _separator() => Container(
         width: isHorizontal ? 1 : 14,
