@@ -19,7 +19,9 @@ CREATE TABLE IF NOT EXISTS clients (
     ip TEXT NOT NULL DEFAULT '',
     version TEXT NOT NULL DEFAULT '',
     last_seen INTEGER NOT NULL DEFAULT 0,
-    created_at INTEGER NOT NULL DEFAULT 0
+    created_at INTEGER NOT NULL DEFAULT 0,
+    machine_id TEXT NOT NULL DEFAULT '',
+    mac_address TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS inventory (
     client_id TEXT PRIMARY KEY,
@@ -40,6 +42,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     package_path TEXT,
     silent_cmd TEXT NOT NULL DEFAULT '',
     signature TEXT NOT NULL DEFAULT '',
+    checksum TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'pending',
     created_at INTEGER NOT NULL DEFAULT 0
 );
@@ -92,6 +95,7 @@ pub fn now() -> i64 {
 pub fn init(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(SCHEMA)?;
     let _ = conn.execute("ALTER TABLE jobs ADD COLUMN signature TEXT NOT NULL DEFAULT ''", []);
+    let _ = conn.execute("ALTER TABLE jobs ADD COLUMN checksum TEXT NOT NULL DEFAULT ''", []);
     let _ = conn.execute("ALTER TABLE clients ADD COLUMN ip TEXT NOT NULL DEFAULT ''", []);
     // Client app build version (reported at register; empty for old clients).
     let _ = conn.execute("ALTER TABLE clients ADD COLUMN version TEXT NOT NULL DEFAULT ''", []);
@@ -101,6 +105,8 @@ pub fn init(conn: &Connection) -> rusqlite::Result<()> {
     // Stable per-machine identity (Windows MachineGuid): lets register collapse
     // the per-user-context duplicate rows one machine used to accumulate.
     let _ = conn.execute("ALTER TABLE clients ADD COLUMN machine_id TEXT NOT NULL DEFAULT ''", []);
+    let _ = conn.execute("ALTER TABLE clients ADD COLUMN mac_address TEXT NOT NULL DEFAULT ''", []);
+    let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_clients_mac_address ON clients(mac_address)", []);
     migrate_admin_token_hashes(conn)?;
     Ok(())
 }
@@ -283,6 +289,8 @@ pub struct ClientRow {
     pub version: String,
     pub last_seen: i64,
     pub created_at: i64,
+    pub machine_id: String,
+    pub mac_address: String,
 }
 
 /// Insert or refresh a client row (created_at keeps its original value).
@@ -300,10 +308,11 @@ pub fn upsert_client(
     ip: &str,
     version: &str,
     machine_id: &str,
+    mac_address: &str,
 ) -> rusqlite::Result<()> {
     conn.execute(
-        "INSERT INTO clients (id, hostname, os, os_version, arch, ip, version, machine_id, last_seen, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)
+        "INSERT INTO clients (id, hostname, os, os_version, arch, ip, version, machine_id, mac_address, last_seen, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)
          ON CONFLICT(id) DO UPDATE SET
             hostname = excluded.hostname,
             os = excluded.os,
@@ -312,8 +321,9 @@ pub fn upsert_client(
             ip = CASE WHEN excluded.ip != '' THEN excluded.ip ELSE clients.ip END,
             version = CASE WHEN excluded.version != '' THEN excluded.version ELSE clients.version END,
             machine_id = CASE WHEN excluded.machine_id != '' THEN excluded.machine_id ELSE clients.machine_id END,
+            mac_address = CASE WHEN excluded.mac_address != '' THEN excluded.mac_address ELSE clients.mac_address END,
             last_seen = excluded.last_seen",
-        params![id, hostname, os, os_version, arch, ip, version, machine_id, now()],
+        params![id, hostname, os, os_version, arch, ip, version, machine_id, mac_address, now()],
     )?;
     Ok(())
 }
@@ -460,7 +470,7 @@ pub fn prune_old_data(conn: &Connection) -> rusqlite::Result<(usize, usize)> {
 
 pub fn list_clients(conn: &Connection) -> rusqlite::Result<Vec<ClientRow>> {
     let mut stmt = conn.prepare(
-        "SELECT id, hostname, os, os_version, arch, ip, version, last_seen, created_at
+        "SELECT id, hostname, os, os_version, arch, ip, version, last_seen, created_at, machine_id, mac_address
          FROM clients ORDER BY last_seen DESC",
     )?;
     let rows = stmt.query_map([], |row| {
@@ -474,6 +484,8 @@ pub fn list_clients(conn: &Connection) -> rusqlite::Result<Vec<ClientRow>> {
             version: row.get(6)?,
             last_seen: row.get(7)?,
             created_at: row.get(8)?,
+            machine_id: row.get(9)?,
+            mac_address: row.get(10)?,
         })
     })?;
     rows.collect()
@@ -586,6 +598,7 @@ pub struct JobRow {
     pub package_path: String,
     pub silent_cmd: String,
     pub signature: String,
+    pub checksum: String,
     pub status: String,
     pub created_at: i64,
 }
@@ -607,6 +620,7 @@ pub struct JobWithResult {
     pub package_path: Option<String>,
     pub silent_cmd: String,
     pub signature: String,
+    pub checksum: String,
     pub status: String,
     pub created_at: i64,
     pub result: Option<JobResultRow>,
@@ -620,11 +634,12 @@ pub fn insert_job(
     package_path: Option<&str>,
     silent_cmd: &str,
     signature: &str,
+    checksum: &str,
 ) -> rusqlite::Result<()> {
     conn.execute(
-        "INSERT INTO jobs (id, client_id, package_url, package_path, silent_cmd, signature, status, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending', ?7)",
-        params![id, client_id, package_url, package_path, silent_cmd, signature, now()],
+        "INSERT INTO jobs (id, client_id, package_url, package_path, silent_cmd, signature, checksum, status, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', ?8)",
+        params![id, client_id, package_url, package_path, silent_cmd, signature, checksum, now()],
     )?;
     Ok(())
 }
@@ -638,8 +653,9 @@ fn job_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<JobRow> {
         package_path: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
         silent_cmd: row.get(4)?,
         signature: row.get(5)?,
-        status: row.get(6)?,
-        created_at: row.get(7)?,
+        checksum: row.get(6)?,
+        status: row.get(7)?,
+        created_at: row.get(8)?,
     })
 }
 
@@ -649,7 +665,7 @@ fn job_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<JobRow> {
 /// to the pool instead of leaving it stuck in 'running' forever).
 pub fn claimable_jobs(conn: &Connection, client_id: &str, now: i64) -> rusqlite::Result<Vec<JobRow>> {
     let mut stmt = conn.prepare(
-        "SELECT id, client_id, package_url, package_path, silent_cmd, signature, status, created_at
+        "SELECT id, client_id, package_url, package_path, silent_cmd, signature, checksum, status, created_at
          FROM jobs
          WHERE client_id = ?1
            AND (status = 'pending'
@@ -720,21 +736,21 @@ pub fn save_job_result(
 /// All jobs with their results (if any), newest first.
 pub fn list_jobs(conn: &Connection) -> rusqlite::Result<Vec<JobWithResult>> {
     let mut stmt = conn.prepare(
-        "SELECT j.id, j.client_id, j.package_url, j.package_path, j.silent_cmd, j.signature, j.status, j.created_at,
+        "SELECT j.id, j.client_id, j.package_url, j.package_path, j.silent_cmd, j.signature, j.checksum, j.status, j.created_at,
                 r.status, r.output, r.created_at
          FROM jobs j
          LEFT JOIN job_results r ON r.job_id = j.id
          ORDER BY j.created_at DESC",
     )?;
     let rows = stmt.query_map([], |row| {
-        let result = match row.get::<_, Option<String>>(8)? {
+        let result = match row.get::<_, Option<String>>(9)? {
             None => None,
             Some(status) => Some(JobResultRow {
                 job_id: row.get::<_, String>(0)?,
                 client_id: row.get::<_, String>(1)?,
                 status,
-                output: row.get::<_, Option<String>>(9)?.unwrap_or_default(),
-                created_at: row.get::<_, Option<i64>>(10)?.unwrap_or(0),
+                output: row.get::<_, Option<String>>(10)?.unwrap_or_default(),
+                created_at: row.get::<_, Option<i64>>(11)?.unwrap_or(0),
             }),
         };
         Ok(JobWithResult {
@@ -744,8 +760,9 @@ pub fn list_jobs(conn: &Connection) -> rusqlite::Result<Vec<JobWithResult>> {
             package_path: row.get(3)?,
             silent_cmd: row.get(4)?,
             signature: row.get(5)?,
-            status: row.get(6)?,
-            created_at: row.get(7)?,
+            checksum: row.get(6)?,
+            status: row.get(7)?,
+            created_at: row.get(8)?,
             result,
         })
     })?;
@@ -955,12 +972,23 @@ mod tests {
     }
 
     #[test]
+    fn same_mac_different_machine_ids_are_not_collapsed() {
+        let conn = Connection::open_in_memory().unwrap();
+        init(&conn).unwrap();
+        upsert_client(&conn, "mac-a", "host-a", "Windows", "11", "x86_64", "", "", "M-A", "AA:BB:CC:DD:EE:01").unwrap();
+        upsert_client(&conn, "mac-b", "host-b", "Windows", "11", "x86_64", "", "", "M-B", "AA:BB:CC:DD:EE:01").unwrap();
+        let removed = delete_duplicate_clients(&conn, "mac-a", "M-A").unwrap();
+        assert_eq!(removed, 0);
+        assert!(client_exists(&conn, "mac-b").unwrap());
+    }
+
+    #[test]
     fn duplicate_collapse_never_touches_hostname_only_rows() {
         let conn = Connection::open_in_memory().unwrap();
         init(&conn).unwrap();
-        upsert_client(&conn, "keep", "host-a", "Windows", "11", "x86_64", "1.2.3.4", "1.0", "M1").unwrap();
+        upsert_client(&conn, "keep", "host-a", "Windows", "11", "x86_64", "1.2.3.4", "1.0", "M1", "").unwrap();
         // Different machine that happens to share the hostname, no machine_id.
-        upsert_client(&conn, "other", "host-a", "Windows", "10", "x86_64", "1.2.3.5", "1.0", "").unwrap();
+        upsert_client(&conn, "other", "host-a", "Windows", "10", "x86_64", "1.2.3.5", "1.0", "", "").unwrap();
         create_device_token(&conn, &crate::crypto::hash_token("tok"), "other").unwrap();
 
         let removed = delete_duplicate_clients(&conn, "keep", "M1").unwrap();
@@ -969,7 +997,7 @@ mod tests {
         assert!(client_has_device_token(&conn, "other").unwrap());
 
         // Same machine_id IS a duplicate and gets collapsed.
-        upsert_client(&conn, "dup", "host-a", "Windows", "11", "x86_64", "1.2.3.6", "1.0", "M1").unwrap();
+        upsert_client(&conn, "dup", "host-a", "Windows", "11", "x86_64", "1.2.3.6", "1.0", "M1", "").unwrap();
         let removed = delete_duplicate_clients(&conn, "keep", "M1").unwrap();
         assert_eq!(removed, 1);
         assert!(!client_exists(&conn, "dup").unwrap());
@@ -980,7 +1008,7 @@ mod tests {
     fn hostname_only_adoption_requires_tokenless_row() {
         let conn = Connection::open_in_memory().unwrap();
         init(&conn).unwrap();
-        upsert_client(&conn, "legacy", "host-l", "Windows", "10", "x86_64", "", "", "").unwrap();
+        upsert_client(&conn, "legacy", "host-l", "Windows", "10", "x86_64", "", "", "", "").unwrap();
         assert_eq!(
             find_hostname_only_client(&conn, "host-l").unwrap().as_deref(),
             Some("legacy")
@@ -989,14 +1017,14 @@ mod tests {
 
         // A hostname-only row WITH a device token must not be adoptable via
         // hostname alone.
-        upsert_client(&conn, "claimed", "host-c", "Windows", "10", "x86_64", "", "", "").unwrap();
+        upsert_client(&conn, "claimed", "host-c", "Windows", "10", "x86_64", "", "", "", "").unwrap();
         create_device_token(&conn, &crate::crypto::hash_token("tok-c"), "claimed").unwrap();
         assert!(client_has_device_token(&conn, "claimed").unwrap());
 
         // An empty hostname never matches, even when a tokenless row with a
         // blank hostname exists: unrelated machines that fail to report a
         // hostname must not be coalesced into one row.
-        upsert_client(&conn, "blank-host", "", "Windows", "10", "x86_64", "", "", "").unwrap();
+        upsert_client(&conn, "blank-host", "", "Windows", "10", "x86_64", "", "", "", "").unwrap();
         assert_eq!(
             find_hostname_only_client(&conn, "").unwrap().as_deref(),
             None
@@ -1011,16 +1039,16 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         init(&conn).unwrap();
         let old = now() - (CLIENT_STALE_SECS + 3600);
-        upsert_client(&conn, "stale", "h", "W", "10", "x86_64", "", "", "M").unwrap();
+        upsert_client(&conn, "stale", "h", "W", "10", "x86_64", "", "", "M", "").unwrap();
         conn.execute("UPDATE clients SET last_seen = ?1 WHERE id = 'stale'", params![old]).unwrap();
-        upsert_client(&conn, "fresh", "h", "W", "10", "x86_64", "", "", "M").unwrap();
+        upsert_client(&conn, "fresh", "h", "W", "10", "x86_64", "", "", "M", "").unwrap();
 
         // An old job owned by the FRESH client (stale clients are removed
         // wholesale by prune_stale_clients, jobs included).
-        insert_job(&conn, "job-old", "fresh", None, None, "cmd", "sig").unwrap();
+        insert_job(&conn, "job-old", "fresh", None, None, "cmd", "sig", "").unwrap();
         conn.execute("UPDATE jobs SET created_at = ?1 WHERE id = 'job-old'", params![old]).unwrap();
         save_job_result(&conn, "job-old", "fresh", "success", "out").unwrap();
-        insert_job(&conn, "job-new", "fresh", None, None, "cmd", "sig").unwrap();
+        insert_job(&conn, "job-new", "fresh", None, None, "cmd", "sig", "").unwrap();
 
         insert_conversation(&conn, "conv-old", Some("stale")).unwrap();
         conn.execute("UPDATE conversations SET created_at = ?1 WHERE id = 'conv-old'", params![old]).unwrap();
@@ -1051,9 +1079,9 @@ mod tests {
     fn find_client_by_hostname_prefers_newest_row() {
         let conn = Connection::open_in_memory().unwrap();
         init(&conn).unwrap();
-        upsert_client(&conn, "old-row", "host-x", "W", "10", "x86_64", "", "", "M1").unwrap();
+        upsert_client(&conn, "old-row", "host-x", "W", "10", "x86_64", "", "", "M1", "").unwrap();
         conn.execute("UPDATE clients SET last_seen = 100 WHERE id = 'old-row'", []).unwrap();
-        upsert_client(&conn, "new-row", "host-x", "W", "11", "x86_64", "", "", "M2").unwrap();
+        upsert_client(&conn, "new-row", "host-x", "W", "11", "x86_64", "", "", "M2", "").unwrap();
         conn.execute("UPDATE clients SET last_seen = 200 WHERE id = 'new-row'", []).unwrap();
 
         let (id, machine) = find_client_by_hostname(&conn, "host-x").unwrap().unwrap();

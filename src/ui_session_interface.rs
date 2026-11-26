@@ -1880,10 +1880,21 @@ impl<T: InvokeUiSession> Interface for Session<T> {
                 .unwrap()
                 .selected_windows_session_id
                 .to_owned();
-            if selected == Some(pi.windows_sessions.current_sid) {
-                self.send_selected_session_id(pi.windows_sessions.current_sid.to_string());
-            } else {
-                self.set_multiple_windows_session(pi.windows_sessions.sessions.clone());
+            match selected {
+                // Only a selection that matches the peer's current session is
+                // safe to auto-confirm. A stored id may be stale after a
+                // reboot, so show the picker instead of connecting to it.
+                Some(sid) if sid == pi.windows_sessions.current_sid => {
+                    self.send_selected_session_id(sid.to_string());
+                }
+                Some(_) => {
+                    self.set_multiple_windows_session(pi.windows_sessions.sessions.clone());
+                }
+                None => {
+                    // Auto-confirm current active session so video starts.
+                    self.send_selected_session_id(pi.windows_sessions.current_sid.to_string());
+                    self.set_multiple_windows_session(pi.windows_sessions.sessions.clone());
+                }
             }
         }
     }

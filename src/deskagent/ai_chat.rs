@@ -28,6 +28,8 @@ pub struct ChatResponse {
 /// Skeleton: the endpoint path is a placeholder and streaming is TODO.
 /// Not wired into the flutter event stream (src/flutter.rs) yet.
 pub async fn send_chat(server_url: &str, req: &ChatRequest) -> ResultType<ChatResponse> {
+    // Keep the SSRF guard: an unset/loopback/private endpoint must not be
+    // reachable through a chat URL even while this endpoint is a skeleton.
     let base = validate_server_url(server_url)?;
     // TODO: confirm the real endpoint path and auth headers with the backend.
     let url = join_path(&base, "api/deskagent/ai/chat");

@@ -13,9 +13,28 @@
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
+$releaseTag = 'deskagent-release-20261124'
+
+Push-Location $root
+try {
+    & git diff --exit-code $releaseTag 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Source has drifted from $releaseTag. Restore it or create a new release tag before packaging."
+    }
+    $untracked = & git ls-files --others --exclude-standard flutter/lib
+    if ($untracked) {
+        throw "Untracked UI files found: $($untracked -join ', ')"
+    }
+} finally {
+    Pop-Location
+}
+
 $release = Join-Path $root 'flutter\build\windows\x64\runner\Release'
 $stage = Join-Path $env:TEMP "pkg\DeskAgent-Windows-x64"
-$zip = Join-Path $env:TEMP 'DeskAgent-Windows-x64.zip'
+$version = (Select-String -Path (Join-Path $root 'Cargo.toml') -Pattern '^version = "([^"]+)"').Matches[0].Groups[1].Value
+if (-not $version) { throw 'Cannot read package version from Cargo.toml' }
+# The versioned file name is what the Manager auto-deploy watcher parses.
+$zip = Join-Path $env:TEMP "deskagent-$version-install.zip"
 
 if (-not (Test-Path (Join-Path $release 'deskagent.exe'))) {
     Write-Host "No client build in $release. Run scripts\deskagent-build.cmd first." -ForegroundColor Red
@@ -26,23 +45,30 @@ Remove-Item (Split-Path $stage -Parent) -Recurse -Force -ErrorAction SilentlyCon
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 Copy-Item "$release\*" $stage -Recurse -Force
 
-# The zero config installer, so a fresh machine can be set up from the
-# download: it writes the server address and the key into every user
-# profile, registers the service, opens the firewall and sets the password.
-Copy-Item (Join-Path $root 'scripts\install-client.ps1') $stage -Force
+# Fresh-install bootstrap: installs under Program Files and registers the
+# SYSTEM service in one step. Auto-update does not depend on this script.
+foreach ($name in @('install-client.ps1', 'install-client.cmd')) {
+    $path = Join-Path $root "scripts\$name"
+    if (Test-Path $path) {
+        Copy-Item $path $stage -Force
+    }
+}
 
 @"
-DeskAgent v1.5.0 - client package for Windows x64.
+DeskAgent v$version - client package for Windows x64.
 
 Fresh install:
   1. Unpack this archive anywhere.
-  2. Run install-client.ps1 as Administrator.
+  2. Double-click install-client.cmd and accept the UAC prompt.
+     It installs to Program Files and registers the SYSTEM service, so
+     auto-update works without an interactive admin session.
   3. The client registers itself with the manager and starts reporting its
      inventory and its events.
 
 Upgrade of an existing install:
-  The admin console unpacks this archive over the running client and
-  restarts it; nothing else is needed.
+  Copy this zip into the Manager data directory. The Manager publishes it
+  through /api/version/latest and installed clients update automatically on
+  their next one-minute check (no active remote session).
 "@ | Set-Content "$stage\README.txt" -Encoding utf8
 
 Remove-Item $zip -Force -ErrorAction SilentlyContinue

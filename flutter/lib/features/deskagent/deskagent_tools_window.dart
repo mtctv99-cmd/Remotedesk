@@ -7,6 +7,7 @@ import 'package:flutter_hbb/features/deskagent/ai_chat_page.dart';
 import 'package:flutter_hbb/features/deskagent/deskagent_config.dart';
 import 'package:flutter_hbb/features/deskagent/deskagent_icons.dart';
 import 'package:flutter_hbb/features/deskagent/deskagent_tokens.dart';
+import 'package:flutter_hbb/features/deskagent/deskagent_win11.dart';
 import 'package:flutter_hbb/models/model.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
 
@@ -48,7 +49,8 @@ class _DeskAgentToolsWindowState extends State<DeskAgentToolsWindow> {
   Offset? _dragFrom;
   bool _dragging = false;
   bool _eventsLoading = false;
-  String _eventsState = 'idle'; // idle | loading | data | empty | error | no-token
+  String _eventsState =
+      'idle'; // idle | loading | data | empty | error | no-token
   String _eventsError = '';
   List<Map<String, dynamic>> _events = [];
   final HttpClient _http = HttpClient();
@@ -61,7 +63,7 @@ class _DeskAgentToolsWindowState extends State<DeskAgentToolsWindow> {
       width: width,
       height: height,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(DeskAgentMetrics.radiusCard),
         child: Material(
           color: bg,
           elevation: 10,
@@ -105,10 +107,8 @@ class _DeskAgentToolsWindowState extends State<DeskAgentToolsWindow> {
           if (_dragging) {
             setState(() {
               _pos = Offset(
-                (_pos.dx + e.position.dx - _dragFrom!.dx)
-                    .clamp(0.0, 2400.0),
-                (_pos.dy + e.position.dy - _dragFrom!.dy)
-                    .clamp(0.0, 1400.0),
+                (_pos.dx + e.position.dx - _dragFrom!.dx).clamp(0.0, 2400.0),
+                (_pos.dy + e.position.dy - _dragFrom!.dy).clamp(0.0, 1400.0),
               );
               _dragFrom = e.position;
             });
@@ -136,9 +136,10 @@ class _DeskAgentToolsWindowState extends State<DeskAgentToolsWindow> {
                 ),
               ),
               const Spacer(),
-              InkWell(
-                onTap: widget.onClose,
-                child: DeskAgentIcons.x(
+              Win11IconButton(
+                tooltip: 'Đóng',
+                onPressed: widget.onClose,
+                icon: DeskAgentIcons.x(
                   size: 14,
                   color: DeskAgentFluentColors.textPrimary,
                 ),
@@ -243,57 +244,60 @@ class _DeskAgentToolsWindowState extends State<DeskAgentToolsWindow> {
         final time = created is int && created > 0
             ? DateTime.fromMillisecondsSinceEpoch(created * 1000)
             : null;
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-          decoration: BoxDecoration(
-              border: Border(
-                  bottom: BorderSide(color: DeskAgentFluentColors.border8))),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                decoration: BoxDecoration(
-                  color: DeskAgentFluentColors.accent.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(4),
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          child: Win11Card(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: DeskAgentFluentColors.accent.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    '${e['source'] ?? ''}',
+                    style: const TextStyle(
+                      fontSize: 9.5,
+                      fontFamily: 'Consolas',
+                      color: DeskAgentFluentColors.accent,
+                    ),
+                  ),
                 ),
-                child: Text(
-                  '${e['source'] ?? ''}',
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${e['text'] ?? ''}',
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: DeskAgentFluentColors.textPrimary,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  time == null
+                      ? ''
+                      : '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
                   style: const TextStyle(
-                    fontSize: 9.5,
+                    fontSize: 10,
                     fontFamily: 'Consolas',
-                    color: DeskAgentFluentColors.accent,
+                    color: DeskAgentFluentColors.textSecondary,
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '${e['text'] ?? ''}',
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 11.5,
-                    color: DeskAgentFluentColors.textPrimary,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                time == null ? '' : '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
-                style: const TextStyle(
-                  fontSize: 10,
-                  fontFamily: 'Consolas',
-                  color: DeskAgentFluentColors.textSecondary,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
     );
   }
+
   Widget _tabHeader() {
     return Container(
       height: 36,
@@ -307,17 +311,20 @@ class _DeskAgentToolsWindowState extends State<DeskAgentToolsWindow> {
           _tabButton(
               0,
               'Trợ lý AI',
-              ({Color? color}) => DeskAgentIcons.sparkles(color: color ?? Colors.transparent)),
+              ({Color? color}) =>
+                  DeskAgentIcons.sparkles(color: color ?? Colors.transparent)),
           const SizedBox(width: 4),
           _tabButton(
               1,
               'Chat IT',
-              ({Color? color}) => DeskAgentIcons.message(color: color ?? Colors.transparent)),
+              ({Color? color}) =>
+                  DeskAgentIcons.message(color: color ?? Colors.transparent)),
           const SizedBox(width: 4),
           _tabButton(
               2,
               'Sự kiện',
-              ({Color? color}) => DeskAgentIcons.bell(color: color ?? Colors.transparent)),
+              ({Color? color}) =>
+                  DeskAgentIcons.bell(color: color ?? Colors.transparent)),
         ],
       ),
     );
@@ -329,41 +336,52 @@ class _DeskAgentToolsWindowState extends State<DeskAgentToolsWindow> {
     final color = active
         ? DeskAgentFluentColors.accent
         : DeskAgentFluentColors.textSecondary;
-    return InkWell(
-      onTap: () {
-        setState(() => _tab = index);
-        if (index == 2) {
-          _loadRemoteEvents();
-        }
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: active
-              ? DeskAgentFluentColors.accent.withOpacity(0.18)
-              : Colors.transparent,
-          border: Border(
-              bottom: BorderSide(
-                  color: active
-                      ? DeskAgentFluentColors.accent
-                      : Colors.transparent,
-                  width: 2)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            icon(color: color),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w600,
-                color: color,
-              ),
+    return Tooltip(
+      message: label,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(4),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(4),
+          hoverColor: DeskAgentFluentColors.hoverOverlay,
+          splashColor: DeskAgentFluentColors.activeOverlay,
+          onTap: () {
+            setState(() => _tab = index);
+            if (index == 2) {
+              _loadRemoteEvents();
+            }
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: active
+                  ? DeskAgentFluentColors.accent.withOpacity(0.18)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(4),
+              border: Border(
+                  bottom: BorderSide(
+                      color: active
+                          ? DeskAgentFluentColors.accent
+                          : Colors.transparent,
+                      width: 2)),
             ),
-          ],
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                icon(color: color),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: color,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

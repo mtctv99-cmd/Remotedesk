@@ -285,7 +285,11 @@ async fn handle_conn(
             }
             _ = tokio::time::sleep(tokio::time::Duration::from_secs(keep_alive)) => {
                 missed += 1;
+                // Fires once per keep-alive window per peer: trace only, per
+                // the repo rule against unthrottled debug-level logs.
+                tracing::trace!("heartbeat_missed peer={} count={}", peer_id, missed);
                 if missed >= MISSED_HEARTBEAT_LIMIT {
+                    tracing::info!("heartbeat_reap peer={} missed={}", peer_id, missed);
                     break; // 3 missed keep-alive windows -> OFFLINE
                 }
             }

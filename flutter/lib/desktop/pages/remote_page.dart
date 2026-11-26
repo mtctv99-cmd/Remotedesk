@@ -22,6 +22,7 @@ import '../../utils/image.dart';
 import '../widgets/remote_toolbar.dart';
 import '../widgets/kb_layout_type_chooser.dart';
 import '../widgets/tabbar_widget.dart';
+import '../../features/deskagent/deskagent_frameless.dart';
 import '../../features/deskagent/deskagent_tools_window.dart';
 import 'macos_full_screen_focus_recovery.dart';
 
@@ -176,6 +177,9 @@ class _RemotePageState extends State<RemotePage>
       displays: widget.displays,
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (isWindows) {
+        DeskAgentFrameless.setDarkTitlebar(getWindowName());
+      }
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
       _ffi.dialogManager
           .showLoading(translate('Connecting...'), onCancel: closeConnection);
@@ -997,8 +1001,8 @@ class _RemotePageState extends State<RemotePage>
             QualityMonitor(_ffi.qualityMonitorModel), null, null),
       ),
     );
-    // DeskAgent Tools overlay (Trợ lý AI / Chat IT) — toggled by the toolbar
-    // Tool button (DeskAgentTools.visible).
+    // DeskAgent Tools (Trợ lý AI / Chat IT) — opened from the remote titlebar
+    // Tool button via DeskAgentTools.visible. Presentation overlay only.
     paints.add(
       Positioned.fill(
         child: ValueListenableBuilder<bool>(

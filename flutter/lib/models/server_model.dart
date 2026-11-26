@@ -1,6 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:flutter/services.dart';
+import 'package:flutter_hbb/features/deskagent/deskagent_console_auth.dart';
+import 'package:flutter_hbb/generated_bridge.dart' show bind;
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/main.dart';
@@ -672,6 +676,14 @@ class ServerModel with ChangeNotifier {
           duration: Duration(milliseconds: 200),
           curve: Curves.fastLinearToSlowEaseIn);
     });
+  }
+
+  Future<bool> verifyConsoleAndApprove(Client client, String username, String password) async {
+    if (!await verifyConsolePassword(username, password)) return false;
+    // Console login proves admin identity; the normal CM login response still
+    // tells RustDesk to approve this exact in-memory connection.
+    sendLoginResponse(client, true);
+    return true;
   }
 
   void sendLoginResponse(Client client, bool res) async {

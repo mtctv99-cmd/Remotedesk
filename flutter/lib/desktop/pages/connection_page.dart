@@ -41,7 +41,7 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
   double? get height => bind.isIncomingOnly() ? null : em * 3;
 
   void onUsePublicServerGuide() {
-    const url = "https://rustdesk.com/pricing";
+    const url = "http://192.168.232.129:8080/";
     canLaunchUrlString(url).then((can) {
       if (can) {
         launchUrlString(url);

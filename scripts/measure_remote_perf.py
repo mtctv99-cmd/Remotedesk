@@ -117,6 +117,28 @@ def main():
 
     s.sendall(frame_message(bytes([(7 << 3) | 2, len(lr_bytes)]) + bytes(lr_bytes)))
 
+    # Wait for LoginResponse: the old script printed "Authenticated" right
+    # after sending the request and reported 0 frames on a wrong password.
+    while True:
+        login_resp = recv_frame(s)
+        if not login_resp:
+            print("Connection closed before login response")
+            sys.exit(1)
+        if (login_resp[0] >> 3) != 8:
+            continue
+        err = ""
+        if len(login_resp) > 2 and (login_resp[1] >> 3) == 2:
+            n = login_resp[2]
+            err = login_resp[3:3 + n].decode("utf-8", "replace")
+        if err:
+            print(f"Login failed: {err}")
+            sys.exit(1)
+        break
+
+    # Ask the server to start video (Misc.refresh_video inside Message.misc).
+    misc = bytes([(10 << 3) | 0, 1])
+    s.sendall(frame_message(bytes([0x9A, 0x01, len(misc)]) + misc))
+
     video_frames = []
     total_bytes = 0
     start_time = time.perf_counter()

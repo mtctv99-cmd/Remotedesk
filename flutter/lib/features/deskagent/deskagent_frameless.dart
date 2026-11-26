@@ -40,13 +40,71 @@ class DeskAgentFrameless {
   static const int _wsSysMenu = 0x00080000;
   static const int _wsMinimizeBox = 0x00020000;
   static const int _wsMaximizeBox = 0x00010000;
-  static const int _wsThickFrame = 0x00040000;
   static const int _wsExNoActivate = 0x08000000;
   static const int _swpNoMove = 0x0002;
   static const int _swpNoSize = 0x0001;
   static const int _swpNoZOrder = 0x0004;
   static const int _swpNoActivate = 0x0010;
   static const int _swpFrameChanged = 0x0020;
+  static const int _wdaNone = 0x00000000;
+  static const int _wdaExcludeFromCapture = 0x00000011;
+
+  /// Exclude window from screen capture (DXGI Desktop Duplication, BitBlt, Magnification).
+  /// Supported on Windows 10 version 2004 (Build 19041) and newer.
+  static bool setExcludeFromCapture(String windowTitle, {bool exclude = true}) {
+    try {
+      final user32 = DynamicLibrary.open('user32.dll');
+      final findWindowW = user32.lookupFunction<
+          IntPtr Function(Pointer<Utf16>, Pointer<Utf16>),
+          int Function(Pointer<Utf16>, Pointer<Utf16>)>('FindWindowW');
+      final setWindowDisplayAffinity = user32.lookupFunction<
+          Int32 Function(IntPtr, Uint32),
+          int Function(int, int)>('SetWindowDisplayAffinity');
+
+      final title = windowTitle.toNativeUtf16();
+      final className = 'FLUTTER_RUNNER_WIN32_WINDOW'.toNativeUtf16();
+      final hwnd = findWindowW(className, title);
+      calloc.free(title);
+      calloc.free(className);
+      if (hwnd == 0) return false;
+
+      final res = setWindowDisplayAffinity(
+          hwnd, exclude ? _wdaExcludeFromCapture : _wdaNone);
+      return res != 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Ask DWM to render the native titlebar in dark mode (Win10 2004+ / Win11).
+  static bool setDarkTitlebar(String windowTitle, {bool dark = true}) {
+    try {
+      final user32 = DynamicLibrary.open('user32.dll');
+      final dwmapi = DynamicLibrary.open('dwmapi.dll');
+      final findWindowW = user32.lookupFunction<
+          IntPtr Function(Pointer<Utf16>, Pointer<Utf16>),
+          int Function(Pointer<Utf16>, Pointer<Utf16>)>('FindWindowW');
+      final dwmSetWindowAttribute = dwmapi.lookupFunction<
+          Int32 Function(IntPtr, Uint32, Pointer<Void>, Uint32),
+          int Function(int, int, Pointer<Void>, int)>('DwmSetWindowAttribute');
+      final title = windowTitle.toNativeUtf16();
+      final className = 'FLUTTER_RUNNER_WIN32_WINDOW'.toNativeUtf16();
+      final hwnd = findWindowW(className, title);
+      calloc.free(title);
+      calloc.free(className);
+      if (hwnd == 0) return false;
+      // DWMWA_USE_IMMERSIVE_DARK_MODE = 20 (19 on older Win10 builds).
+      final value = calloc<Int32>()..value = dark ? 1 : 0;
+      final attr = calloc<Uint32>()..value = 20;
+      final res = dwmSetWindowAttribute(
+          hwnd, attr.value, value.cast<Void>(), sizeOf<Int32>());
+      calloc.free(value);
+      calloc.free(attr);
+      return res == 0;
+    } catch (_) {
+      return false;
+    }
+  }
 
   /// Move/resize the main window through Win32.
   ///

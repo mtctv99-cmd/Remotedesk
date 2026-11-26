@@ -64,7 +64,6 @@ Future<void> main(List<String> args) async {
     // DeskAgent widget popup: dispatched BEFORE the WindowType mapping, since
     // type.windowType would throw a RangeError for our negative marker.
     if (type == -2) {
-      print('recent-popup main: launching child, peers=${(argument['peers'] as List?)?.length}');
       runMultiWindow(argument, kAppTypeDesktopRecentPeers);
       return;
     }
@@ -175,6 +174,11 @@ void runMainApp(bool startService) async {
     if (widgetMode) {
       await _applyMainWindowWidgetMode();
     }
+    // Register the main window for cross-window calls BEFORE dispatching a
+    // deeplink/--connect: that path hides the main window, so registering only
+    // in the else branch left child windows unable to reach main and the
+    // remote session stalled right after the first video frame.
+    rustDeskWinManager.registerActiveWindow(kWindowMainId);
     // Check the startup argument, if we successfully handle the argument, we keep the main window hidden.
     final handledByUniLinks = await initUniLinks();
     debugPrint("handled by uni links: $handledByUniLinks");
@@ -183,8 +187,6 @@ void runMainApp(bool startService) async {
     } else {
       windowManager.show();
       windowManager.focus();
-      // Move registration of active main window here to prevent from async visible check.
-      rustDeskWinManager.registerActiveWindow(kWindowMainId);
     }
     windowManager.setOpacity(1);
     windowManager.setTitle(getWindowName());
@@ -200,17 +202,13 @@ void runMainApp(bool startService) async {
 /// Size and anchor live in [setDeskAgentWindowMode].
 Future<void> _applyMainWindowWidgetMode() async {
   await windowManager.setAsFrameless();
-  // Every launch starts collapsed: the restored window frame (or a stale mode
-  // from an earlier session) must not leave the panel open.
-  deskAgentWindowMode.value = DeskAgentWindowMode.pill;
-  await setDeskAgentWindowMode(DeskAgentWindowMode.pill);
-  // Startup calls setResizable(true) after this block, which re-adds
-  // WS_THICKFRAME, and the style strip must land only once the view is up.
+  deskAgentWindowMode.value = DeskAgentWindowMode.compact;
+  await setDeskAgentWindowMode(DeskAgentWindowMode.compact);
   Future.delayed(const Duration(milliseconds: 900), () async {
     DeskAgentFrameless.apply(getWindowName());
     deskAgentWindowReady = true;
-    deskAgentWindowMode.value = DeskAgentWindowMode.pill;
-    await setDeskAgentWindowMode(DeskAgentWindowMode.pill);
+    deskAgentWindowMode.value = DeskAgentWindowMode.compact;
+    await setDeskAgentWindowMode(DeskAgentWindowMode.compact);
   });
 }
 
@@ -322,23 +320,22 @@ void runMultiWindow(
       // no such appType
       exit(0);
   }
-  // show window from hidden status
-  WindowController.fromWindowId(kWindowId!).show();
   if (appType == kAppTypeDesktopRecentPeers) {
     // Widget recent popup: frameless 356x200 dropdown anchored 12px left of
     // the card and 83px below its top (under the connect bar, as in the
-    // mockup .recent-dropdown).
+    // mockup .recent-dropdown). Position before showing so it never flashes
+    // at the default location/size.
     final left = (argument['left'] as num?)?.toDouble() ?? 0;
     final topOffset = (argument['top'] as num?)?.toDouble() ?? 0;
-    print('recent-popup child: window shown, setting frame left=$left top=$topOffset');
     final ctl = WindowController.fromWindowId(kWindowId!);
-    await ctl
-        .setFrame(Offset(left, topOffset) & const Size(356, 200));
+    await ctl.hide();
+    await ctl.setFrame(Offset(left, topOffset) & const Size(356, 200));
     await ctl.setTitle('DeskAgentRecent');
     await ctl.show();
-    print('recent-popup child: frame+title set, body rendered');
     DeskAgentFrameless.apply('DeskAgentRecent');
-    print('recent-popup child: frameless applied');
+  } else {
+    // show window from hidden status
+    WindowController.fromWindowId(kWindowId!).show();
   }
 }
 
@@ -416,14 +413,18 @@ void _runApp(
   ThemeMode themeMode,
 ) {
   final botToastBuilder = BotToastInit();
+  // The session window always uses the Fluent dark shell from the mockups,
+  // even when the rest of the app runs in light mode. This keeps the toolbar
+  // menus, tooltips and dialogs on the dark palette.
+  final isRemoteWindow = kWindowType == WindowType.RemoteDesktop;
   runApp(RefreshWrapper(
     builder: (context) => GetMaterialApp(
       navigatorKey: globalKey,
       debugShowCheckedModeBanner: false,
       title: title,
       theme: MyTheme.lightTheme,
-      darkTheme: MyTheme.darkTheme,
-      themeMode: themeMode,
+      darkTheme: isRemoteWindow ? MyTheme.remoteDarkTheme : MyTheme.darkTheme,
+      themeMode: isRemoteWindow ? ThemeMode.dark : themeMode,
       home: home,
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
@@ -556,7 +557,7 @@ class _AppState extends State<App> with WidgetsBindingObserver {
           navigatorKey: globalKey,
           debugShowCheckedModeBanner: false,
           title: isWeb
-              ? '${bind.mainGetAppNameSync()} Web Client V2 (Preview)'
+              ? '${bind.mainGetAppNameSync()} Web Client'
               : bind.mainGetAppNameSync(),
           theme: MyTheme.lightTheme,
           darkTheme: MyTheme.darkTheme,

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 
 import 'package:back_button_interceptor/back_button_interceptor.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
@@ -249,16 +248,16 @@ class MyTheme {
   MyTheme._();
 
   static const Color grayBg = Color(0xFFEFEFF2);
-  static const Color accent = Color(0xFF60CDFF);
-  static const Color accent50 = Color(0x7760CDFF);
-  static const Color accent80 = Color(0xAA60CDFF);
+  static const Color accent = Color(0xFF0284C7);
+  static const Color accent50 = Color(0x770284C7);
+  static const Color accent80 = Color(0xAA0284C7);
   static const Color canvasColor = Color(0xFF212121);
   static const Color border = Color(0xFFCCCCCC);
-  static const Color idColor = Color(0xFF00B6F0);
+  static const Color idColor = Color(0xFF0284C7);
   static const Color darkGray = Color.fromARGB(255, 148, 148, 148);
-  static const Color cmIdColor = Color(0xFF21790B);
+  static const Color cmIdColor = Color(0xFF10B981);
   static const Color dark = Colors.black87;
-  static const Color button = Color(0xFF2C8CFF);
+  static const Color button = Color(0xFF0284C7);
   static const Color hoverBorder = Color(0xFF999999);
 
   // ListTile
@@ -383,10 +382,10 @@ class MyTheme {
     dialogTheme: DialogTheme(
       elevation: 8,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8.0),
-        side: BorderSide(
+        borderRadius: BorderRadius.circular(10.0),
+        side: const BorderSide(
           width: 1,
-          color: Colors.white12,
+          color: Color(0x1F000000),
         ),
       ),
     ),
@@ -482,10 +481,10 @@ class MyTheme {
     dialogTheme: DialogTheme(
       elevation: 8,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8.0),
-        side: BorderSide(
+        borderRadius: BorderRadius.circular(10.0),
+        side: const BorderSide(
           width: 1,
-          color: Colors.white12,
+          color: Color(0x1F000000),
         ),
       ),
     ),
@@ -576,6 +575,83 @@ class MyTheme {
       ColorThemeExtension.dark,
       TabbarTheme.dark,
     ],
+  );
+
+  /// Dark theme for the remote-session window. It keeps the Fluent surfaces
+  /// from the mockups when the app itself runs in light mode, and restyles the
+  /// menus/checkboxes/radios so the session chrome never falls back to the
+  /// stock Material light palette.
+  static final ThemeData remoteDarkTheme = darkTheme.copyWith(
+    textTheme: darkTheme.textTheme.apply(fontFamily: 'Segoe UI'),
+    primaryTextTheme: darkTheme.primaryTextTheme.apply(fontFamily: 'Segoe UI'),
+    popupMenuTheme: PopupMenuThemeData(
+      color: const Color(0xFF202020),
+      surfaceTintColor: Colors.transparent,
+      textStyle: const TextStyle(
+          fontFamily: 'Segoe UI', fontSize: 12, color: Color(0xFFF4F4F5)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: const BorderSide(color: Color(0x14FFFFFF)),
+      ),
+    ),
+    menuTheme: MenuThemeData(
+      style: MenuStyle(
+        backgroundColor:
+            const MaterialStatePropertyAll<Color>(Color(0xFF202020)),
+        surfaceTintColor:
+            const MaterialStatePropertyAll<Color>(Colors.transparent),
+        elevation: const MaterialStatePropertyAll<double>(0),
+        padding: const MaterialStatePropertyAll<EdgeInsetsGeometry>(
+            EdgeInsets.symmetric(horizontal: 4, vertical: 6)),
+        minimumSize:
+            const MaterialStatePropertyAll<Size>(Size(260, 0)),
+        maximumSize: const MaterialStatePropertyAll<Size>(
+            Size(340, double.infinity)),
+        shape: MaterialStatePropertyAll<OutlinedBorder?>(
+            RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: const BorderSide(color: Color(0x14FFFFFF)),
+        )),
+      ),
+    ),
+    menuButtonTheme: const MenuButtonThemeData(
+      style: ButtonStyle(
+        textStyle: MaterialStatePropertyAll<TextStyle>(TextStyle(
+            fontFamily: 'Segoe UI',
+            fontSize: 12,
+            color: Color(0xFFF4F4F5))),
+        minimumSize: MaterialStatePropertyAll<Size>(Size(0, 30)),
+        padding: MaterialStatePropertyAll<EdgeInsetsGeometry>(
+            EdgeInsets.symmetric(horizontal: 10)),
+      ),
+    ),
+    dividerTheme: const DividerThemeData(
+      space: 8,
+      thickness: 1,
+      color: Color(0x14FFFFFF),
+    ),
+    menuBarTheme: const MenuBarThemeData(
+      style: MenuStyle(
+        backgroundColor: MaterialStatePropertyAll<Color>(Colors.transparent),
+        elevation: MaterialStatePropertyAll<double>(0),
+      ),
+    ),
+    dividerColor: const Color(0x14FFFFFF),
+    checkboxTheme: CheckboxThemeData(
+      side: const BorderSide(color: Color(0xFFCBD5E1), width: 2),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+      fillColor: MaterialStateProperty.resolveWith((states) =>
+          states.contains(MaterialState.selected)
+              ? const Color(0xFF60CDFF)
+              : Colors.transparent),
+      checkColor: const MaterialStatePropertyAll<Color>(Color(0xFF0B0B0B)),
+    ),
+    radioTheme: RadioThemeData(
+      fillColor: MaterialStateProperty.resolveWith((states) =>
+          states.contains(MaterialState.selected)
+              ? const Color(0xFF60CDFF)
+              : const Color(0xFFCBD5E1)),
+    ),
   );
 
   static ThemeMode getThemeModePreference() {
@@ -1059,7 +1135,10 @@ void showToast(String text,
                   left: BorderSide(color: accent, width: 3),
                 ),
                 boxShadow: const [
-                  BoxShadow(color: Color(0x73000000), blurRadius: 20, offset: Offset(0, 6)),
+                  BoxShadow(
+                      color: Color(0x73000000),
+                      blurRadius: 20,
+                      offset: Offset(0, 6)),
                 ],
               ),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1092,9 +1171,12 @@ class CustomAlertDialog extends StatelessWidget {
       required this.content,
       this.actions,
       this.contentPadding,
+      this.actionsPadding,
       this.contentBoxConstraints = const BoxConstraints(maxWidth: 308),
       this.onSubmit,
-      this.onCancel})
+      this.onCancel,
+      this.backgroundColor,
+      this.shape})
       : super(key: key);
 
   final Widget? title;
@@ -1102,9 +1184,12 @@ class CustomAlertDialog extends StatelessWidget {
   final Widget content;
   final List<Widget>? actions;
   final double? contentPadding;
+  final EdgeInsetsGeometry? actionsPadding;
   final BoxConstraints contentBoxConstraints;
   final Function()? onSubmit;
   final Function()? onCancel;
+  final Color? backgroundColor;
+  final ShapeBorder? shape;
 
   @override
   Widget build(BuildContext context) {
@@ -1142,6 +1227,8 @@ class CustomAlertDialog extends StatelessWidget {
       },
       child: AlertDialog(
           scrollable: true,
+          backgroundColor: backgroundColor,
+          shape: shape,
           title: title,
           content: ConstrainedBox(
             constraints: contentBoxConstraints,
@@ -1149,9 +1236,11 @@ class CustomAlertDialog extends StatelessWidget {
           ),
           actions: actions,
           titlePadding: titlePadding ?? MyTheme.dialogTitlePadding(),
-          contentPadding:
-              MyTheme.dialogContentPadding(actions: actions is List),
-          actionsPadding: MyTheme.dialogActionsPadding(),
+          contentPadding: contentPadding != null
+              ? EdgeInsets.all(contentPadding!)
+              : MyTheme.dialogContentPadding(actions: actions is List),
+          actionsPadding:
+              actionsPadding ?? MyTheme.dialogActionsPadding(),
           buttonPadding: MyTheme.dialogButtonPadding),
     );
   }
@@ -2870,7 +2959,7 @@ Future<void> onActiveWindowChanged() async {
     } catch (err) {
       debugPrintStack(label: "$err");
     } finally {
-      debugPrint("Start closing RustDesk...");
+      debugPrint("Start closing DeskAgent...");
       await windowManager.setPreventClose(false);
       await windowManager.close();
       if (isMacOS) {
@@ -3008,26 +3097,43 @@ Widget dialogButton(String text,
     ButtonStyle? buttonStyle}) {
   if (isDesktop || isWebDesktop) {
     if (isOutline) {
+      final outlineStyle = OutlinedButton.styleFrom(
+        foregroundColor: const Color(0xFF374151),
+        side: const BorderSide(color: Color(0xFFD1D5DB)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(6),
+        ),
+      ).merge(buttonStyle);
       return icon == null
           ? OutlinedButton(
+              style: outlineStyle,
               onPressed: onPressed,
               child: Text(translate(text), style: style),
             )
           : OutlinedButton.icon(
+              style: outlineStyle,
               icon: icon,
               onPressed: onPressed,
               label: Text(translate(text), style: style),
             );
     } else {
+      final elevatedStyle = ElevatedButton.styleFrom(
+        elevation: 0,
+        backgroundColor: const Color(0xFF0284C7),
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(6),
+        ),
+      ).merge(buttonStyle);
       return icon == null
           ? ElevatedButton(
-              style: ElevatedButton.styleFrom(elevation: 0).merge(buttonStyle),
+              style: elevatedStyle,
               onPressed: onPressed,
               child: Text(translate(text), style: style),
             )
           : ElevatedButton.icon(
+              style: elevatedStyle,
               icon: icon,
-              style: ElevatedButton.styleFrom(elevation: 0).merge(buttonStyle),
               onPressed: onPressed,
               label: Text(translate(text), style: style),
             );
@@ -3053,13 +3159,13 @@ String getWindowName({WindowType? overrideType}) {
     case WindowType.Main:
       return name;
     case WindowType.FileTransfer:
-      return "File Transfer - $name";
+      return "Chuyển file - $name";
     case WindowType.ViewCamera:
-      return "View Camera - $name";
+      return "Xem camera - $name";
     case WindowType.PortForward:
-      return "Port Forward - $name";
+      return "Chuyển cổng - $name";
     case WindowType.RemoteDesktop:
-      return "Remote Desktop - $name";
+      return "Điều khiển từ xa - $name";
     default:
       break;
   }
@@ -3832,8 +3938,8 @@ Widget loadIcon(double size) {
   return Image.asset('assets/icon.png',
       width: size,
       height: size,
-      errorBuilder: (ctx, error, stackTrace) => SvgPicture.asset(
-            'assets/icon.svg',
+      errorBuilder: (ctx, error, stackTrace) => Image.asset(
+            'assets/icons/deskagent_logo.png',
             width: size,
             height: size,
           ));

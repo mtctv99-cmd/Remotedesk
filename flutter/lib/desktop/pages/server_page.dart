@@ -1,7 +1,13 @@
 // original cm window in Sciter version.
 
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
+
+import 'package:flutter_hbb/common/widgets/dialog.dart' show DialogTextField, PasswordWidget;
+import 'package:flutter_hbb/features/deskagent/deskagent_config.dart';
+import 'package:flutter_hbb/features/deskagent/deskagent_console_auth.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common/widgets/audio_input.dart';
@@ -300,13 +306,21 @@ class ConnectionManagerState extends State<ConnectionManager>
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           const _AppIcon(),
+          const SizedBox(width: 4),
+          const Text(
+            'DeskAgent · Kết nối đến',
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           Expanded(
             child: GestureDetector(
               onPanStart: (d) {
                 windowManager.startDragging();
               },
               child: Container(
-                color: Theme.of(context).colorScheme.background,
+                color: Colors.transparent,
               ),
             ),
           ),
@@ -458,21 +472,26 @@ class _CmHeaderState extends State<_CmHeader>
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10.0),
-        gradient: LinearGradient(
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
           colors: [
-            Color(0xff00bfe1),
-            Color(0xff0071ff),
+            Color(0xFF0284C7),
+            Color(0xFF0369A1),
           ],
         ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x220284C7),
+            blurRadius: 10,
+            offset: Offset(0, 3),
+          ),
+        ],
       ),
-      margin: EdgeInsets.symmetric(horizontal: 5.0, vertical: 10.0),
-      padding: EdgeInsets.only(
-        top: 10.0,
-        bottom: 10.0,
-        left: 10.0,
-        right: 5.0,
+      margin: const EdgeInsets.symmetric(horizontal: 5.0, vertical: 8.0),
+      padding: const EdgeInsets.symmetric(
+        vertical: 10.0,
+        horizontal: 10.0,
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -627,17 +646,20 @@ class _PrivilegeBoardState extends State<_PrivilegeBoard> {
   Widget buildPermissionIcon(bool enabled, IconData iconData,
       Function(bool)? onTap, String tooltipText,
       {required bool canModify}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Tooltip(
       message: "$tooltipText: ${enabled ? "ON" : "OFF"}",
       waitDuration: Duration.zero,
       child: Container(
         decoration: BoxDecoration(
           color: enabled
-              ? (canModify ? MyTheme.accent : MyTheme.accent.withOpacity(0.6))
-              : Colors.grey[700],
-          borderRadius: BorderRadius.circular(10.0),
+              ? (canModify
+                  ? const Color(0xFFF97316)
+                  : const Color(0xFFF97316).withOpacity(0.6))
+              : (isDark ? const Color(0xFF3F3F46) : const Color(0xFFE5E7EB)),
+          borderRadius: BorderRadius.circular(8.0),
         ),
-        padding: EdgeInsets.all(8.0),
+        padding: const EdgeInsets.all(8.0),
         child: InkWell(
           onTap: canModify
               ? () =>
@@ -649,7 +671,11 @@ class _PrivilegeBoardState extends State<_PrivilegeBoard> {
               Expanded(
                 child: Icon(
                   iconData,
-                  color: Colors.white,
+                  color: enabled
+                      ? Colors.white
+                      : (isDark
+                          ? const Color(0xFFA1A1AA)
+                          : const Color(0xFF6B7280)),
                 ),
               ),
             ],
@@ -666,20 +692,23 @@ class _PrivilegeBoardState extends State<_PrivilegeBoard> {
     final canModifyPermission =
         bind.mainGetBuildinOption(key: kOptionEnablePermChangeInAcceptWindow) !=
             'N';
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       width: double.infinity,
       height: 160.0,
-      margin: EdgeInsets.all(5.0),
-      padding: EdgeInsets.all(5.0),
+      margin: const EdgeInsets.all(5.0),
+      padding: const EdgeInsets.all(5.0),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10.0),
-        color: Theme.of(context).colorScheme.background,
+        color: isDark ? const Color(0xFF27272A) : const Color(0xFFF9FAFB),
+        border: Border.all(
+          color: isDark ? const Color(0xFF3F3F46) : const Color(0xFFE5E7EB),
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            spreadRadius: 1,
-            blurRadius: 1,
-            offset: Offset(0, 1.5),
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -1038,10 +1067,10 @@ class _CmControlPanel extends StatelessWidget {
           children: [
             Expanded(
               child: buildButton(context,
-                  color: Colors.redAccent,
+                  color: const Color(0xFFEF4444),
                   onClick: handleDisconnect,
                   text: 'Disconnect',
-                  icon: Icon(
+                  icon: const Icon(
                     Icons.link_off_rounded,
                     color: Colors.white,
                     size: 14,
@@ -1060,7 +1089,7 @@ class _CmControlPanel extends StatelessWidget {
       children: [
         Expanded(
             child: buildButton(context,
-                color: MyTheme.accent,
+                color: const Color(0xFF0284C7),
                 onClick: handleClose,
                 text: 'Close',
                 textColor: Colors.white)),
@@ -1078,57 +1107,84 @@ class _CmControlPanel extends StatelessWidget {
                 key: kOptionHideElevateButtonInAcceptWindow) !=
             'Y';
     final showAccept = model.approveMode != 'password';
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
+        if (showAccept)
+          Row(
+            children: [
+              Expanded(
+                child: buildButton(
+                  context,
+                  color: const Color(0xFFF97316),
+                  onClick: () => _showConsoleApproveDialog(context),
+                  text: 'Accept with Console',
+                  textColor: Colors.white,
+                  icon: const Icon(Icons.admin_panel_settings_outlined,
+                      color: Colors.white, size: 14),
+                ),
+              ),
+            ],
+          ),
         Offstage(
           offstage: !showElevation || !showAccept,
-          child: buildButton(context, color: Colors.green[700], onClick: () {
-            handleAccept(context);
-            handleElevate(context);
-            windowManager.minimize();
-          },
-              text: 'Accept and Elevate',
-              icon: Icon(
-                Icons.security_rounded,
-                color: Colors.white,
-                size: 14,
-              ),
-              textColor: Colors.white,
-              tooltip: 'accept_and_elevate_btn_tooltip'),
+          child: buildButton(
+            context,
+            color: const Color(0xFF059669),
+            onClick: () async {
+              final ok = await _showConsoleApproveDialog(context);
+              if (ok) handleElevate(context);
+            },
+            text: 'Console & Elevate',
+            icon: const Icon(Icons.security_rounded,
+                color: Colors.white, size: 14),
+            textColor: Colors.white,
+            tooltip: 'accept_and_elevate_btn_tooltip',
+          ),
         ),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             if (showAccept)
               Expanded(
-                child: Column(
-                  children: [
-                    buildButton(
-                      context,
-                      color: MyTheme.accent,
-                      onClick: () {
-                        handleAccept(context);
-                        windowManager.minimize();
-                      },
-                      text: 'Accept',
-                      textColor: Colors.white,
-                    ),
-                  ],
+                child: buildButton(
+                  context,
+                  color: const Color(0xFF10B981),
+                  onClick: () {
+                    handleAccept(context);
+                    windowManager.minimize();
+                  },
+                  text: 'Accept',
+                  textColor: Colors.white,
                 ),
               ),
             Expanded(
               child: buildButton(
                 context,
                 color: Colors.transparent,
-                border: Border.all(color: Colors.grey),
+                border: Border.all(
+                  color: isDark ? const Color(0xFF52525B) : const Color(0xFFD1D5DB),
+                ),
                 onClick: handleDisconnect,
                 text: 'Cancel',
-                textColor: null,
+                textColor: isDark ? Colors.white : const Color(0xFF374151),
               ),
             ),
           ],
         ),
+        if (!showAccept)
+          Align(
+            alignment: Alignment.center,
+            child: Text(
+              'Chế độ xác thực hiện chỉ cho phép mật khẩu client/Windows.',
+              style: TextStyle(
+                fontSize: 11,
+                color: isDark ? Colors.white60 : const Color(0xFF6B7280),
+              ),
+            ),
+          ),
+
       ],
     ).marginOnly(bottom: buttonBottomMargin);
   }
@@ -1147,21 +1203,29 @@ class _CmControlPanel extends StatelessWidget {
     if (icon != null) {
       textWidget = Text(
         translate(text),
-        style: TextStyle(color: textColor),
+        style: TextStyle(
+          color: textColor,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
         textAlign: TextAlign.center,
       );
     } else {
       textWidget = Expanded(
         child: Text(
           translate(text),
-          style: TextStyle(color: textColor),
+          style: TextStyle(
+            color: textColor,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
           textAlign: TextAlign.center,
         ),
       );
     }
-    final borderRadius = BorderRadius.circular(10.0);
+    final borderRadius = BorderRadius.circular(6.0);
     final btn = Container(
-      height: 28,
+      height: 32,
       decoration: BoxDecoration(
           color: color, borderRadius: borderRadius, border: border),
       child: InkWell(
@@ -1201,6 +1265,21 @@ class _CmControlPanel extends StatelessWidget {
   void handleAccept(BuildContext context) {
     final model = Provider.of<ServerModel>(context, listen: false);
     model.sendLoginResponse(client, true);
+  }
+
+  Future<bool> _showConsoleApproveDialog(BuildContext context) async {
+    final model = Provider.of<ServerModel>(context, listen: false);
+    final approved = await showConsoleAuthDialog(
+      context,
+      peerDescription: '${client.name} (${client.peerId})',
+      onAuthorize: (user, pass) =>
+          model.verifyConsoleAndApprove(client, user, pass),
+    );
+    if (approved && context.mounted) {
+      windowManager.minimize();
+      return true;
+    }
+    return false;
   }
 
   void handleElevate(BuildContext context) {

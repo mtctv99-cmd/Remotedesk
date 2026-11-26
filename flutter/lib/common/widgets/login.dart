@@ -50,6 +50,7 @@ _OidcProviderBranding _oidcProviderBranding(String op) {
         label: {
               'github': 'GitHub',
               'gitlab': 'GitLab',
+              'rustdesk': 'DeskAgent',
             }[op.toLowerCase()] ??
             toCapitalized(op),
         iconKey: op.toLowerCase(),

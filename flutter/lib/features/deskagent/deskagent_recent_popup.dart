@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/consts.dart';
@@ -23,16 +21,17 @@ class RecentPeersWindow extends StatefulWidget {
 }
 
 class _RecentPeersWindowState extends State<RecentPeersWindow> {
-  static const Color _bg = Color(0xFFF9F9F9);
-  static const Color _headerBg = Color(0x08000000);
-  static const Color _border = Color(0x12000000);
-  static const Color _borderStrong = Color(0x24000000);
-  static const Color _text = Color(0xFF1C1C1C);
-  static const Color _muted = Color(0xFF5C5C5C);
-  static const Color _textSubtle = Color(0xFF8A8A8A);
-  static const Color _blue = Color(0xFF0284C7);
-  static const Color _blueLight = Color(0x140284C7);
-  static const Color _green = Color(0xFF10B981);
+  // Fluent Dark palette of popup-windows-goc.html, matching the docked widget.
+  static const Color _bg = Color(0xFF202020);
+  static const Color _headerBg = Color(0xFF181818);
+  static const Color _border = Color(0x1FFFFFFF);
+  static const Color _borderStrong = Color(0x24FFFFFF);
+  static const Color _text = Color(0xFFF4F4F5);
+  static const Color _muted = Color(0xFFA1A1AA);
+  static const Color _textSubtle = Color(0xFF71717A);
+  static const Color _blue = Color(0xFF60CDFF);
+  static const Color _blueLight = Color(0x14FFFFFF);
+  static const Color _green = Color(0xFF34D399);
   static const String _mono = 'Consolas';
 
   List<Map<String, dynamic>> _peers = [];
@@ -65,29 +64,29 @@ class _RecentPeersWindowState extends State<RecentPeersWindow> {
   }
 
   void _closeSelf() {
-    DesktopMultiWindow.invokeMethod(0, 'recent-peers-closed', jsonEncode({}));
+    DesktopMultiWindow.invokeMethod(
+        0, 'recent-peers-closed', <String, dynamic>{});
     try {
       WindowController.fromWindowId(stateGlobal.windowId).close();
     } catch (_) {}
   }
 
   void _connectPeer(String id) {
+    if (id.isEmpty) return;
     // Main window id in desktop_multi_window is always 0.
-    DesktopMultiWindow.invokeMethod(
-      0,
-      kWindowConnect,
-      jsonEncode({
-        'id': id,
-        'isFileTransfer': false,
-        'isViewCamera': false,
-        'isTerminal': false,
-        'isTcpTunneling': false,
-        'isRDP': false,
-        'password': '',
-        'forceRelay': false,
-        'connToken': '',
-      }),
-    );
+    // Arguments must be a Map: the main window handler reads
+    // call.arguments['id'] (same convention as rustDeskWinManager.call).
+    DesktopMultiWindow.invokeMethod(0, kWindowConnect, {
+      'id': id,
+      'isFileTransfer': false,
+      'isViewCamera': false,
+      'isTerminal': false,
+      'isTcpTunneling': false,
+      'isRDP': false,
+      'password': '',
+      'forceRelay': false,
+      'connToken': '',
+    });
     _closeSelf();
   }
 
@@ -150,6 +149,7 @@ class _RecentPeersWindowState extends State<RecentPeersWindow> {
                   InkWell(
                     onTap: _clearHistory,
                     borderRadius: BorderRadius.circular(3),
+                    hoverColor: const Color(0x0FFFFFFF),
                     child: const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                       child: Text(
@@ -176,6 +176,7 @@ class _RecentPeersWindowState extends State<RecentPeersWindow> {
                           InkWell(
                             onTap: () => _connectPeer('${p['id'] ?? ''}'),
                             borderRadius: BorderRadius.circular(8),
+                            hoverColor: _blueLight,
                             child: Padding(
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 8, vertical: 6),

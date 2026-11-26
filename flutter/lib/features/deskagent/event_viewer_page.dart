@@ -165,6 +165,8 @@ class _EventViewerPageState extends State<EventViewerPage> {
                 label: const Text(_kLogSystem),
                 selected: _source == _kLogSystem,
                 selectedColor: _kAccentColor,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4)),
                 onSelected: (_) {
                   if (_source != _kLogSystem) {
                     setState(() => _source = _kLogSystem);
@@ -177,6 +179,8 @@ class _EventViewerPageState extends State<EventViewerPage> {
                 label: const Text(_kLogApplication),
                 selected: _source == _kLogApplication,
                 selectedColor: _kAccentColor,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4)),
                 onSelected: (_) {
                   if (_source != _kLogApplication) {
                     setState(() => _source = _kLogApplication);
@@ -229,7 +233,7 @@ class _EventViewerPageState extends State<EventViewerPage> {
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(6),
           ),
         ),
       ),
@@ -373,7 +377,10 @@ class _EventViewerPageState extends State<EventViewerPage> {
       eventId: eventId ?? '',
       level: level ?? '',
       description: descriptionText,
-      raw: lines.map((line) => line.trim()).where((line) => line.isNotEmpty).join('\n'),
+      raw: lines
+          .map((line) => line.trim())
+          .where((line) => line.isNotEmpty)
+          .join('\n'),
     );
   }
 
@@ -414,7 +421,7 @@ class _EventViewerPageState extends State<EventViewerPage> {
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Column(
@@ -469,7 +476,7 @@ class _EventViewerPageState extends State<EventViewerPage> {
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: color.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
                     levelLabel,

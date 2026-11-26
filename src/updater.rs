@@ -1,6 +1,11 @@
-use crate::{common::do_check_software_update, hbbs_http::create_http_client_with_url_strict};
+use crate::{
+    common::do_check_software_update,
+    hbbs_http::{create_http_client_with_url, create_http_client_with_url_strict},
+};
 use hbb_common::{bail, config, log, ResultType};
 use base::config::keys;
+use sha2::{Digest, Sha256};
+use serde::Deserialize;
 use std::{
     io::Write,
     path::{Component, Path, PathBuf},
@@ -173,6 +178,61 @@ fn start_auto_update_check_(rx_msg: Receiver<UpdateMsg>) {
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct ManagerVersion {
+    version: String,
+    url: String,
+    #[serde(default)]
+    sha256: String,
+}
+
+fn manager_version() -> ResultType<Option<ManagerVersion>> {
+    let base = {
+        let env_url = std::env::var("DESKAGENT_MANAGER_URL").unwrap_or_default();
+        let opt_url = config::Config::get_option("deskagent-manager-url");
+        let api_url = config::Config::get_option("api-server");
+        if !env_url.trim().is_empty() {
+            env_url
+        } else if !opt_url.trim().is_empty() {
+            opt_url
+        } else {
+            api_url
+        }
+    };
+    if base.trim().is_empty() { return Ok(None); }
+    let base = base.trim_end_matches('/');
+    let client = crate::hbbs_http::create_http_client_with_url(&base);
+    let response = client.get(&format!("{base}/api/version/latest")).send()?;
+    if response.status() == reqwest::StatusCode::NOT_FOUND { return Ok(None); }
+    if !response.status().is_success() { bail!("Manager version request failed: {}", response.status()); }
+    let mut version: ManagerVersion = response.json()?;
+    if version.url.starts_with('/') {
+        version.url = format!("{base}{}", version.url);
+    }
+    Ok(Some(version))
+}
+
+fn version_is_newer(remote: &str, current: &str) -> bool {
+    let parse = |v: &str| v.trim_start_matches('v').split('.').map(|x| x.parse::<u64>().unwrap_or(0)).collect::<Vec<_>>();
+    parse(remote) > parse(current)
+}
+
+fn verify_sha256(path: &Path, expected: &str) -> ResultType<()> {
+    if expected.is_empty() { return Ok(()); }
+    if expected.len() != 64 || !expected.bytes().all(|b| b.is_ascii_hexdigit()) { bail!("invalid update SHA-256"); }
+    let mut file = std::fs::File::open(path)?;
+    let mut hash = Sha256::new();
+    let mut buf = [0u8; 8192];
+    loop {
+        let n = std::io::Read::read(&mut file, &mut buf)?;
+        if n == 0 { break; }
+        hash.update(&buf[..n]);
+    }
+    let actual = format!("{:x}", hash.finalize());
+    if !actual.eq_ignore_ascii_case(expected) { bail!("update checksum mismatch"); }
+    Ok(())
+}
+
 fn check_update(manually: bool) -> ResultType<()> {
     // On macOS, auto-update is handled by check_update_as_root() in the service process.
     // The shared check_update() path is only used for manual update checks from the GUI.
@@ -185,19 +245,48 @@ fn check_update(manually: bool) -> ResultType<()> {
     if !(manually || config::Config::get_bool_option(keys::OPTION_ALLOW_AUTO_UPDATE)) {
         return Ok(());
     }
-    if do_check_software_update().is_err() {
-        // ignore
-        return Ok(());
+    let manager = manager_version().unwrap_or(None);
+    let mut manager_update = manager
+        .as_ref()
+        .filter(|v| version_is_newer(&v.version, env!("CARGO_PKG_VERSION")));
+    // The Manager URL may be plain HTTP on a LAN, so the SHA-256 it supplies
+    // is the only integrity check. Never install an unverified manager build.
+    if let Some(v) = manager_update {
+        if v.sha256.trim().is_empty() {
+            log::warn!(
+                "manager advertises {} without update_sha256; refusing to install",
+                v.version
+            );
+            manager_update = None;
+        }
     }
-
-    let update_url = crate::common::SOFTWARE_UPDATE_URL.lock().unwrap().clone();
+    let manager_url = manager_update.map(|v| v.url.clone());
+    let update_url = if let Some(v) = manager_url.clone() {
+        v
+    } else {
+        if do_check_software_update().is_err() {
+            return Ok(());
+        }
+        crate::common::SOFTWARE_UPDATE_URL.lock().unwrap().clone()
+    };
+    let expected_sha256 = manager_update.map(|v| v.sha256.as_str()).unwrap_or("");
     if update_url.is_empty() {
         log::debug!("No update available.");
     } else {
-        let download_url = update_url.replace("tag", "download");
-        let version = download_url.split('/').last().unwrap_or_default();
+        let download_url = if manager_url.is_some() {
+            update_url.clone()
+        } else {
+            update_url.replace("tag", "download")
+        };
+        let version = manager
+            .as_ref()
+            .filter(|_| manager_url.is_some())
+            .map(|v| v.version.clone())
+            .unwrap_or_else(|| download_url.split('/').last().unwrap_or_default().to_owned());
         #[cfg(target_os = "windows")]
-        let download_url = if cfg!(feature = "flutter") {
+        let download_url = if manager_url.is_some() {
+            download_url
+        } else if cfg!(feature = "flutter") {
             let Some(arch) = crate::platform::windows::release_arch_suffix() else {
                 bail!(
                     "Unsupported Windows release architecture: {}",
@@ -215,7 +304,14 @@ fn check_update(manually: bool) -> ResultType<()> {
             format!("{}/rustdesk-{}-x86-sciter.exe", download_url, version)
         };
         log::debug!("New version available: {}", &version);
-        let client = create_http_client_with_url_strict(&download_url)?;
+        // A Manager may be served over plain HTTP on the LAN; the strict
+        // client only allows HTTPS and would reject every such update.
+        // Keep the strict client for the public GitHub release path.
+        let client = if manager_url.is_some() {
+            create_http_client_with_url(&download_url)
+        } else {
+            create_http_client_with_url_strict(&download_url)?
+        };
         let Some(file_path) = get_download_file_from_url(&download_url) else {
             bail!("Failed to get the file path from the URL: {}", download_url);
         };
@@ -254,6 +350,7 @@ fn check_update(manually: bool) -> ResultType<()> {
             let mut file = std::fs::File::create(&file_path)?;
             file.write_all(&file_data)?;
         }
+        verify_sha256(&file_path, expected_sha256)?;
         // We have checked if the `conns` is empty before, but we need to check again.
         // No need to care about the downloaded file here, because it's rare case that the `conns` are empty
         // before the download, but not empty after the download.
@@ -355,6 +452,24 @@ fn update_new_version(update_msi: bool, version: &str, file_path: &PathBuf) {
 
 pub fn get_update_download_file_from_url(url: &str) -> Option<PathBuf> {
     let parsed = url::Url::parse(url).ok()?;
+    // Manager or custom HTTP/HTTPS update URL
+    if parsed.path().ends_with("/download/client")
+        || parsed.path().ends_with(".exe")
+        || parsed.path().ends_with(".msi")
+    {
+        let filename = parsed
+            .path_segments()
+            .and_then(|mut s| s.next_back())
+            .filter(|s| !s.is_empty())
+            .unwrap_or("deskagent-install.exe");
+        let filename = if filename.ends_with(".exe") || filename.ends_with(".msi") {
+            filename.to_string()
+        } else {
+            "deskagent-update.exe".to_string()
+        };
+        return Some(std::env::temp_dir().join(filename));
+    }
+
     // Check the raw prefix before Url normalizes default ports.
     if !url.starts_with("https://github.com/")
         || parsed.scheme() != "https"

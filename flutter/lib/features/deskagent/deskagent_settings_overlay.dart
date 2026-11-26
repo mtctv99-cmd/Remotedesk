@@ -1,20 +1,21 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/consts.dart';
-import 'package:flutter_hbb/features/deskagent/deskagent_config.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
-import 'package:get/get.dart';
 
-/// Cửa sổ cài đặt của widget client — dựng theo mockup client-widget.html
-/// ("CỬA SỔ CÀI ĐẶT"): CHẾ ĐỘ HIỂN THỊ (Sáng/Tối/Hệ thống), MẬT KHẨU & QUYỀN
-/// TRUY CẬP, MÁY CHỦ NỘI BỘ và hàng nút Đóng / v0.1 / Lưu cài đặt.
+/// Cửa sổ cài đặt của widget client — dựng theo client rollback v1.5.0+68
+/// ("Cài đặt hệ thống" 380×620): HỆ THỐNG, MẬT KHẨU & QUYỀN TRUY CẬP,
+/// MÁY CHỦ NỘI BỘ + footer Đóng · v0.1 · Lưu cài đặt.
 ///
-/// Mọi tuỳ chọn gắn vào option thật (không mock):
-/// - `theme`: local option + Get.changeThemeMode áp dụng ngay
-/// - `allow-hide-cm`: thu nhỏ vào khay khi bấm đóng
-/// - `approve-mode`: hỏi trước khi chấp nhận kết nối
-/// - `enable-keyboard` / `enable-clipboard` / `enable-audio`: quyền phiên
-/// - mật khẩu cố định: mainSetPermanentPasswordWithResult
+/// Mọi tuỳ chọn gắn vào cơ chế thật (không mock):
+/// - Khởi động cùng Windows: HKCU Run key `DeskAgent` (reg add/delete)
+/// - Thu nhỏ vào khay: option `allow-hide-cm`
+/// - Windows Service: `deskagent.exe --install` qua UAC
+/// - Chỉ cho phép Admin IT: option `approve-mode` (click/password)
+/// - keyboard / clipboard / audio: option `enable-*`
+/// - Khóa Admin: đặt mật khẩu vĩnh viễn mainSetPermanentPasswordWithResult
 class DeskAgentSettingsOverlay extends StatefulWidget {
   const DeskAgentSettingsOverlay({super.key, required this.onClose});
 
@@ -26,23 +27,26 @@ class DeskAgentSettingsOverlay extends StatefulWidget {
 }
 
 class _DeskAgentSettingsOverlayState extends State<DeskAgentSettingsOverlay> {
-  static const Color bg = Color(0xFFF7F8FA);
-  static const Color card = Colors.white;
-  static const Color textMain = Color(0xFF111827);
-  static const Color textSub = Color(0xFF6B7280);
-  static const Color line = Color(0xFFE5E7EB);
-  static const Color orange = Color(0xFFF97316);
+  // Bảng màu Win11 Fluent Dark của client rollback.
+  static const Color bg = Color(0xFF181818);
+  static const Color card = Color(0xFF222222);
+  static const Color textMain = Color(0xFFF4F4F5);
+  static const Color textSub = Color(0xFFA1A1AA);
+  static const Color line = Color(0x14FFFFFF); // trắng 8%
+  static const Color blue = Color(0xFF60CDFF);
+  static const Color blueSoft = Color(0xFF7CD5FF);
+  static const Color amber = Color(0xFFFBBF24);
 
-  String _theme = 'light'; // light | dark | system
+  bool _autostart = false;
+  bool _serviceInstalled = false;
+  bool _serviceBusy = false;
   bool _hideToTray = true;
-  bool _askBeforeConnect = true; // approve-mode == 'click'
+  bool _adminOnly = true;
   bool _enableKeyboard = true;
   bool _enableClipboard = true;
   bool _enableAudio = false;
   bool _saving = false;
   bool _loading = true;
-  bool _registered = false;
-  final TextEditingController _passwordController = TextEditingController();
 
   @override
   void initState() {
@@ -51,169 +55,319 @@ class _DeskAgentSettingsOverlayState extends State<DeskAgentSettingsOverlay> {
   }
 
   Future<void> _load() async {
-    _theme = bind.mainGetLocalOption(key: 'theme');
-    if (_theme.isEmpty) _theme = 'light';
-    _hideToTray = bind.mainGetOptionSync(key: 'allow-hide-cm') == 'Y';
-    _askBeforeConnect =
-        bind.mainGetOptionSync(key: kOptionApproveMode) != 'password';
-    _enableKeyboard =
-        bind.mainGetOptionSync(key: kOptionEnableKeyboard) != 'N';
+    _adminOnly = bind.mainGetOptionSync(key: kOptionApproveMode) != 'click';
+    _hideToTray = bind.mainGetOptionSync(key: 'allow-hide-cm') != 'N';
+    _enableKeyboard = bind.mainGetOptionSync(key: kOptionEnableKeyboard) != 'N';
     _enableClipboard =
         bind.mainGetOptionSync(key: kOptionEnableClipboard) != 'N';
     _enableAudio = bind.mainGetOptionSync(key: kOptionEnableAudio) == 'Y';
-    _registered =
-        bind.mainGetLocalOption(key: 'manager-device-token').isNotEmpty;
+    _serviceInstalled = bind.mainIsInstalled();
+    _autostart = await _readAutostart();
     if (mounted) setState(() => _loading = false);
+  }
+
+  /// Trạng thái khởi động cùng Windows = наличие khóa Run `DeskAgent`.
+  Future<bool> _readAutostart() async {
+    try {
+      final res = await Process.run('reg', [
+        'query',
+        r'HKCU\Software\Microsoft\Windows\CurrentVersion\Run',
+        '/v',
+        'DeskAgent',
+      ]);
+      return res.exitCode == 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Đặt trạng thái khởi động cùng Windows; true khi reg key thành công
+  /// (trước kia exitCode bị bỏ qua — toggle lỗi vẫn báo "saved").
+  Future<bool> _setAutostart(bool on) async {
+    final exe = Platform.resolvedExecutable;
+    final args = on
+        ? [
+            'add',
+            r'HKCU\Software\Microsoft\Windows\CurrentVersion\Run',
+            '/v',
+            'DeskAgent',
+            '/t',
+            'REG_SZ',
+            '/d',
+            '"$exe"',
+            '/f'
+          ]
+        : [
+            'delete',
+            r'HKCU\Software\Microsoft\Windows\CurrentVersion\Run',
+            '/v',
+            'DeskAgent',
+            '/f'
+          ];
+    try {
+      final res = await Process.run('reg', args);
+      return res.exitCode == 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Cài Windows Service qua UAC: bật `--install-service`, tắt
+  /// `--uninstall-service` — đúng tên nhánh ở src/core_main.rs:388 và :392.
+  /// Trước đây gửi `--install`/`--uninstall`: không khớp nhánh nào nên tiến
+  /// trình con rơi xuống khởi động server + mở GUI, không bao giờ thoát, và
+  /// `-Wait` chờ mãi (nút quay spinner vô hạn, service không đổi).
+  /// exitCode != 0 (vd 1223) là người dùng HỦY bảng UAC — phải báo đúng
+  /// thay vì dò lại isInstalled rồi toast sai kết quả.
+  Future<void> _setService(bool on) async {
+    setState(() => _serviceBusy = true);
+    try {
+      final exe = Platform.resolvedExecutable;
+      final arg = on ? '--install-service' : '--uninstall-service';
+      final res = await Process.run('powershell', [
+        '-NoProfile',
+        '-Command',
+        'Start-Process -FilePath \'$exe\' -ArgumentList \'$arg\' -Verb RunAs -Wait',
+      ]);
+      if (res.exitCode != 0) {
+        showToast(
+            'Yêu cầu quyền Administrator bị hủy — dịch vụ không thay đổi');
+      } else {
+        await Future.delayed(const Duration(seconds: 2));
+        _serviceInstalled = bind.mainIsInstalled();
+        if (mounted) setState(() {}); // cập nhật nhãn nút Bật/Tắt theo thật.
+        showToast(on
+            ? (_serviceInstalled
+                ? 'Windows Service đã bật'
+                : 'Windows Service chưa bật được')
+            : (!_serviceInstalled
+                ? 'Windows Service đã tắt'
+                : 'Windows Service chưa tắt được'));
+      }
+    } catch (_) {
+      showToast(translate('Failed'));
+    }
+    if (mounted) setState(() => _serviceBusy = false);
+  }
+
+  Future<void> _setAdminPassword() async {
+    final controller = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: card,
+        title: Text(translate('Set permanent password'),
+            style: const TextStyle(fontSize: 15, color: textMain)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          obscureText: true,
+          style: const TextStyle(color: textMain),
+          decoration: const InputDecoration(
+            hintText: 'Nhập mật khẩu Admin…',
+            hintStyle: TextStyle(color: textSub),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Hủy bỏ')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Xác nhận')),
+        ],
+      ),
+    );
+    final pass = controller.text;
+    controller.dispose();
+    if (ok != true || pass.isEmpty) return;
+    if (pass.length < 6) {
+      showToast('Mật khẩu Admin cần ít nhất 6 ký tự');
+      return;
+    }
+    final success =
+        await bind.mainSetPermanentPasswordWithResult(password: pass);
+    showToast(success ? 'Đã đặt mật khẩu Admin' : translate('Failed'));
   }
 
   Future<void> _save() async {
     setState(() => _saving = true);
-    await bind.mainSetLocalOption(key: 'theme', value: _theme);
     await bind.mainSetOption(
         key: 'allow-hide-cm', value: _hideToTray ? 'Y' : 'N');
     await bind.mainSetOption(
-        key: kOptionApproveMode, value: _askBeforeConnect ? 'click' : 'password');
+        key: kOptionApproveMode, value: _adminOnly ? 'password' : 'click');
     await bind.mainSetOption(
         key: kOptionEnableKeyboard, value: _enableKeyboard ? 'Y' : 'N');
     await bind.mainSetOption(
         key: kOptionEnableClipboard, value: _enableClipboard ? 'Y' : 'N');
     await bind.mainSetOption(
         key: kOptionEnableAudio, value: _enableAudio ? 'Y' : 'N');
-    if (_passwordController.text.isNotEmpty) {
-      final ok = await bind.mainSetPermanentPasswordWithResult(
-          password: _passwordController.text);
-      if (ok) {
-        _passwordController.clear();
-        showToast(translate('Settings saved'));
-      } else {
-        showToast(translate('Failed'));
-      }
-    } else {
-      showToast(translate('Settings saved'));
+    final autostartOk = await _setAutostart(_autostart);
+    if (mounted) {
+      showToast(autostartOk
+          ? translate('Settings saved')
+          : 'Đã lưu, nhưng đặt tự khởi động cùng Windows thất bại');
     }
     if (mounted) setState(() => _saving = false);
-  }
-
-  @override
-  void dispose() {
-    _passwordController.dispose();
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Material(
       color: bg,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _header(),
-          Expanded(
-            child: _loading
-                ? const Center(
-                    child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2)))
-                : SingleChildScrollView(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _sectionTitle('CHẾ ĐỘ HIỂN THỊ'),
-                        _sectionCard([_themeSegment()]),
-                        _sectionTitle('MẬT KHẨU & QUYỀN TRUY CẬP'),
-                        _sectionCard(_permissionsRows()),
-                        _sectionTitle('MÁY CHỦ NỘI BỘ'),
-                        _sectionCard([
-                          _settingRow(
-                              'Máy chủ Manager',
-                              kApiBase,
-                              _registered
-                                  ? _badge('Đã đăng ký', orange)
-                                  : _badge('Chưa đăng ký', textSub)),
-                        ]),
-                        const SizedBox(height: 4),
-                      ],
+      child: _loading
+          ? const Center(
+              child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2)))
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _header(),
+                // Cuộn khi cần: cửa sổ cao bằng nội dung (~620) nên bình
+                // thường không có thanh cuộn; màn hình thấp hơn hoặc thêm mục
+                // mới thì vẫn đọc hết được thay vì bị cắt.
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 4, bottom: 6),
+                      // Bắt đầu từ trên, không rải đều: spaceBetween làm các
+                      // nhóm bị đẩy xa nhau khi cửa sổ cao bằng cả màn hình.
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisAlignment: MainAxisAlignment.start,
+                        children: [
+                          _sectionHeader(
+                              Icons.desktop_windows_outlined, 'Hệ thống'),
+                          _sectionCard([
+                            _toggleRow(
+                                'Khởi động cùng Windows',
+                                'Tự chạy ngầm khi mở máy tính',
+                                _autostart,
+                                (v) => setState(() => _autostart = v)),
+                            _divider(),
+                            _toggleRow(
+                                'Thu nhỏ vào khay hệ thống (Tray)',
+                                'Không tắt hẳn khi bấm đóng cửa sổ',
+                                _hideToTray,
+                                (v) => setState(() => _hideToTray = v)),
+                            _divider(),
+                            _serviceRow(),
+                          ]),
+                          _sectionHeader(
+                              Icons.lock_outline, 'Mật khẩu & Quyền truy cập'),
+                          _sectionCard([
+                            _toggleRow(
+                                'Chỉ cho phép Admin IT kết nối',
+                                'Chỉ tài khoản công ty mới được điều khiển',
+                                _adminOnly,
+                                (v) => setState(() => _adminOnly = v)),
+                            _divider(),
+                            _toggleRow(
+                                'Điều khiển bàn phím & chuột',
+                                'Cho phép đối tác tương tác máy này',
+                                _enableKeyboard,
+                                (v) => setState(() => _enableKeyboard = v)),
+                            _divider(),
+                            _toggleRow(
+                                'Đồng bộ Clipboard',
+                                'Chia sẻ sao chép/dán giữa 2 máy',
+                                _enableClipboard,
+                                (v) => setState(() => _enableClipboard = v)),
+                            _divider(),
+                            _toggleRow(
+                                'Truyền âm thanh máy tính',
+                                'Phát âm thanh từ máy này sang đối tác',
+                                _enableAudio,
+                                (v) => setState(() => _enableAudio = v)),
+                          ]),
+                          _serverRow(),
+                          _serverCard(),
+                        ],
+                      ),
                     ),
                   ),
-          ),
-          _footer(),
-        ],
-      ),
+                ),
+                _footer(),
+              ],
+            ),
     );
   }
 
   Widget _header() {
     return Container(
-      height: 44,
-      padding: const EdgeInsets.only(left: 12, right: 4),
-      decoration: const BoxDecoration(
-        color: card,
-        border: Border(bottom: BorderSide(color: line)),
-      ),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
       child: Row(
         children: [
-          const Icon(Icons.settings_outlined, size: 17, color: textSub),
+          const Icon(Icons.settings, size: 18, color: blueSoft),
           const SizedBox(width: 8),
-          const Text(
-            'Cài đặt',
-            style: TextStyle(
-                fontSize: 13, fontWeight: FontWeight.w700, color: textMain),
-          ),
+          const Text('Cài đặt hệ thống',
+              style: TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w700, color: textMain)),
           const Spacer(),
-          if (_saving)
-            const Padding(
-              padding: EdgeInsets.only(right: 8),
-              child: SizedBox(
-                width: 13,
-                height: 13,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: blueSoft.withOpacity(.1),
+              border: Border.all(color: blueSoft.withOpacity(.3)),
+              borderRadius: BorderRadius.circular(9),
             ),
-          IconButton(
-            onPressed: widget.onClose,
-            visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.close, size: 18, color: textSub),
+            child: const Row(children: [
+              Icon(Icons.info_outline, size: 11, color: blueSoft),
+              SizedBox(width: 4),
+              Text('About',
+                  style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                      color: blueSoft)),
+            ]),
+          ),
+          const SizedBox(width: 6),
+          InkResponse(
+            onTap: widget.onClose,
+            child: const Icon(Icons.close, size: 18, color: textSub),
           ),
         ],
       ),
     );
   }
 
-  Widget _sectionTitle(String title) {
+  Widget _sectionHeader(IconData icon, String title) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
-      child: Text(
-        title,
-        style: const TextStyle(
-            fontSize: 11.5,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0.3,
-            color: textSub),
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+      child: Row(
+        children: [
+          Icon(icon, size: 13, color: blueSoft),
+          const SizedBox(width: 6),
+          Text(title,
+              style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: textMain)),
+        ],
       ),
     );
   }
 
   Widget _sectionCard(List<Widget> rows) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 10),
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      margin: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
         color: card,
         border: Border.all(color: line),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch, children: rows),
     );
   }
 
-  Widget _settingRow(String title, String desc, Widget trailing) {
+  Widget _toggleRow(
+      String title, String desc, bool value, ValueChanged<bool> onChanged) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Expanded(
             child: Column(
@@ -226,199 +380,164 @@ class _DeskAgentSettingsOverlayState extends State<DeskAgentSettingsOverlay> {
                         color: textMain)),
                 const SizedBox(height: 2),
                 Text(desc,
-                    style: const TextStyle(fontSize: 10.5, color: textSub)),
+                    style: const TextStyle(fontSize: 10, color: textSub)),
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          trailing,
+          const SizedBox(width: 10),
+          Switch(
+            value: value,
+            activeColor: blue,
+            onChanged: onChanged,
+          ),
         ],
       ),
     );
   }
 
-  Widget _badge(String text, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(text,
-          style: TextStyle(
-              fontSize: 10.5, fontWeight: FontWeight.w700, color: color)),
-    );
-  }
-
-  Widget _themeSegment() {
+  Widget _serviceRow() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      child: Container(
-        padding: const EdgeInsets.all(3),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(7),
-        ),
-        child: Row(
-          children: [
-            _themeButton('Sáng', Icons.wb_sunny_outlined, 'light'),
-            _themeButton('Tối', Icons.dark_mode_outlined, 'dark'),
-            _themeButton('Hệ thống', Icons.computer_outlined, 'system'),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _themeButton(String label, IconData iconData, String mode) {
-    final active = _theme == mode;
-    return Expanded(
-      child: InkWell(
-        onTap: () {
-          setState(() => _theme = mode);
-          bind.mainSetLocalOption(key: 'theme', value: mode);
-          if (mode == 'dark') {
-            Get.changeThemeMode(ThemeMode.dark);
-          } else if (mode == 'system') {
-            Get.changeThemeMode(ThemeMode.system);
-          } else {
-            Get.changeThemeMode(ThemeMode.light);
-          }
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 7),
-          decoration: BoxDecoration(
-            color: active ? Colors.white : Colors.transparent,
-            borderRadius: BorderRadius.circular(5),
-            border: Border.all(color: active ? orange : Colors.transparent),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Windows Service (Hỗ trợ UAC)',
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: textMain)),
+                const SizedBox(height: 2),
+                const Text('Cho phép thao tác khi hiện bảng Admin UAC',
+                    style: TextStyle(fontSize: 10, color: textSub)),
+              ],
+            ),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(iconData, size: 14, color: active ? orange : textSub),
-              const SizedBox(width: 5),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w600,
-                  color: active ? textMain : textSub,
+          const SizedBox(width: 10),
+          _serviceBusy
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : TextButton(
+                  onPressed: () => _setService(!_serviceInstalled),
+                  style: TextButton.styleFrom(
+                    backgroundColor: blue,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(0, 24),
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(5)),
+                  ),
+                  child: Text(_serviceInstalled ? 'Tắt' : 'Bật',
+                      style: const TextStyle(
+                          fontSize: 10.5, fontWeight: FontWeight.w700)),
                 ),
-              ),
-            ],
-          ),
-        ),
+        ],
       ),
     );
   }
 
-  List<Widget> _permissionsRows() {
-    return [
-      _settingRow(
-          'Hỏi trước khi chấp nhận kết nối',
-          'Bật: mỗi phiên cần người dùng bấm xác nhận trên máy',
-          Switch(
-            value: _askBeforeConnect,
-            activeColor: orange,
-            onChanged: (v) => setState(() => _askBeforeConnect = v),
-          )),
-      _divider(),
-      _settingRow(
-          'Mật khẩu cố định',
-          'Đặt mật khẩu truy cập vĩnh viễn cho máy này (bỏ trống để giữ nguyên)',
-          const SizedBox.shrink()),
-      Padding(
-        padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
-        child: TextField(
-          controller: _passwordController,
-          obscureText: true,
-          style: const TextStyle(fontSize: 12, color: textMain),
-          decoration: InputDecoration(
-            isDense: true,
-            hintText: 'Mật khẩu mới…',
-            hintStyle: const TextStyle(fontSize: 11.5, color: textSub),
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(6),
-              borderSide: const BorderSide(color: line),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(6),
-              borderSide: const BorderSide(color: orange),
+  Widget _serverRow() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+      child: Row(
+        children: [
+          const Icon(Icons.dns_outlined, size: 13, color: blueSoft),
+          const SizedBox(width: 6),
+          const Text('Máy chủ nội bộ (Mặc định)',
+              style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: textMain)),
+          const Spacer(),
+          InkWell(
+            onTap: _setAdminPassword,
+            borderRadius: BorderRadius.circular(6),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: amber.withOpacity(.12),
+                border: Border.all(color: amber.withOpacity(.3)),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Row(children: [
+                Icon(Icons.lock_outline, size: 11, color: amber),
+                SizedBox(width: 4),
+                Text('Khóa Admin',
+                    style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        color: amber)),
+              ]),
             ),
           ),
-        ),
+        ],
       ),
-      _divider(),
-      _settingRow(
-          'Điều khiển bàn phím & chuột',
-          'Cho phép máy xa điều khiển bàn phím, chuột của máy này',
-          Switch(
-            value: _enableKeyboard,
-            activeColor: orange,
-            onChanged: (v) => setState(() => _enableKeyboard = v),
-          )),
-      _divider(),
-      _settingRow('Đồng bộ Clipboard',
-          'Cho phép trao đổi nội dung clipboard giữa hai máy',
-          Switch(
-            value: _enableClipboard,
-            activeColor: orange,
-            onChanged: (v) => setState(() => _enableClipboard = v),
-          )),
-      _divider(),
-      _settingRow('Âm thanh máy tính',
-          'Chuyển âm thanh của máy này sang máy xa khi kết nối',
-          Switch(
-            value: _enableAudio,
-            activeColor: orange,
-            onChanged: (v) => setState(() => _enableAudio = v),
-          )),
-    ];
+    );
+  }
+
+  Widget _serverCard() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: card,
+        border: Border.all(color: line),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: const Text('Máy chủ đã cấu hình mặc định và được bảo vệ.',
+          style: TextStyle(fontSize: 10.5, color: textSub)),
+    );
   }
 
   Widget _divider() {
     return const Padding(
-      padding: EdgeInsets.symmetric(horizontal: 10),
+      padding: EdgeInsets.symmetric(horizontal: 12),
       child: Divider(height: 1, thickness: 1, color: line),
     );
   }
 
   Widget _footer() {
     return Container(
-      height: 48,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: const BoxDecoration(
         color: card,
         border: Border(top: BorderSide(color: line)),
       ),
       child: Row(
         children: [
+          if (_saving)
+            const SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(strokeWidth: 2)),
           TextButton(
             onPressed: widget.onClose,
             style: TextButton.styleFrom(
+                foregroundColor: textSub,
                 minimumSize: const Size(48, 32),
                 padding: const EdgeInsets.symmetric(horizontal: 10)),
-            child:
-                const Text('Đóng', style: TextStyle(fontSize: 12.5, color: textSub)),
+            child: const Text('Đóng', style: TextStyle(fontSize: 12.5)),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
           const Text('v0.1', style: TextStyle(fontSize: 11, color: textSub)),
           const Spacer(),
           ElevatedButton(
             onPressed: _saving ? null : _save,
             style: ElevatedButton.styleFrom(
-              backgroundColor: orange,
-              foregroundColor: Colors.white,
+              backgroundColor: blueSoft,
+              foregroundColor: const Color(0xFF0B0B0B),
               elevation: 0,
-              minimumSize: const Size(0, 32),
+              minimumSize: const Size(0, 34),
               padding: const EdgeInsets.symmetric(horizontal: 16),
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(6)),
             ),
             child: const Text('Lưu cài đặt',
-                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
           ),
         ],
       ),

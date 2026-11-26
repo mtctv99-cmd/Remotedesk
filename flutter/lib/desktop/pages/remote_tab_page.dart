@@ -8,11 +8,11 @@ import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/shared_state.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/input_model.dart';
-import 'package:flutter_hbb/models/model.dart' show QualityMonitorModel;
 import 'package:flutter_hbb/models/state_model.dart';
 import 'package:flutter_hbb/desktop/pages/remote_page.dart';
 import 'package:flutter_hbb/desktop/widgets/remote_toolbar.dart';
 import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
+import 'package:flutter_hbb/features/deskagent/deskagent_tokens.dart';
 import 'package:flutter_hbb/desktop/widgets/material_mod_popup_menu.dart'
     as mod_menu;
 import 'package:flutter_hbb/desktop/widgets/popup_menu.dart';
@@ -29,57 +29,6 @@ class _MenuTheme {
   // kMinInteractiveDimension
   static const double height = 20.0;
   static const double dividerHeight = 12.0;
-}
-
-/// Live FPS from the session's quality monitor, shown next to the tab label.
-/// Width reserved so the tab layout doesn't jump while the first sample
-/// arrives. Sizes from CONTRACT_UI_DESIGN.md §4.1 (badge P2P, recoloured).
-class _FpsBadge extends StatelessWidget {
-  const _FpsBadge({required this.controller, required this.peerId});
-
-  final DesktopTabController controller;
-  final String peerId;
-
-  static const _green = Color(0xFF4ADE80);
-
-  QualityMonitorModel? get _model {
-    for (final t in controller.state.value.tabs) {
-      if (t.key == peerId && t.page is RemotePage) {
-        return (t.page as RemotePage).ffi.qualityMonitorModel;
-      }
-    }
-    return null;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final model = _model;
-    if (model == null) return const SizedBox();
-    return ListenableBuilder(
-      listenable: model,
-      builder: (context, _) {
-        final fps = model.data.fps;
-        if (fps == null || fps.isEmpty) return const SizedBox(width: 46);
-        return Container(
-          margin: const EdgeInsets.only(left: 4),
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-          decoration: BoxDecoration(
-            color: _green.withOpacity(0.12),
-            border: Border.all(color: _green.withOpacity(0.25)),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Text(
-            '$fps FPS',
-            style: const TextStyle(
-              fontSize: 10,
-              fontFamily: 'monospace',
-              color: _green,
-            ),
-          ),
-        );
-      },
-    );
-  }
 }
 
 class ConnectionTabPage extends StatefulWidget {
@@ -182,8 +131,30 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
 
   @override
   Widget build(BuildContext context) {
+    // The remote-session window keeps the Fluent dark shell from the approved
+    // mockup even when the rest of the app runs in light mode: tab strip,
+    // caption buttons and dialogs all read colors from this theme.
+    return Theme(
+      data: _sessionTheme,
+      child: Builder(builder: (context) => _buildDarkShell(context)),
+    );
+  }
+
+  /// Dark theme for the session shell: the tab strip sits on the same surface
+  /// as the approved mockup instead of the blue-tinted global dark theme.
+  ThemeData get _sessionTheme {
+    final base = MyTheme.darkTheme;
+    return base.copyWith(
+      scaffoldBackgroundColor: DeskAgentFluentColors.window,
+      canvasColor: DeskAgentFluentColors.window,
+      colorScheme:
+          base.colorScheme.copyWith(surface: DeskAgentFluentColors.window),
+    );
+  }
+
+  Widget _buildDarkShell(BuildContext context) {
     final child = Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       body: DesktopTab(
         controller: tabController,
         onWindowCloseButton: handleWindowCloseButton,
@@ -194,7 +165,9 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
             const AddButton(),
           ],
         ),
-        selectedBorderColor: MyTheme.accent,
+        selectedBorderColor: DeskAgentFluentColors.accent,
+        selectedTabBackgroundColor: DeskAgentFluentColors.card,
+        unSelectedTabBackgroundColor: Colors.transparent,
         pageViewBuilder: (pageView) => pageView,
         labelGetter: DesktopTab.tablabelGetter,
         tabBuilder: (key, icon, label, themeConf) => Obx(() {
@@ -240,7 +213,6 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
                   ).paddingOnly(right: 5),
                 ),
                 label,
-                _FpsBadge(controller: tabController, peerId: key),
                 unreadMessageCountBuilder(UnreadChatCountState.find(key))
                     .marginOnly(left: 4),
               ],

@@ -2,6 +2,7 @@
 // proxy + admin console). Runs as its own standalone workspace.
 
 mod ai;
+mod autodeploy;
 pub mod crypto;
 mod db;
 mod routes;
@@ -228,6 +229,9 @@ async fn main() {
 
     // Background maintenance: data retention + cheap DB backup.
     tokio::spawn(maintenance_loop(state.clone()));
+    // Drop a release file into /data (or the working dir) and every client
+    // picks it up on its next auto-update tick.
+    tokio::spawn(autodeploy::watch_loop(state.clone()));
 
     let bind =
         std::env::var("DESKAGENT_MANAGER_BIND").unwrap_or_else(|_| "0.0.0.0:8080".to_string());

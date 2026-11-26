@@ -188,6 +188,11 @@ impl<T: Subscriber + From<ConnInner>> ServiceTmpl<T> {
         self.0.read().unwrap().has_subscribes()
     }
 
+    #[inline]
+    pub fn has_new_subscribes(&self) -> bool {
+        self.0.read().unwrap().new_subscribes.len() > 0
+    }
+
     pub fn snapshot<F>(&self, callback: F) -> ResultType<()>
     where
         F: FnMut(ServiceSwap<T>) -> ResultType<()>,
@@ -354,5 +359,37 @@ impl<T: Subscriber + From<ConnInner>> ServiceSwap<T> {
 impl<T: Subscriber + From<ConnInner>> Drop for ServiceSwap<T> {
     fn drop(&mut self) {
         (self.0).0.write().unwrap().swap_new_subscribes();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_subscribes_snapshot_lifecycle() {
+        let svc = GenericService::new("test_service".to_owned(), true);
+        assert!(!svc.has_subscribes());
+        assert!(!svc.has_new_subscribes());
+
+        let conn = ConnInner::new(42, None, None);
+        svc.on_subscribe(conn);
+
+        assert!(svc.has_subscribes());
+        assert!(svc.has_new_subscribes());
+
+        let mut ran_snapshot = false;
+        svc.snapshot(|sps| {
+            ran_snapshot = true;
+            // Before swap in drop, subscribes is still empty
+            assert!(!sps.has_subscribes());
+            Ok(())
+        })
+        .unwrap();
+
+        assert!(ran_snapshot);
+        // After snapshot drop, new_subscribes drained to subscribes
+        assert!(svc.has_subscribes());
+        assert!(!svc.has_new_subscribes());
     }
 }

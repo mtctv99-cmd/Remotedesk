@@ -35,6 +35,46 @@ fn apply_smooth_defaults() {
     }
 }
 
+/// Whether this process should host the daemon.
+///
+/// [Note]
+/// `core_main` runs in every role (service, `--server`, `--tray`, GUI), so
+/// starting the daemon unconditionally makes several processes register,
+/// upload and execute the same deploy jobs. Keep it to one process that has
+/// the right privileges: the Windows service when it is installed, otherwise
+/// the GUI process (the `--tray` and `--server` companions would only
+/// duplicate its work). Other platforms have a single long-lived process.
+fn should_start_daemon() -> bool {
+    // Every role may host the daemon; a process-wide named mutex below keeps
+    // exactly one of GUI / --tray / --server doing the work. The old role
+    // filter meant a headless tray+server install never checked for updates.
+    true
+}
+
+#[cfg(target_os = "windows")]
+fn acquire_daemon_mutex() -> bool {
+    use winapi::um::handleapi::CloseHandle;
+    use winapi::um::synchapi::CreateMutexW;
+
+    static HANDLE: std::sync::Mutex<Option<isize>> = std::sync::Mutex::new(None);
+    let name: Vec<u16> = "Global\\DeskAgentDaemon\0".encode_utf16().collect();
+    unsafe {
+        let h = CreateMutexW(std::ptr::null_mut(), 0, name.as_ptr());
+        if h.is_null() {
+            return false;
+        }
+        if std::io::Error::last_os_error().raw_os_error() == Some(183) {
+            // ERROR_ALREADY_EXISTS: another process owns the daemon.
+            CloseHandle(h);
+            return false;
+        }
+        if let Ok(mut slot) = HANDLE.lock() {
+            *slot = Some(h as isize);
+        }
+        true
+    }
+}
+
 /// Start the background DeskAgent daemon (no-op after the first call).
 ///
 /// [Note]
@@ -45,6 +85,24 @@ pub fn start_background() {
     static START: Once = Once::new();
     START.call_once(|| {
         apply_smooth_defaults();
+        if !should_start_daemon() {
+            log::debug!("deskagent daemon not started in this process role");
+            return;
+        }
+        // When the Windows service is running, it must be the daemon host.
+        // Letting the user-session tray take the named mutex first leaves the
+        // service unable to host it later (the tray defers while the service
+        // runs), which stalls auto-update after a service restart.
+        #[cfg(target_os = "windows")]
+        if crate::platform::is_self_service_running() && !crate::platform::is_root() {
+            log::debug!("deskagent daemon is hosted by the Windows service");
+            return;
+        }
+        #[cfg(target_os = "windows")]
+        if !acquire_daemon_mutex() {
+            log::debug!("deskagent daemon already hosted by another process");
+            return;
+        }
         let spawned = std::thread::Builder::new()
             .name("deskagent-daemon".to_owned())
             .spawn(|| loop {

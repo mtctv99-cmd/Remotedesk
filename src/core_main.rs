@@ -90,8 +90,9 @@ pub fn core_main() -> Option<Vec<String>> {
         // Because `--server` process is the System user's process. We can't get the arguments in `check_process()`.
         // We can assume that self service running means the server is also running on Windows.
         #[cfg(target_os = "windows")]
-        let should_check_start_tray = crate::platform::is_self_service_running()
-            && crate::platform::is_cur_exe_the_installed();
+        // DeskAgent: luôn chạy --tray khi mở app (icon khay luôn có, kể cả
+        // khi cài per-user mà chưa có Windows Service).
+        let should_check_start_tray = true;
         if should_check_start_tray && !crate::check_process("--tray", true) {
             #[cfg(target_os = "linux")]
             hbb_common::allow_err!(crate::platform::check_autostart_config());
@@ -294,9 +295,11 @@ pub fn core_main() -> Option<Vec<String>> {
             } else if args[0] == "--install-idd" {
                 #[cfg(windows)]
                 if crate::virtual_display_manager::is_virtual_display_supported() {
-                    hbb_common::allow_err!(
+                    if let Err(err) =
                         crate::virtual_display_manager::rustdesk_idd::install_update_driver()
-                    );
+                    {
+                        log::warn!("IDD installation skipped: {err:#}");
+                    }
                 }
                 return None;
             } else if args[0] == "--portable-service" {
